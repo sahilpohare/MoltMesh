@@ -2130,56 +2130,9 @@ const { text } = await generateText({
         el.classList.add('visible');
       });
 
-      // ─── COOKIE CONSENT ───
-      (function() {
-        const CONSENT_KEY = 'moltmesh_analytics_consent';
-
-        function loadGtag() {
-          var gtagScript = document.createElement('script');
-          gtagScript.async = true;
-          gtagScript.src = 'https://www.googletagmanager.com/gtag/js?id=G-W4PLJS1MLW';
-          var firstScript = document.getElementsByTagName('script')[0];
-          firstScript.parentNode.insertBefore(gtagScript, firstScript);
-        }
-
-        function grantConsent() {
-          gtag('consent', 'update', {
-            ad_user_data: 'granted',
-            ad_personalization: 'granted',
-            ad_storage: 'granted',
-            analytics_storage: 'granted',
-          });
-          localStorage.setItem(CONSENT_KEY, 'granted');
-          loadGtag();
-          document.getElementById('consent-banner').style.display = 'none';
-        }
-
-        function denyConsent() {
-          localStorage.setItem(CONSENT_KEY, 'denied');
-          document.getElementById('consent-banner').style.display = 'none';
-        }
-
-        // Already decided — apply silently and hide banner
-        const stored = localStorage.getItem(CONSENT_KEY);
-        if (stored === 'granted') {
-          gtag('consent', 'update', {
-            ad_user_data: 'granted',
-            ad_personalization: 'granted',
-            ad_storage: 'granted',
-            analytics_storage: 'granted',
-          });
-          loadGtag();
-          document.getElementById('consent-banner').style.display = 'none';
-        } else if (stored === 'denied') {
-          document.getElementById('consent-banner').style.display = 'none';
-        }
-
-        document.getElementById('consent-accept').addEventListener('click', grantConsent);
-        document.getElementById('consent-decline').addEventListener('click', denyConsent);
-      })();
     </script>
 
-    <!-- CONSENT BANNER (must be in DOM before the script above runs) -->
+    <!-- CONSENT BANNER -->
     <div id="consent-banner" style="
       position: fixed;
       bottom: 24px;
@@ -2226,5 +2179,55 @@ const { text } = await generateText({
         ">Accept</button>
       </div>
     </div>
+
+    <!-- COOKIE CONSENT LOGIC (after banner is in DOM) -->
+    <script>
+      (function() {
+        const CONSENT_KEY = 'moltmesh_analytics_consent';
+
+        function loadGtag() {
+          var gtagScript = document.createElement('script');
+          gtagScript.async = true;
+          gtagScript.src = 'https://www.googletagmanager.com/gtag/js?id=G-W4PLJS1MLW';
+          var firstScript = document.getElementsByTagName('script')[0];
+          firstScript.parentNode.insertBefore(gtagScript, firstScript);
+        }
+
+        function grantConsent() {
+          gtag('consent', 'update', {
+            ad_user_data: 'granted',
+            ad_personalization: 'granted',
+            ad_storage: 'granted',
+            analytics_storage: 'granted',
+          });
+          localStorage.setItem(CONSENT_KEY, 'granted');
+          loadGtag();
+          document.getElementById('consent-banner').style.display = 'none';
+        }
+
+        function denyConsent() {
+          localStorage.setItem(CONSENT_KEY, 'denied');
+          document.getElementById('consent-banner').style.display = 'none';
+        }
+
+        // Returning visitor — apply stored preference silently
+        const stored = localStorage.getItem(CONSENT_KEY);
+        if (stored === 'granted') {
+          gtag('consent', 'update', {
+            ad_user_data: 'granted',
+            ad_personalization: 'granted',
+            ad_storage: 'granted',
+            analytics_storage: 'granted',
+          });
+          loadGtag();
+          document.getElementById('consent-banner').style.display = 'none';
+        } else if (stored === 'denied') {
+          document.getElementById('consent-banner').style.display = 'none';
+        }
+
+        document.getElementById('consent-accept').addEventListener('click', grantConsent);
+        document.getElementById('consent-decline').addEventListener('click', denyConsent);
+      })();
+    </script>
   </body>
 </html>
