@@ -1130,6 +1130,7 @@
           <li><a href="#features">Features</a></li>
           <li><a href="#use-cases">Use Cases</a></li>
           <li><a href="#sdks">SDKs</a></li>
+          <li><a href="#cli">CLI</a></li>
           <li><a href="#payments">Payments</a></li>
           <li><a href="#how-it-works">Protocol</a></li>
           <li><a href="#quickstart">Quickstart</a></li>
@@ -2086,6 +2087,17 @@ const { text } = await generateText({
         resize();
         initNodes();
         draw();
+      });
+
+      // ─── CLI TABS ───
+      document.querySelectorAll('.cli-tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+          const key = tab.dataset.tab;
+          document.querySelectorAll('.cli-tab').forEach(t => t.classList.remove('active'));
+          document.querySelectorAll('.cli-panel').forEach(p => p.classList.remove('active'));
+          tab.classList.add('active');
+          document.querySelector(`.cli-panel[data-panel="${key}"]`).classList.add('active');
+        });
       });
 
       // ─── SCROLL REVEAL ───
