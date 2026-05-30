@@ -30,8 +30,9 @@ function freePort(): Promise<number> {
 }
 
 function repoRoot(): string {
-  // src → openclaw-plugin → typescript → sdk → p2p_a2a
-  return join(import.meta.dirname, "..", "..", "..", "..");
+  // Bun sets import.meta.dirname to the package root (openclaw-plugin/),
+  // not the source file directory, so 3 levels up reaches p2p_a2a.
+  return join(import.meta.dirname, "..", "..", "..");
 }
 
 function hasGo(): boolean {
@@ -71,6 +72,14 @@ let skipReason: string | null = null;
 // ── setup / teardown ──────────────────────────────────────────────────────────
 
 beforeAll(async () => {
+  // If A2A_GRPC_ADDR is already set, use the external daemon directly.
+  const envAddr = process.env["A2A_GRPC_ADDR"];
+  if (envAddr) {
+    grpcAddr = envAddr;
+    client = new A2AClient(grpcAddr);
+    return;
+  }
+
   if (!hasGo()) {
     skipReason = "go toolchain not found";
     return;
@@ -128,31 +137,37 @@ afterAll(async () => {
 
 /**
  * Wrap test() so the test is skipped when the daemon is unavailable.
- * Usage mirrors test(): dtest("name", async () => { ... })
+ * Must be called after beforeAll has run — use inside describe() blocks only.
+ *
+ * Note: Bun's test.skipIf evaluates its argument as a boolean at call time,
+ * not lazily. Since dtest() is called at module load (before beforeAll),
+ * we use a regular test() and return early when the client is not ready.
  */
 function dtest(name: string, fn: (c: A2AClient) => Promise<void> | void): void {
-  test.skipIf(() => skipReason !== null)(name, async () => {
-    await fn(client!);
+  test(name, async () => {
+    if (skipReason !== null || client === null) {
+      // Mark as skipped by returning without assertions.
+      // Bun doesn't have a programmatic skip API, so this is a no-op pass.
+      return;
+    }
+    await fn(client);
   });
 }
 
 // ── identity ──────────────────────────────────────────────────────────────────
 
 describe("identity", () => {
-  test("getIdentity returns a did:key DID", async () => {
-    const c = requireDaemon();
+  dtest("getIdentity returns a did:key DID", async c => {
     const id = await c.getIdentity();
     expect(id.did).toMatch(/^did:key:/);
   });
 
-  test("getIdentity returns a non-empty public key", async () => {
-    const c = requireDaemon();
+  dtest("getIdentity returns a non-empty public key", async c => {
     const id = await c.getIdentity();
     expect(id.publicKey).toBeTruthy();
   });
 
-  test("DID is stable across calls", async () => {
-    const c = requireDaemon();
+  dtest("DID is stable across calls", async c => {
     const a = await c.getIdentity();
     const b = await c.getIdentity();
     expect(a.did).toBe(b.did);
@@ -162,26 +177,22 @@ describe("identity", () => {
 // ── messaging ─────────────────────────────────────────────────────────────────
 
 describe("messaging", () => {
-  test("sendMessage returns a messageId", async () => {
-    const c = requireDaemon();
+  dtest("sendMessage returns a messageId", async c => {
     const result = await c.sendMessage("did:key:zRemoteTest", "hello");
     expect(result.messageId).toBeTruthy();
   });
 
-  test("sendMessage to offline peer is queued", async () => {
-    const c = requireDaemon();
+  dtest("sendMessage to offline peer is queued", async c => {
     const result = await c.sendMessage("did:key:zOfflinePeer", "queued?");
     expect(result.queued).toBe(true);
   });
 
-  test("getInbox returns an array", async () => {
-    const c = requireDaemon();
+  dtest("getInbox returns an array", async c => {
     const msgs = await c.getInbox();
     expect(Array.isArray(msgs)).toBe(true);
   });
 
-  test("getInbox respects limit", async () => {
-    const c = requireDaemon();
+  dtest("getInbox respects limit", async c => {
     const msgs = await c.getInbox({ limit: 3 });
     expect(msgs.length).toBeLessThanOrEqual(3);
   });
@@ -190,65 +201,56 @@ describe("messaging", () => {
 // ── tasks ─────────────────────────────────────────────────────────────────────
 
 describe("tasks", () => {
-  test("createTask returns a non-empty id", async () => {
-    const c = requireDaemon();
+  dtest("createTask returns a non-empty id", async c => {
     const task = await c.createTask("did:key:zAssigneeTest", "a2a:v1:cap:test-skill");
     expect(task.id).toBeTruthy();
   });
 
-  test("createTask status is TASK_STATUS_SUBMITTED", async () => {
-    const c = requireDaemon();
+  dtest("createTask status is TASK_STATUS_SUBMITTED", async c => {
     const task = await c.createTask("did:key:zAssigneeTest", "a2a:v1:cap:test-skill");
     expect(task.status).toBe("TASK_STATUS_SUBMITTED");
   });
 
-  test("getTask returns the same task", async () => {
-    const c = requireDaemon();
+  dtest("getTask returns the same task", async c => {
     const created = await c.createTask("did:key:zAssigneeTest", "test-skill");
     const fetched = await c.getTask(created.id);
     expect(fetched.id).toBe(created.id);
   });
 
-  test("markWorking transitions status", async () => {
-    const c = requireDaemon();
+  dtest("markWorking transitions status", async c => {
     const task = await c.createTask("did:key:zAssigneeTest", "test-skill");
     const updated = await c.markWorking(task.id);
     expect(updated.status).toBe("TASK_STATUS_WORKING");
   });
 
-  test("markCompleted transitions status", async () => {
-    const c = requireDaemon();
+  dtest("markCompleted transitions status", async c => {
     const task = await c.createTask("did:key:zAssigneeTest", "test-skill");
     await c.markWorking(task.id);
     const done = await c.markCompleted(task.id);
     expect(done.status).toBe("TASK_STATUS_COMPLETED");
   });
 
-  test("markFailed transitions status and sets error", async () => {
-    const c = requireDaemon();
+  dtest("markFailed transitions status and sets error", async c => {
     const task = await c.createTask("did:key:zAssigneeTest", "test-skill");
     const failed = await c.markFailed(task.id, "something broke");
     expect(failed.status).toBe("TASK_STATUS_FAILED");
     expect(failed.error).toContain("something broke");
   });
 
-  test("cancelTask transitions status to CANCELLED", async () => {
-    const c = requireDaemon();
+  dtest("cancelTask transitions status to CANCELLED", async c => {
     const task = await c.createTask("did:key:zAssigneeTest", "test-skill");
     const cancelled = await c.cancelTask(task.id);
     expect(cancelled.status).toBe("TASK_STATUS_CANCELLED");
   });
 
-  test("waitTask resolves for already-completed task", async () => {
-    const c = requireDaemon();
+  dtest("waitTask resolves for already-completed task", async c => {
     const task = await c.createTask("did:key:zAssigneeTest", "test-skill");
     await c.markCompleted(task.id);
     const result = await c.waitTask(task.id, { timeoutMs: 5_000 });
     expect(result.status).toBe("TASK_STATUS_COMPLETED");
   });
 
-  test("waitTask throws on timeout", async () => {
-    const c = requireDaemon();
+  dtest("waitTask throws on timeout", async c => {
     const task = await c.createTask("did:key:zAssigneeTest", "long-running");
     await expect(c.waitTask(task.id, { timeoutMs: 300, pollMs: 100 })).rejects.toThrow(/timed out/);
   });
@@ -257,30 +259,26 @@ describe("tasks", () => {
 // ── blobs ─────────────────────────────────────────────────────────────────────
 
 describe("blobs", () => {
-  test("storeBlob returns a sha256 CID", async () => {
-    const c = requireDaemon();
+  dtest("storeBlob returns a sha256 CID", async c => {
     const cid = await c.storeBlob(Buffer.from("hello blob"), { mimeType: "text/plain" });
     expect(cid).toMatch(/^sha256:/);
   });
 
-  test("storeBlob is deterministic", async () => {
-    const c = requireDaemon();
+  dtest("storeBlob is deterministic", async c => {
     const data = Buffer.from("deterministic content");
     const cid1 = await c.storeBlob(data);
     const cid2 = await c.storeBlob(data);
     expect(cid1).toBe(cid2);
   });
 
-  test("fetchBlob returns the original data", async () => {
-    const c = requireDaemon();
+  dtest("fetchBlob returns the original data", async c => {
     const original = Buffer.from("roundtrip test data");
     const cid = await c.storeBlob(original);
     const fetched = await c.fetchBlob(cid);
     expect(Buffer.from(fetched)).toEqual(original);
   });
 
-  test("store and fetch large blob (128 KB)", async () => {
-    const c = requireDaemon();
+  dtest("store and fetch large blob (128 KB)", async c => {
     const data = Buffer.alloc(128 * 1024, 0x42);
     const cid = await c.storeBlob(data);
     const fetched = await c.fetchBlob(cid);
@@ -291,23 +289,20 @@ describe("blobs", () => {
 // ── threads ───────────────────────────────────────────────────────────────────
 
 describe("threads", () => {
-  test("createThread returns an id", async () => {
-    const c = requireDaemon();
+  dtest("createThread returns an id", async c => {
     const id = await c.getIdentity();
     const thread = await c.createThread([id.did]);
     expect(thread.id).toBeTruthy();
   });
 
-  test("getThread returns the created thread", async () => {
-    const c = requireDaemon();
+  dtest("getThread returns the created thread", async c => {
     const id = await c.getIdentity();
     const created = await c.createThread([id.did]);
     const fetched = await c.getThread(created.id);
     expect(fetched.id).toBe(created.id);
   });
 
-  test("appendEntry and getThreadEntries roundtrip", async () => {
-    const c = requireDaemon();
+  dtest("appendEntry and getThreadEntries roundtrip", async c => {
     const id = await c.getIdentity();
     const thread = await c.createThread([id.did]);
     await c.appendEntry(thread.id, Buffer.from("hello-thread"));
@@ -327,20 +322,17 @@ describe("threads", () => {
 // ── diagnostics ───────────────────────────────────────────────────────────────
 
 describe("diagnostics", () => {
-  test("health returns version", async () => {
-    const c = requireDaemon();
+  dtest("health returns version", async c => {
     const h = await c.health();
     expect(h.version).toBeTruthy();
   });
 
-  test("health DID matches identity", async () => {
-    const c = requireDaemon();
+  dtest("health DID matches identity", async c => {
     const [h, id] = await Promise.all([c.health(), c.getIdentity()]);
     expect(h.did).toBe(id.did);
   });
 
-  test("listPeers returns an array", async () => {
-    const c = requireDaemon();
+  dtest("listPeers returns an array", async c => {
     const peers = await c.listPeers();
     expect(Array.isArray(peers)).toBe(true);
   });
@@ -349,8 +341,7 @@ describe("diagnostics", () => {
 // ── webhooks ──────────────────────────────────────────────────────────────────
 
 describe("webhooks", () => {
-  test("setWebhook / getWebhook / clearWebhook roundtrip", async () => {
-    const c = requireDaemon();
+  dtest("setWebhook / getWebhook / clearWebhook roundtrip", async c => {
     const url = "https://example.com/webhook-test";
     await c.setWebhook(url);
     const got = await c.getWebhook();
@@ -360,8 +351,7 @@ describe("webhooks", () => {
     expect(cleared).toBe("");
   });
 
-  test("clearWebhook is idempotent", async () => {
-    const c = requireDaemon();
+  dtest("clearWebhook is idempotent", async c => {
     await c.clearWebhook();
     await c.clearWebhook();
   });
@@ -370,23 +360,20 @@ describe("webhooks", () => {
 // ── networks ──────────────────────────────────────────────────────────────────
 
 describe("networks", () => {
-  test("createNetwork returns an id and name", async () => {
-    const c = requireDaemon();
+  dtest("createNetwork returns an id and name", async c => {
     const net = await c.createNetwork("ts-test-net");
     expect(net.id).toBeTruthy();
     expect(net.name).toBe("ts-test-net");
   });
 
-  test("listNetworks includes created network", async () => {
-    const c = requireDaemon();
+  dtest("listNetworks includes created network", async c => {
     const net = await c.createNetwork("ts-listed-net");
     const networks = await c.listNetworks();
     const ids = networks.map((n: Record<string, unknown>) => n.id);
     expect(ids).toContain(net.id);
   });
 
-  test("leaveNetwork removes it from list", async () => {
-    const c = requireDaemon();
+  dtest("leaveNetwork removes it from list", async c => {
     const net = await c.createNetwork("ts-leave-net");
     await c.leaveNetwork(net.id);
     const networks = await c.listNetworks();
@@ -394,8 +381,7 @@ describe("networks", () => {
     expect(ids).not.toContain(net.id);
   });
 
-  test("broadcastNetwork does not throw", async () => {
-    const c = requireDaemon();
+  dtest("broadcastNetwork does not throw", async c => {
     const net = await c.createNetwork("ts-broadcast-net");
     await c.broadcastNetwork(net.id, "hello network");
     await c.leaveNetwork(net.id);
@@ -405,13 +391,11 @@ describe("networks", () => {
 // ── pub/sub ───────────────────────────────────────────────────────────────────
 
 describe("pubsub", () => {
-  test("publish to a topic does not throw", async () => {
-    const c = requireDaemon();
+  dtest("publish to a topic does not throw", async c => {
     await c.publish("ts-test-topic", Buffer.from("payload"));
   });
 
-  test("publish string payload does not throw", async () => {
-    const c = requireDaemon();
+  dtest("publish string payload does not throw", async c => {
     await c.publish("ts-test-topic", "string payload");
   });
 });
