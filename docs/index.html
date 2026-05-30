@@ -87,45 +87,219 @@
       nav {
         position: sticky;
         top: 0;
-        z-index: 100;
+        z-index: 200;
         border-bottom: 1px solid var(--border);
-        background: rgba(8, 10, 8, 0.85);
-        backdrop-filter: blur(12px);
+        background: rgba(8, 10, 8, 0.92);
+        backdrop-filter: blur(16px);
       }
       .nav-inner {
         display: flex;
         align-items: center;
-        justify-content: space-between;
-        height: 56px;
+        height: 52px;
         max-width: 1200px;
         margin: 0 auto;
         padding: 0 32px;
+        gap: 0;
       }
       .nav-logo {
         font-family: 'IBM Plex Mono', monospace;
         font-size: 13px;
-        font-weight: 500;
+        font-weight: 600;
         color: var(--amber);
-        letter-spacing: 0.08em;
+        letter-spacing: 0.1em;
         text-transform: uppercase;
+        flex-shrink: 0;
+        margin-right: 40px;
       }
-      .nav-links {
+
+      /* ─── STRIPE-STYLE CATEGORY NAV ─── */
+      .nav-cats {
         display: flex;
-        gap: 32px;
-        list-style: none;
-        margin: 0;
-        padding: 0;
+        align-items: stretch;
+        gap: 0;
+        flex: 1;
+        height: 100%;
       }
-      .nav-links a {
+      .nav-cat {
+        position: relative;
+        height: 100%;
+        display: flex;
+        align-items: center;
+      }
+      .nav-cat-btn {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        background: transparent;
+        border: none;
+        color: var(--text-muted);
         font-family: 'IBM Plex Mono', monospace;
         font-size: 11px;
         font-weight: 400;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        padding: 0 16px;
+        height: 100%;
+        cursor: pointer;
+        transition: color 150ms;
+        white-space: nowrap;
+      }
+      .nav-cat-btn svg { transition: transform 200ms; flex-shrink: 0; }
+      .nav-cat:hover .nav-cat-btn,
+      .nav-cat.open .nav-cat-btn { color: var(--text); }
+      .nav-cat.open .nav-cat-btn svg { transform: rotate(180deg); }
+      /* amber underline on hover */
+      .nav-cat-btn::after {
+        content: '';
+        position: absolute;
+        bottom: 0; left: 16px; right: 16px;
+        height: 1px;
+        background: var(--amber);
+        transform: scaleX(0);
+        transition: transform 200ms;
+      }
+      .nav-cat:hover .nav-cat-btn::after,
+      .nav-cat.open .nav-cat-btn::after { transform: scaleX(1); }
+
+      /* mega dropdown panel */
+      .nav-mega {
+        display: none;
+        position: absolute;
+        top: 100%;
+        left: 0;
+        background: var(--surface);
+        border: 1px solid var(--border-bright);
+        border-top: 2px solid var(--amber);
+        min-width: 200px;
+        z-index: 300;
+        box-shadow: 0 12px 32px rgba(0,0,0,0.5);
+      }
+      .nav-cat.open .nav-mega { display: block; }
+      .nav-mega-label {
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 9px;
+        font-weight: 600;
+        color: var(--text-dim);
+        letter-spacing: 0.2em;
+        text-transform: uppercase;
+        padding: 12px 16px 8px;
+        border-bottom: 1px solid var(--border);
+      }
+      .nav-mega a {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 11px;
         color: var(--text-muted);
+        letter-spacing: 0.06em;
+        padding: 10px 16px;
+        border-bottom: 1px solid var(--border);
+        transition: color 150ms, background 150ms, padding-left 150ms;
+      }
+      .nav-mega a:last-child { border-bottom: none; }
+      .nav-mega a:hover { color: var(--amber); background: var(--bg); padding-left: 20px; }
+      .nav-mega a svg { width: 12px; height: 12px; stroke: currentColor; fill: none; stroke-width: 1.5; flex-shrink: 0; opacity: 0.6; }
+
+      /* right side CTA */
+      .nav-cta {
+        margin-left: auto;
+        flex-shrink: 0;
+      }
+      .nav-cta a {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 11px;
+        font-weight: 600;
         letter-spacing: 0.1em;
         text-transform: uppercase;
+        color: #080a08;
+        background: var(--amber);
+        padding: 7px 16px;
+        transition: background 150ms;
+      }
+      .nav-cta a:hover { background: var(--amber-light); }
+
+      /* hamburger — mobile only */
+      .nav-hamburger {
+        display: none;
+        background: transparent;
+        border: 1px solid var(--border-bright);
+        color: var(--text-muted);
+        cursor: pointer;
+        padding: 6px 10px;
+        margin-left: auto;
+        flex-direction: column;
+        gap: 4px;
+        align-items: center;
+        justify-content: center;
+      }
+      .nav-hamburger span {
+        display: block;
+        width: 18px;
+        height: 1px;
+        background: currentColor;
+        transition: transform 200ms, opacity 200ms;
+      }
+      .nav-hamburger.open span:nth-child(1) { transform: translateY(5px) rotate(45deg); }
+      .nav-hamburger.open span:nth-child(2) { opacity: 0; }
+      .nav-hamburger.open span:nth-child(3) { transform: translateY(-5px) rotate(-45deg); }
+
+      /* mobile drawer */
+      .nav-mobile {
+        display: none;
+        position: fixed;
+        top: 52px;
+        left: 0; right: 0;
+        background: var(--surface);
+        border-bottom: 1px solid var(--border-bright);
+        z-index: 199;
+        max-height: calc(100vh - 52px);
+        overflow-y: auto;
+      }
+      .nav-mobile.open { display: block; }
+      .nav-mobile-section { border-bottom: 1px solid var(--border); }
+      .nav-mobile-label {
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 9px;
+        font-weight: 600;
+        color: var(--amber);
+        letter-spacing: 0.2em;
+        text-transform: uppercase;
+        padding: 14px 24px 8px;
+      }
+      .nav-mobile a {
+        display: block;
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 12px;
+        color: var(--text-muted);
+        letter-spacing: 0.06em;
+        padding: 10px 24px;
+        border-top: 1px solid var(--border);
         transition: color 150ms;
       }
-      .nav-links a:hover { color: var(--text); }
+      .nav-mobile a:hover { color: var(--amber); }
+      .nav-mobile-cta {
+        padding: 16px 24px;
+      }
+      .nav-mobile-cta a {
+        display: inline-block;
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: #080a08;
+        background: var(--amber);
+        padding: 10px 20px;
+        border: none;
+      }
+
+      /* keep old .nav-links hidden */
+      .nav-links { display: none; }
+      .nav-menu { display: none; }
 
       /* ─── HERO ─── */
       .hero {
@@ -433,73 +607,157 @@
       .callout-block strong { color: var(--text); font-weight: 600; }
 
       /* ─── WHY / FEATURES GRID ─── */
-      .features-grid {
+      /* ─── FEATURES STAGGERED ─── */
+      .features-stagger {
         display: grid;
-        grid-template-columns: repeat(4, 1fr);
+        grid-template-columns: 1fr 1fr;
+        gap: 40px;
+        align-items: start;
+      }
+
+      /* Left: spotlight cards */
+      .feature-spotlights {
+        display: grid;
         gap: 1px;
         background: var(--border);
         border: 1px solid var(--border);
       }
-
-      .feature-card {
+      .feature-spotlight {
         background: var(--bg);
-        padding: 40px 32px;
+        padding: 24px 28px;
         position: relative;
         transition: background 200ms;
         overflow: hidden;
       }
-      .feature-card:hover { background: var(--surface); }
-      .feature-card::after {
-        content: '';
+      .feature-spotlight:hover { background: var(--surface); }
+      /* faint big number top-right */
+      .feature-spotlight-num {
         position: absolute;
-        bottom: 0;
-        left: 0;
-        right: 0;
-        height: 2px;
-        background: var(--amber);
-        transform: scaleX(0);
-        transform-origin: left;
-        transition: transform 300ms cubic-bezier(0.4, 0, 0.2, 1);
+        top: 16px;
+        right: 20px;
+        font-family: 'DM Serif Display', serif;
+        font-style: italic;
+        font-size: 56px;
+        line-height: 1;
+        color: var(--border-bright);
+        pointer-events: none;
+        transition: color 200ms;
+        user-select: none;
       }
-      .feature-card:hover::after { transform: scaleX(1); }
-
-      .feature-icon {
-        width: 44px;
-        height: 44px;
+      .feature-spotlight:hover .feature-spotlight-num { color: rgba(232,160,48,0.18); }
+      /* icon + tag row */
+      .feature-spotlight-header {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 12px;
+      }
+      .feature-spotlight-icon {
+        width: 32px;
+        height: 32px;
         border: 1px solid var(--border-bright);
         display: flex;
         align-items: center;
         justify-content: center;
-        margin-bottom: 24px;
+        flex-shrink: 0;
         transition: border-color 200ms;
       }
-      .feature-card:hover .feature-icon { border-color: var(--amber); }
-      .feature-icon svg {
-        width: 20px;
-        height: 20px;
-        stroke: var(--text-muted);
+      .feature-spotlight:hover .feature-spotlight-icon { border-color: var(--amber); }
+      .feature-spotlight-icon svg {
+        width: 14px;
+        height: 14px;
+        stroke: var(--amber);
         fill: none;
         stroke-width: 1.5;
-        transition: stroke 200ms;
       }
-      .feature-card:hover .feature-icon svg { stroke: var(--amber); }
-
-      .feature-card h3 {
-        font-size: 16px;
+      .feature-spotlight-tag {
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 9px;
+        font-weight: 600;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: var(--amber);
+      }
+      .feature-spotlight h3 {
+        font-size: 15px;
         font-weight: 700;
-        margin: 0 0 10px;
+        margin: 0 0 6px;
         letter-spacing: -0.01em;
       }
-      .feature-card p {
+      .feature-spotlight p {
         color: var(--text-muted);
-        font-size: 14px;
+        font-size: 13px;
         margin: 0;
-        line-height: 1.65;
+        line-height: 1.6;
       }
+
+      /* Right: compact list */
+      .feature-list {
+        display: grid;
+        gap: 0;
+        border: 1px solid var(--border);
+        margin-top: 48px;
+      }
+      .feature-row {
+        display: grid;
+        grid-template-columns: 56px 1fr;
+        gap: 0;
+        border-bottom: 1px solid var(--border);
+        transition: background 150ms;
+        cursor: default;
+      }
+      .feature-row:last-child { border-bottom: none; }
+      .feature-row:hover { background: var(--surface); }
+      .feature-row-num-col {
+        border-right: 1px solid var(--border);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        padding: 14px 0;
+        transition: border-color 150ms;
+      }
+      .feature-row:hover .feature-row-num-col { border-color: var(--border-bright); }
+      .feature-row-num {
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 9px;
+        color: var(--text-dim);
+        letter-spacing: 0.08em;
+        transition: color 200ms;
+      }
+      .feature-row:hover .feature-row-num { color: var(--amber); }
+      .feature-row-icon {
+        width: 14px;
+        height: 14px;
+        flex-shrink: 0;
+        stroke: var(--text-dim);
+        fill: none;
+        stroke-width: 1.5;
+        transition: stroke 150ms;
+      }
+      .feature-row:hover .feature-row-icon { stroke: var(--amber); }
+      .feature-row-body {
+        padding: 10px 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        justify-content: center;
+      }
+      .feature-row-name {
+        font-size: 12px;
+        font-weight: 700;
+        color: var(--text);
+      }
+      .feature-row-desc {
+        font-size: 11px;
+        color: var(--text-muted);
+        line-height: 1.4;
+      }
+
+      /* keep old unused */
       .feature-index {
-        position: absolute;
-        top: 20px;
-        right: 20px;
+        display: none;
         font-family: 'IBM Plex Mono', monospace;
         font-size: 10px;
         color: var(--text-dim);
@@ -1107,6 +1365,8 @@
         .hero-left { padding-right: 0; }
         .hero-right { display: none; }
         .features-grid { grid-template-columns: repeat(2, 1fr); }
+        .features-stagger { grid-template-columns: 1fr; }
+        .feature-list { margin-top: 0; }
         .stat-bar { grid-template-columns: repeat(2, 1fr); }
         .flow-container { grid-template-columns: 1fr; }
         .arch-grid { grid-template-columns: 1fr; }
@@ -1117,6 +1377,10 @@
         .sdk-grid { grid-template-columns: 1fr; }
         .payments-grid { grid-template-columns: repeat(2, 1fr); }
         .payments-vision { grid-template-columns: 1fr; }
+        /* hide desktop nav cats, show hamburger */
+        .nav-cats { display: none; }
+        .nav-cta { display: none; }
+        .nav-hamburger { display: flex; }
       }
 
       @media (max-width: 640px) {
@@ -1138,22 +1402,147 @@
     <nav>
       <div class="nav-inner">
         <div class="nav-logo">MOLTMESH</div>
-        <ul class="nav-links">
-          <li><a href="#architecture">Architecture</a></li>
-          <li><a href="#features">Features</a></li>
-          <li><a href="#use-cases">Use Cases</a></li>
-          <li><a href="#sdks">SDKs</a></li>
-          <li><a href="#cli">CLI</a></li>
-          <li><a href="#payments">Payments</a></li>
-          <li><a href="#how-it-works">Protocol</a></li>
-          <li><a href="#quickstart">Quickstart</a></li>
-          <li><a href="https://github.com/sahilpohare/MoltMesh">GitHub</a></li>
-        </ul>
-        <a href="https://www.producthunt.com/products/moltmesh-p2p-agents?embed=true&utm_source=badge-featured&utm_medium=badge&utm_campaign=badge-moltmesh-p2p-agents" target="_blank" rel="noopener noreferrer" style="display:flex;align-items:center;">
-          <img alt="MoltMesh on Product Hunt" width="140" height="30" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1159110&theme=dark&t=1780137456430" style="display:block;" />
-        </a>
+
+        <!-- Desktop category nav -->
+        <div class="nav-cats" id="nav-cats">
+
+          <div class="nav-cat" id="nc-protocol">
+            <button class="nav-cat-btn" aria-expanded="false">
+              Protocol
+              <svg width="8" height="5" viewBox="0 0 8 5" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1 1l3 3 3-3"/></svg>
+            </button>
+            <div class="nav-mega">
+              <div class="nav-mega-label">Protocol</div>
+              <a href="#architecture">
+                <svg viewBox="0 0 24 24"><path d="M12 3l7 4v10l-7 4-7-4V7z"/></svg>
+                Architecture
+              </a>
+              <a href="#how-it-works">
+                <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h10M4 18h16"/></svg>
+                How it works
+              </a>
+              <a href="#features">
+                <svg viewBox="0 0 24 24"><path d="M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 0 1 2 2v4M9 3v18"/></svg>
+                Core features
+              </a>
+            </div>
+          </div>
+
+          <div class="nav-cat" id="nc-sdks">
+            <button class="nav-cat-btn" aria-expanded="false">
+              SDKs
+              <svg width="8" height="5" viewBox="0 0 8 5" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1 1l3 3 3-3"/></svg>
+            </button>
+            <div class="nav-mega">
+              <div class="nav-mega-label">SDKs &amp; Integrations</div>
+              <a href="#sdks">
+                <svg viewBox="0 0 24 24"><path d="M16 18l6-6-6-6M8 6l-6 6 6 6"/></svg>
+                All SDKs
+              </a>
+              <a href="#sdks">
+                <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>
+                Python + CrewAI
+              </a>
+              <a href="#sdks">
+                <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h10M4 18h16"/></svg>
+                TypeScript
+              </a>
+              <a href="#sdks">
+                <svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+                Vercel AI SDK
+              </a>
+            </div>
+          </div>
+
+          <div class="nav-cat" id="nc-usecases">
+            <button class="nav-cat-btn" aria-expanded="false">
+              Use Cases
+              <svg width="8" height="5" viewBox="0 0 8 5" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1 1l3 3 3-3"/></svg>
+            </button>
+            <div class="nav-mega">
+              <div class="nav-mega-label">Use Cases</div>
+              <a href="#use-cases">
+                <svg viewBox="0 0 24 24"><path d="M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 0 1 2 2v4M9 3v18"/></svg>
+                Multi-agent orchestration
+              </a>
+              <a href="#use-cases">
+                <svg viewBox="0 0 24 24"><path d="M4 8h16M4 12h16M4 16h16"/></svg>
+                Shared audit logs
+              </a>
+              <a href="#payments">
+                <svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5z"/></svg>
+                Payments &amp; Marketplace
+              </a>
+            </div>
+          </div>
+
+          <div class="nav-cat" id="nc-docs">
+            <button class="nav-cat-btn" aria-expanded="false">
+              Docs
+              <svg width="8" height="5" viewBox="0 0 8 5" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1 1l3 3 3-3"/></svg>
+            </button>
+            <div class="nav-mega">
+              <div class="nav-mega-label">Resources</div>
+              <a href="#cli">
+                <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h10M4 18h16"/></svg>
+                CLI Reference
+              </a>
+              <a href="#quickstart">
+                <svg viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                Quick Start
+              </a>
+              <a href="https://github.com/sahilpohare/MoltMesh" target="_blank" rel="noopener">
+                <svg viewBox="0 0 24 24"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>
+                GitHub
+              </a>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Desktop CTA -->
+        <div class="nav-cta" id="nav-cta-desktop">
+          <a href="https://github.com/sahilpohare/MoltMesh" target="_blank" rel="noopener">GitHub ↗</a>
+        </div>
+
+        <!-- Mobile hamburger -->
+        <button class="nav-hamburger" id="nav-hamburger" aria-label="Open menu">
+          <span></span><span></span><span></span>
+        </button>
       </div>
     </nav>
+
+    <!-- Mobile nav drawer -->
+    <div class="nav-mobile" id="nav-mobile">
+      <div class="nav-mobile-section">
+        <div class="nav-mobile-label">Protocol</div>
+        <a href="#architecture">Architecture</a>
+        <a href="#how-it-works">How it works</a>
+        <a href="#features">Core features</a>
+      </div>
+      <div class="nav-mobile-section">
+        <div class="nav-mobile-label">SDKs</div>
+        <a href="#sdks">All SDKs</a>
+        <a href="#sdks">Python + CrewAI</a>
+        <a href="#sdks">TypeScript</a>
+        <a href="#sdks">Vercel AI SDK</a>
+      </div>
+      <div class="nav-mobile-section">
+        <div class="nav-mobile-label">Use Cases</div>
+        <a href="#use-cases">Multi-agent orchestration</a>
+        <a href="#use-cases">Shared audit logs</a>
+        <a href="#payments">Payments &amp; Marketplace</a>
+      </div>
+      <div class="nav-mobile-section">
+        <div class="nav-mobile-label">Docs</div>
+        <a href="#cli">CLI Reference</a>
+        <a href="#quickstart">Quick Start</a>
+        <a href="https://github.com/sahilpohare/MoltMesh" target="_blank" rel="noopener">GitHub ↗</a>
+      </div>
+      <div class="nav-mobile-cta">
+        <a href="https://github.com/sahilpohare/MoltMesh" target="_blank" rel="noopener">View on GitHub</a>
+      </div>
+    </div>
 
     <!-- HERO -->
     <div class="wrap">
@@ -1330,111 +1719,149 @@
         <h2 class="section-title reveal">Everything agents need<br/>to coordinate.</h2>
         <p class="section-sub reveal">Discover, collaborate, and operate — no server required.</p>
 
-        <div class="features-grid">
-          <div class="feature-card reveal">
-            <div class="feature-index">01</div>
-            <div class="feature-icon">
-              <svg viewBox="0 0 24 24"><path d="M12 3l7 4v5c0 5-3.5 8.5-8 9-4.5-.5-8-4-8-9V7z"/></svg>
+        <div class="features-stagger">
+
+          <!-- LEFT: 3 spotlight cards -->
+          <div class="feature-spotlights reveal">
+            <div class="feature-spotlight">
+              <span class="feature-spotlight-num">01</span>
+              <div class="feature-spotlight-header">
+                <div class="feature-spotlight-icon">
+                  <svg viewBox="0 0 24 24"><path d="M12 3l7 4v5c0 5-3.5 8.5-8 9-4.5-.5-8-4-8-9V7z"/></svg>
+                </div>
+                <span class="feature-spotlight-tag">Identity</span>
+              </div>
+              <h3>Self-sovereign identity</h3>
+              <p>DID:key identities derived from Ed25519 keypairs. Every agent has a verifiable, portable, cryptographically-owned identity — no registrar, no platform.</p>
             </div>
-            <h3>Identity</h3>
-            <p>Self-sovereign DID:key identities from Ed25519 keypairs. Every agent has a verifiable, portable identity.</p>
-          </div>
-          <div class="feature-card reveal reveal-delay-1">
-            <div class="feature-index">02</div>
-            <div class="feature-icon">
-              <svg viewBox="0 0 24 24"><path d="M4 12a8 8 0 0 1 16 0"/><path d="M12 12l6-6"/></svg>
+            <div class="feature-spotlight">
+              <span class="feature-spotlight-num">02</span>
+              <div class="feature-spotlight-header">
+                <div class="feature-spotlight-icon">
+                  <svg viewBox="0 0 24 24"><path d="M4 12a8 8 0 0 1 16 0"/><path d="M12 12l6-6"/></svg>
+                </div>
+                <span class="feature-spotlight-tag">Discovery</span>
+              </div>
+              <h3>Kademlia DHT discovery</h3>
+              <p>Publish Agent Cards to the global DHT. Find agents by capability across the entire mesh without a directory, registry, or DNS.</p>
             </div>
-            <h3>Discovery</h3>
-            <p>Publish Agent Cards to a Kademlia DHT. Find agents by capability without a registry or directory.</p>
-          </div>
-          <div class="feature-card reveal reveal-delay-2">
-            <div class="feature-index">03</div>
-            <div class="feature-icon">
-              <svg viewBox="0 0 24 24"><path d="M4 6h16v10H7l-3 3z"/></svg>
+            <div class="feature-spotlight">
+              <span class="feature-spotlight-num">04</span>
+              <div class="feature-spotlight-header">
+                <div class="feature-spotlight-icon">
+                  <svg viewBox="0 0 24 24"><path d="M8 6h8v12H8z"/><path d="M12 10v4"/></svg>
+                </div>
+                <span class="feature-spotlight-tag">Tasks</span>
+              </div>
+              <h3>Structured task lifecycle</h3>
+              <p>Submitted → working → completed/failed/cancelled. Streaming status events via GossipSub. Delegation feels native, not bolted on.</p>
             </div>
-            <h3>Messaging</h3>
-            <p>Durable inbox/outbox with retryable delivery. Messages survive peer restarts and network partitions.</p>
           </div>
-          <div class="feature-card reveal reveal-delay-3">
-            <div class="feature-index">04</div>
-            <div class="feature-icon">
-              <svg viewBox="0 0 24 24"><path d="M8 6h8v12H8z"/><path d="M12 10v4"/></svg>
+
+          <!-- RIGHT: compact indexed list, offset down -->
+          <div class="feature-list reveal reveal-delay-2">
+            <div class="feature-row">
+              <div class="feature-row-num-col">
+                <span class="feature-row-num">03</span>
+                <svg class="feature-row-icon" viewBox="0 0 24 24"><path d="M4 6h16v10H7l-3 3z"/></svg>
+              </div>
+              <div class="feature-row-body">
+                <span class="feature-row-name">Messaging</span>
+                <span class="feature-row-desc">Durable inbox/outbox with retryable delivery. Messages survive peer restarts and partitions.</span>
+              </div>
             </div>
-            <h3>Tasks</h3>
-            <p>Structured task lifecycle with streaming status updates. Delegation feels native, not bolted on.</p>
-          </div>
-          <div class="feature-card reveal">
-            <div class="feature-index">05</div>
-            <div class="feature-icon">
-              <svg viewBox="0 0 24 24"><path d="M5 8h14v10H5z"/><path d="M9 8V5h6v3"/></svg>
+            <div class="feature-row">
+              <div class="feature-row-num-col">
+                <span class="feature-row-num">05</span>
+                <svg class="feature-row-icon" viewBox="0 0 24 24"><path d="M5 8h14v10H5z"/><path d="M9 8V5h6v3"/></svg>
+              </div>
+              <div class="feature-row-body">
+                <span class="feature-row-name">Artifacts</span>
+                <span class="feature-row-desc">Content-addressed blob store. Small files inlined; large files streamed over libp2p.</span>
+              </div>
             </div>
-            <h3>Artifacts</h3>
-            <p>Content-addressed blob store with inline small files. Share outputs without coordinating storage.</p>
-          </div>
-          <div class="feature-card reveal reveal-delay-1">
-            <div class="feature-index">06</div>
-            <div class="feature-icon">
-              <svg viewBox="0 0 24 24"><path d="M4 8h16M4 12h16M4 16h16"/></svg>
+            <div class="feature-row">
+              <div class="feature-row-num-col">
+                <span class="feature-row-num">06</span>
+                <svg class="feature-row-icon" viewBox="0 0 24 24"><path d="M4 8h16M4 12h16M4 16h16"/></svg>
+              </div>
+              <div class="feature-row-body">
+                <span class="feature-row-name">Threads</span>
+                <span class="feature-row-desc">Replicated ordered log — Raft CFT or Tendermint BFT backends for shared audit trails.</span>
+              </div>
             </div>
-            <h3>Threads</h3>
-            <p>Replicated ordered log with Raft CFT or Tendermint BFT backends for multi-agent audit trails.</p>
-          </div>
-          <div class="feature-card reveal reveal-delay-2">
-            <div class="feature-index">07</div>
-            <div class="feature-icon">
-              <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h10M4 18h16"/></svg>
+            <div class="feature-row">
+              <div class="feature-row-num-col">
+                <span class="feature-row-num">07</span>
+                <svg class="feature-row-icon" viewBox="0 0 24 24"><circle cx="5" cy="12" r="2"/><circle cx="19" cy="12" r="2"/><circle cx="12" cy="5" r="2"/><path d="M7 12h5M14 12h5M12 7v10"/></svg>
+              </div>
+              <div class="feature-row-body">
+                <span class="feature-row-name">Pub / Sub</span>
+                <span class="feature-row-desc">Publish to any GossipSub topic. Zero-polling live event delivery to any subscriber.</span>
+              </div>
             </div>
-            <h3>Language Agnostic</h3>
-            <p>Agents speak gRPC. Go daemon owns all P2P complexity. Python, TypeScript, or anything else works.</p>
-          </div>
-          <div class="feature-card reveal reveal-delay-3">
-            <div class="feature-index">08</div>
-            <div class="feature-icon">
-              <svg viewBox="0 0 24 24"><path d="M12 3l7 4v10l-7 4-7-4V7z"/></svg>
+            <div class="feature-row">
+              <div class="feature-row-num-col">
+                <span class="feature-row-num">08</span>
+                <svg class="feature-row-icon" viewBox="0 0 24 24"><path d="M4 12v-2a8 8 0 0 1 16 0v2"/><rect x="2" y="12" width="20" height="8" rx="2"/><path d="M12 16v2"/></svg>
+              </div>
+              <div class="feature-row-body">
+                <span class="feature-row-name">Webhooks</span>
+                <span class="feature-row-desc">HTTP push for messages, task events, and broadcasts — with retries and HMAC secrets.</span>
+              </div>
             </div>
-            <h3>Offline Tolerant</h3>
-            <p>Persistent queues deliver messages when peers return. Build resilient agents that survive disconnections.</p>
-          </div>
-          <div class="feature-card reveal">
-            <div class="feature-index">09</div>
-            <div class="feature-icon">
-              <svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="2"/><circle cx="19" cy="12" r="2"/><circle cx="12" cy="5" r="2"/><path d="M7 12h5M14 12h5M12 7v10"/></svg>
+            <div class="feature-row">
+              <div class="feature-row-num-col">
+                <span class="feature-row-num">09</span>
+                <svg class="feature-row-icon" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+              </div>
+              <div class="feature-row-body">
+                <span class="feature-row-name">Networks</span>
+                <span class="feature-row-desc">Named agent groups with persistent membership. One call broadcasts to all members.</span>
+              </div>
             </div>
-            <h3>Pub/Sub</h3>
-            <p>Publish to any GossipSub topic and subscribe to live streams. Zero-polling event delivery for any payload.</p>
-          </div>
-          <div class="feature-card reveal reveal-delay-1">
-            <div class="feature-index">10</div>
-            <div class="feature-icon">
-              <svg viewBox="0 0 24 24"><path d="M4 12v-2a8 8 0 0 1 16 0v2"/><rect x="2" y="12" width="20" height="8" rx="2"/><path d="M12 16v2"/></svg>
+            <div class="feature-row">
+              <div class="feature-row-num-col">
+                <span class="feature-row-num">10</span>
+                <svg class="feature-row-icon" viewBox="0 0 24 24"><path d="M12 3l7 4v10l-7 4-7-4V7z"/></svg>
+              </div>
+              <div class="feature-row-body">
+                <span class="feature-row-name">Offline tolerant</span>
+                <span class="feature-row-desc">Persistent queues deliver when peers return. Agents stay productive through disconnections.</span>
+              </div>
             </div>
-            <h3>Webhooks</h3>
-            <p>Push events to any HTTP endpoint — messages, task updates, network broadcasts — with retries and a shared secret.</p>
-          </div>
-          <div class="feature-card reveal reveal-delay-2">
-            <div class="feature-index">11</div>
-            <div class="feature-icon">
-              <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            <div class="feature-row">
+              <div class="feature-row-num-col">
+                <span class="feature-row-num">11</span>
+                <svg class="feature-row-icon" viewBox="0 0 24 24"><path d="M4 6h16M4 12h10M4 18h16"/></svg>
+              </div>
+              <div class="feature-row-body">
+                <span class="feature-row-name">Language agnostic</span>
+                <span class="feature-row-desc">Agents speak gRPC. Python, TypeScript, Go — or any language with a proto compiler.</span>
+              </div>
             </div>
-            <h3>Networks</h3>
-            <p>Create named agent groups with persistent membership. One broadcast call reaches every member via GossipSub multicast.</p>
-          </div>
-          <div class="feature-card reveal reveal-delay-3">
-            <div class="feature-index">12</div>
-            <div class="feature-icon">
-              <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            <div class="feature-row">
+              <div class="feature-row-num-col">
+                <span class="feature-row-num">12</span>
+                <svg class="feature-row-icon" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+              </div>
+              <div class="feature-row-body">
+                <span class="feature-row-name">Crypto trust</span>
+                <span class="feature-row-desc">Ed25519-signed Agent Cards verified on every DHT resolve. No spoofing possible.</span>
+              </div>
             </div>
-            <h3>Cryptographic Trust</h3>
-            <p>Agent Cards are Ed25519-signed. Every card resolved from the DHT is verified against the public key in the DID — no spoofing possible.</p>
-          </div>
-          <div class="feature-card reveal">
-            <div class="feature-index">13</div>
-            <div class="feature-icon">
-              <svg viewBox="0 0 24 24"><path d="M20 7H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2z"/><path d="M12 12h.01"/><path d="M17 12h.01"/><path d="M7 12h.01"/></svg>
+            <div class="feature-row">
+              <div class="feature-row-num-col">
+                <span class="feature-row-num">13</span>
+                <svg class="feature-row-icon" viewBox="0 0 24 24"><path d="M20 7H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2z"/><path d="M12 12h.01"/><path d="M17 12h.01"/><path d="M7 12h.01"/></svg>
+              </div>
+              <div class="feature-row-body">
+                <span class="feature-row-name">Human names</span>
+                <span class="feature-row-desc">Claim <code style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--amber)">swift-falcon</code> on the DHT. Ed25519-signed, 24 h TTL, consent-checked.</span>
+              </div>
             </div>
-            <h3>Human-Readable Names</h3>
-            <p>Claim names like <code>swift-falcon</code> on the DHT. Ed25519-signed, 24 h TTL, consent-checked. Nobody takes your name while it's live — no central registrar needed.</p>
           </div>
+
         </div>
       </section>
     </div>
@@ -2101,6 +2528,63 @@ const { text } = await generateText({
         initNodes();
         draw();
       });
+
+      // ─── NAV CATEGORY DROPDOWNS ───
+      (function() {
+        const cats = document.querySelectorAll('.nav-cat');
+
+        function closeAll() {
+          cats.forEach(c => {
+            c.classList.remove('open');
+            c.querySelector('.nav-cat-btn').setAttribute('aria-expanded', 'false');
+          });
+        }
+
+        cats.forEach(function(cat) {
+          const catBtn = cat.querySelector('.nav-cat-btn');
+          catBtn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            const isOpen = cat.classList.contains('open');
+            closeAll();
+            if (!isOpen) {
+              cat.classList.add('open');
+              catBtn.setAttribute('aria-expanded', 'true');
+            }
+          });
+          cat.querySelectorAll('a').forEach(function(a) {
+            a.addEventListener('click', closeAll);
+          });
+        });
+
+        document.addEventListener('click', closeAll);
+        document.addEventListener('keydown', function(e) {
+          if (e.key === 'Escape') closeAll();
+        });
+      })();
+
+      // ─── HAMBURGER ───
+      (function() {
+        const hamburger = document.getElementById('nav-hamburger');
+        const mobile = document.getElementById('nav-mobile');
+
+        hamburger.addEventListener('click', function(e) {
+          e.stopPropagation();
+          const open = mobile.classList.toggle('open');
+          hamburger.classList.toggle('open', open);
+        });
+
+        mobile.querySelectorAll('a').forEach(function(a) {
+          a.addEventListener('click', function() {
+            mobile.classList.remove('open');
+            hamburger.classList.remove('open');
+          });
+        });
+
+        document.addEventListener('click', function() {
+          mobile.classList.remove('open');
+          hamburger.classList.remove('open');
+        });
+      })();
 
       // ─── CLI TABS ───
       document.querySelectorAll('.cli-tab').forEach(tab => {
