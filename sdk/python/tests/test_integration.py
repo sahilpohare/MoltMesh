@@ -14,7 +14,7 @@ import pytest
 
 from moltmesh.client import A2AClient
 from moltmesh.capability import CoreCapability, capability_id
-from moltmesh.ext_stub import HealthInfo
+from moltmesh.proto import a2a_pb2 as pb
 
 
 # ── identity ──────────────────────────────────────────────────────────────────
@@ -134,12 +134,8 @@ class TestTasks:
 
 
 # ── blobs ─────────────────────────────────────────────────────────────────────
-# NOTE: StoreBlob/FetchBlob are not yet in the Python proto stub (A2ANodeStub).
-# The daemon exposes these as SendFile/FetchFile.  These tests are marked xfail
-# until the proto stubs are regenerated.
 
 class TestBlobs:
-    @pytest.mark.xfail(reason="StoreBlob not in A2ANodeStub — proto stubs need regeneration", strict=False)
     def test_store_and_fetch_roundtrip(self, client: A2AClient):
         data = b"hello integration test"
         cid = client.store_blob(data, mime_type="text/plain")
@@ -147,19 +143,17 @@ class TestBlobs:
         fetched = client.fetch_blob(cid)
         assert fetched == data
 
-    @pytest.mark.xfail(reason="StoreBlob not in A2ANodeStub — proto stubs need regeneration", strict=False)
     def test_store_blob_returns_deterministic_cid(self, client: A2AClient):
         data = b"deterministic content"
         cid1 = client.store_blob(data)
         cid2 = client.store_blob(data)
         assert cid1 == cid2
 
-    @pytest.mark.xfail(reason="StoreBlob not in A2ANodeStub — proto stubs need regeneration", strict=False)
-    def test_store_empty_blob(self, client: A2AClient):
-        cid = client.store_blob(b"")
-        assert cid.startswith("sha256:")
+    def test_store_empty_blob_raises(self, client: A2AClient):
+        import grpc
+        with pytest.raises(grpc.RpcError):
+            client.store_blob(b"")
 
-    @pytest.mark.xfail(reason="StoreBlob not in A2ANodeStub — proto stubs need regeneration", strict=False)
     def test_store_large_blob(self, client: A2AClient):
         # 128 KB — above inline threshold
         data = b"x" * (128 * 1024)
@@ -167,14 +161,12 @@ class TestBlobs:
         fetched = client.fetch_blob(cid)
         assert fetched == data
 
-    @pytest.mark.xfail(reason="StoreBlob not in A2ANodeStub — proto stubs need regeneration", strict=False)
     def test_make_artifact_inline(self, client: A2AClient):
         data = b"small"
         artifact = client.make_artifact(data, mime_type="text/plain")
-        assert artifact.data == data
+        assert artifact.inline == data
         assert artifact.cid == ""
 
-    @pytest.mark.xfail(reason="StoreBlob not in A2ANodeStub — proto stubs need regeneration", strict=False)
     def test_make_artifact_large_uses_cid(self, client: A2AClient):
         data = b"y" * (128 * 1024)
         artifact = client.make_artifact(data)
@@ -182,22 +174,17 @@ class TestBlobs:
 
 
 # ── threads ───────────────────────────────────────────────────────────────────
-# NOTE: CreateThread/GetThread/AppendEntry not yet in Python proto stub.
-# Marked xfail until proto stubs are regenerated.
 
 class TestThreads:
-    @pytest.mark.xfail(reason="CreateThread not in A2ANodeStub — proto stubs need regeneration", strict=False)
     def test_create_thread_returns_id(self, client: A2AClient):
         thread = client.create_thread([client.did])
         assert thread.id != ""
 
-    @pytest.mark.xfail(reason="CreateThread not in A2ANodeStub — proto stubs need regeneration", strict=False)
     def test_get_thread(self, client: A2AClient):
         created = client.create_thread([client.did])
         fetched = client.get_thread(created.id)
         assert fetched.id == created.id
 
-    @pytest.mark.xfail(reason="CreateThread not in A2ANodeStub — proto stubs need regeneration", strict=False)
     def test_append_and_read_entries(self, client: A2AClient):
         thread = client.create_thread([client.did])
         client.append_entry(thread.id, b"entry-1", kind="message")
@@ -216,46 +203,36 @@ class TestThreads:
         assert b"entry-1" in payloads
         assert b"entry-2" in payloads
 
-    @pytest.mark.xfail(reason="CreateThread not in A2ANodeStub — proto stubs need regeneration", strict=False)
     def test_thread_entries_empty_initially(self, client: A2AClient):
         thread = client.create_thread([client.did])
-        # May be empty right after creation before any entries are committed
         entries = client.get_thread_entries(thread.id)
         assert isinstance(entries, list)
 
 
 # ── diagnostics ───────────────────────────────────────────────────────────────
-# NOTE: ext_stub.py uses JSON serialization but the server expects proto encoding.
-# Marked xfail until ext_stub.py is updated to use protobuf.
 
 class TestDiagnostics:
-    @pytest.mark.xfail(reason="ext_stub.py uses JSON codec; server expects protobuf", strict=False)
     def test_health_returns_info(self, client: A2AClient):
         h = client.health()
-        assert isinstance(h, HealthInfo)
+        assert isinstance(h, pb.HealthResponse)
         assert h.version != ""
 
-    @pytest.mark.xfail(reason="ext_stub.py uses JSON codec; server expects protobuf", strict=False)
     def test_health_did_matches_identity(self, client: A2AClient):
         h = client.health()
         assert h.did == client.did
 
-    @pytest.mark.xfail(reason="ext_stub.py uses JSON codec; server expects protobuf", strict=False)
     def test_list_peers_returns_list(self, client: A2AClient):
         peers = client.list_peers()
         assert isinstance(peers, list)
 
-    @pytest.mark.xfail(reason="ext_stub.py uses JSON codec; server expects protobuf", strict=False)
     def test_ping_loopback(self, client: A2AClient):
         result = client.ping()
         assert result is not None
 
 
 # ── webhooks ──────────────────────────────────────────────────────────────────
-# NOTE: ext_stub.py uses JSON codec; server expects protobuf.
 
 class TestWebhooks:
-    @pytest.mark.xfail(reason="ext_stub.py uses JSON codec; server expects protobuf", strict=False)
     def test_set_get_clear_webhook(self, client: A2AClient):
         url = "https://example.com/webhook"
         client.set_webhook(url)
@@ -265,12 +242,10 @@ class TestWebhooks:
         got_after = client.get_webhook()
         assert got_after == ""
 
-    @pytest.mark.xfail(reason="ext_stub.py uses JSON codec; server expects protobuf", strict=False)
     def test_clear_when_none_set_is_safe(self, client: A2AClient):
         client.clear_webhook()
         client.clear_webhook()  # idempotent
 
-    @pytest.mark.xfail(reason="ext_stub.py uses JSON codec; server expects protobuf", strict=False)
     def test_set_webhook_with_secret(self, client: A2AClient):
         url = "https://example.com/hook2"
         returned = client.set_webhook(url, secret="s3cret")
@@ -279,30 +254,25 @@ class TestWebhooks:
 
 
 # ── networks ──────────────────────────────────────────────────────────────────
-# NOTE: ext_stub.py uses JSON codec; server expects protobuf.
 
 class TestNetworks:
-    @pytest.mark.xfail(reason="ext_stub.py uses JSON codec; server expects protobuf", strict=False)
     def test_create_network(self, client: A2AClient):
         net = client.create_network("test-net")
         assert net.id != ""
         assert net.name == "test-net"
 
-    @pytest.mark.xfail(reason="ext_stub.py uses JSON codec; server expects protobuf", strict=False)
     def test_list_networks_includes_created(self, client: A2AClient):
         net = client.create_network("listed-net")
         networks = client.list_networks()
         ids = [n.id for n in networks]
         assert net.id in ids
 
-    @pytest.mark.xfail(reason="ext_stub.py uses JSON codec; server expects protobuf", strict=False)
     def test_network_members_includes_creator(self, client: A2AClient):
         net = client.create_network("member-net")
         members = client.network_members(net.id)
         dids = [m.did for m in members]
         assert client.did in dids
 
-    @pytest.mark.xfail(reason="ext_stub.py uses JSON codec; server expects protobuf", strict=False)
     def test_leave_network(self, client: A2AClient):
         net = client.create_network("leave-net")
         client.leave_network(net.id)
@@ -310,7 +280,6 @@ class TestNetworks:
         ids = [n.id for n in networks]
         assert net.id not in ids
 
-    @pytest.mark.xfail(reason="ext_stub.py uses JSON codec; server expects protobuf", strict=False)
     def test_broadcast_network(self, client: A2AClient):
         net = client.create_network("broadcast-net")
         client.broadcast_network(net.id, b"hello network")
@@ -318,13 +287,10 @@ class TestNetworks:
 
 
 # ── pub/sub ───────────────────────────────────────────────────────────────────
-# NOTE: ext_stub.py uses JSON codec; server expects protobuf.
 
 class TestPubSub:
-    @pytest.mark.xfail(reason="ext_stub.py uses JSON codec; server expects protobuf", strict=False)
     def test_publish_does_not_raise(self, client: A2AClient):
         client.publish("test-topic", b"test payload")
 
-    @pytest.mark.xfail(reason="ext_stub.py uses JSON codec; server expects protobuf", strict=False)
     def test_publish_string_payload(self, client: A2AClient):
         client.publish("test-topic", "string payload")

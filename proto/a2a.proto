@@ -258,6 +258,28 @@ service A2ANode {
   rpc Ping(PingRequest) returns (PingResponse);
   rpc Health(Empty) returns (HealthResponse);
   rpc ListPeers(Empty) returns (PeersResponse);
+
+  // PubSub
+  rpc Publish(PublishRequest) returns (PublishResponse);
+  rpc SubscribeTopic(SubscribeTopicRequest) returns (stream TopicMessage);
+
+  // Webhooks
+  rpc SetWebhook(SetWebhookRequest) returns (WebhookResponse);
+  rpc ClearWebhook(Empty) returns (Empty);
+  rpc GetWebhook(Empty) returns (WebhookResponse);
+
+  // Networks
+  rpc CreateNetwork(CreateNetworkRequest) returns (NetworkInfo);
+  rpc JoinNetwork(JoinNetworkRequest) returns (NetworkInfo);
+  rpc LeaveNetwork(NetworkIDRequest) returns (Empty);
+  rpc ListNetworks(Empty) returns (ListNetworksResponse);
+  rpc NetworkMembers(NetworkIDRequest) returns (NetworkMembersResponse);
+  rpc BroadcastNetwork(BroadcastRequest) returns (Empty);
+  rpc SubscribeNetwork(NetworkIDRequest) returns (stream BroadcastMessage);
+
+  // Names
+  rpc ClaimName(ClaimNameRequest) returns (NameClaimResponse);
+  rpc ResolveName(ResolveNameRequest) returns (NameClaimResponse);
 }
 
 message AgentIdentityRequest {
@@ -440,4 +462,98 @@ message FileChunk {
   bytes  data   = 1;
   int64  offset = 2;
   int64  total  = 3; // total file size in bytes
+}
+
+// ─── PubSub ───────────────────────────────────────────────────────────────────
+
+message PublishRequest {
+  string topic   = 1;
+  bytes  payload = 2;
+}
+
+message PublishResponse {
+  string topic = 1;
+}
+
+message SubscribeTopicRequest {
+  string topic = 1;
+}
+
+message TopicMessage {
+  string topic      = 1;
+  bytes  payload    = 2;
+  int64  emitted_at = 3;
+}
+
+// ─── Webhooks ─────────────────────────────────────────────────────────────────
+
+message SetWebhookRequest {
+  string url    = 1;
+  string secret = 2;
+}
+
+message WebhookResponse {
+  string url = 1;
+}
+
+// ─── Networks ─────────────────────────────────────────────────────────────────
+
+message NetworkInfo {
+  string id          = 1;
+  string name        = 2;
+  string creator_did = 3;
+  int64  created_at  = 4;
+}
+
+message NetworkMember {
+  string did       = 1;
+  int64  joined_at = 2;
+}
+
+message CreateNetworkRequest {
+  string name = 1;
+}
+
+message NetworkIDRequest {
+  string network_id = 1;
+}
+
+message JoinNetworkRequest {
+  string network_id = 1;
+}
+
+message BroadcastRequest {
+  string network_id = 1;
+  bytes  payload    = 2;
+}
+
+message ListNetworksResponse {
+  repeated NetworkInfo networks = 1;
+}
+
+message NetworkMembersResponse {
+  repeated NetworkMember members = 1;
+}
+
+message BroadcastMessage {
+  string network_id = 1;
+  bytes  payload    = 2;
+  int64  emitted_at = 3;
+}
+
+// ─── Names ────────────────────────────────────────────────────────────────────
+
+message ClaimNameRequest {
+  string name = 1;
+}
+
+message ResolveNameRequest {
+  string name = 1;
+}
+
+message NameClaimResponse {
+  string name         = 1;
+  string did          = 2;
+  int64  expires_at   = 3;
+  int64  published_at = 4;
 }

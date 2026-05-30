@@ -57,12 +57,7 @@ func (s *Store) Put(data []byte, name, mimeType string) (*pb.Artifact, error) {
 		Size:     int64(len(data)),
 	}
 
-	if len(data) <= InlineThreshold {
-		artifact.Inline = data
-		return artifact, nil
-	}
-
-	// Write to disk (idempotent — same CID always same content)
+	// Always persist to disk so Get() can always find any stored blob.
 	path, err := s.path(cid)
 	if err != nil {
 		return nil, err
@@ -72,7 +67,12 @@ func (s *Store) Put(data []byte, name, mimeType string) (*pb.Artifact, error) {
 			return nil, fmt.Errorf("write blob %s: %w", cid, err)
 		}
 	}
-	artifact.Uri = "blob://" + cid
+
+	if len(data) <= InlineThreshold {
+		artifact.Inline = data
+	} else {
+		artifact.Uri = "blob://" + cid
+	}
 	return artifact, nil
 }
 

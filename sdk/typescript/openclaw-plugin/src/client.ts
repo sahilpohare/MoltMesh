@@ -207,17 +207,23 @@ export class A2AClient {
   // ── blobs ─────────────────────────────────────────────────────────────────
 
   async storeBlob(data: Uint8Array, opts: { mimeType?: string; filename?: string } = {}): Promise<string> {
-    const result: Obj = await unary(this.stub, "storeBlob", {
+    const result: Obj = await unary(this.stub, "sendFile", {
       data,
       mimeType: opts.mimeType ?? "application/octet-stream",
-      filename: opts.filename ?? "",
+      name: opts.filename ?? "",
     });
     return result["cid"] as string;
   }
 
   async fetchBlob(cid: string): Promise<Uint8Array> {
-    const result: Obj = await unary(this.stub, "fetchBlob", { cid });
-    return result["data"] as Uint8Array;
+    const chunks = await serverStream<Obj, Obj>(this.stub, "fetchFile", { cid });
+    const parts = chunks.map(c => c["data"] as Uint8Array).filter(Boolean);
+    if (parts.length === 0) return new Uint8Array(0);
+    const total = parts.reduce((n, p) => n + p.byteLength, 0);
+    const out = new Uint8Array(total);
+    let off = 0;
+    for (const p of parts) { out.set(p, off); off += p.byteLength; }
+    return out;
   }
 
   // ── threads ───────────────────────────────────────────────────────────────
@@ -238,10 +244,11 @@ export class A2AClient {
     return unary(this.stub, "getThread", { id: threadId });
   }
 
-  appendEntry(threadId: string, payload: Uint8Array, opts: { kind?: string; authorDid?: string } = {}): Promise<void> {
+  appendEntry(threadId: string, payload: Uint8Array, opts: { kind?: string } = {}): Promise<void> {
     return unary(this.stub, "appendEntry", {
       threadId,
-      entry: { payload, kind: opts.kind ?? "message", authorDid: opts.authorDid ?? "" },
+      payload,
+      kind: opts.kind ?? "message",
     });
   }
 
@@ -264,11 +271,12 @@ export class A2AClient {
   }
 
   ping(did = ""): Promise<PingResult> {
-    return unary(this.stub, "ping", { did });
+    return unary(this.stub, "ping", { targetDid: did });
   }
 
-  listPeers(): Promise<PeerInfo[]> {
-    return serverStream(this.stub, "listPeers", {});
+  async listPeers(): Promise<PeerInfo[]> {
+    const r: Obj = await unary(this.stub, "listPeers", {});
+    return (r["peers"] as PeerInfo[]) ?? [];
   }
 
   // ── pub/sub ───────────────────────────────────────────────────────────────
@@ -312,12 +320,14 @@ export class A2AClient {
     await unary(this.stub, "leaveNetwork", { networkId });
   }
 
-  listNetworks(): Promise<NetworkInfo[]> {
-    return serverStream(this.stub, "listNetworks", {});
+  async listNetworks(): Promise<NetworkInfo[]> {
+    const r: Obj = await unary(this.stub, "listNetworks", {});
+    return (r["networks"] as NetworkInfo[]) ?? [];
   }
 
-  networkMembers(networkId: string): Promise<NetworkMember[]> {
-    return serverStream(this.stub, "networkMembers", { networkId });
+  async networkMembers(networkId: string): Promise<NetworkMember[]> {
+    const r: Obj = await unary(this.stub, "networkMembers", { networkId });
+    return (r["members"] as NetworkMember[]) ?? [];
   }
 
   async broadcastNetwork(networkId: string, payload: string | Uint8Array): Promise<void> {

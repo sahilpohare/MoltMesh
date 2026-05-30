@@ -577,7 +577,7 @@ func run(cfg *config.Config, log *zap.Logger) error {
 	rpc.SetVersion(version)
 	srv := rpc.New(id, ib, ob, ts, reg, gm, bs, dlv, tm, nm, wh, nameReg, n, n.Addrs(), log)
 	grpcServer := grpc.NewServer()
-	pb.RegisterAll(grpcServer, srv)
+	pb.RegisterA2ANodeServer(grpcServer, srv)
 
 	var lis net.Listener
 	if grpcAddr[0] == '/' {

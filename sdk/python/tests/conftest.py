@@ -86,8 +86,8 @@ def daemon_addr():
             stderr=subprocess.DEVNULL,
         )
 
-        # Wait up to 10 s for the daemon to accept connections.
-        deadline = time.monotonic() + 10
+        # Wait up to 30 s for the daemon to accept connections (libp2p init ~8 s).
+        deadline = time.monotonic() + 30
         while time.monotonic() < deadline:
             try:
                 with socket.create_connection(("127.0.0.1", port), timeout=0.5):

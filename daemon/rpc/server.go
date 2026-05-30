@@ -31,8 +31,6 @@ import (
 // Server implements the A2ANode gRPC service.
 type Server struct {
 	pb.UnimplementedA2ANodeServer
-	pb.UnimplementedDiagServer
-	pb.UnimplementedExtServer
 
 	id        *identity.Identity
 	inbox     *inbox.Inbox
@@ -327,7 +325,7 @@ func (s *Server) SubscribeTaskEvents(req *pb.TaskID, stream pb.A2ANode_Subscribe
 // ─── Files ────────────────────────────────────────────────────────────────────
 
 const (
-	fileChunkSize = 256 * 1024  // 256 KB per streaming chunk
+	fileChunkSize = 32 * 1024  // 32 KB per streaming chunk (HTTP/2 flow-control friendly)
 	maxBlobSize   = 256 << 20   // 256 MB — max blob we'll cache from a remote peer
 )
 

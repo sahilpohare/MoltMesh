@@ -998,7 +998,7 @@ func cmdPing(args []string) error {
 	}
 	defer conn.Close()
 
-	client := pb.NewDiagClient(conn)
+	client := pb.NewA2ANodeClient(conn)
 	resp, err := client.Ping(context.Background(), &pb.PingRequest{
 		TargetDid: target,
 		Count:     int32(*count),
@@ -1029,7 +1029,7 @@ func cmdHealth(args []string) error {
 	}
 	defer conn.Close()
 
-	diagClient := pb.NewDiagClient(conn)
+	diagClient := pb.NewA2ANodeClient(conn)
 	resp, err := diagClient.Health(context.Background(), &pb.Empty{})
 	if err != nil {
 		return err
@@ -1068,7 +1068,7 @@ func cmdPeers(args []string) error {
 	}
 	defer conn.Close()
 
-	client := pb.NewDiagClient(conn)
+	client := pb.NewA2ANodeClient(conn)
 	resp, err := client.ListPeers(context.Background(), &pb.Empty{})
 	if err != nil {
 		return err
@@ -1307,7 +1307,7 @@ func cmdPublish(args []string) error {
 	}
 	defer conn.Close()
 
-	extClient := pb.NewExtClient(conn)
+	extClient := pb.NewA2ANodeClient(conn)
 	resp, err := extClient.Publish(context.Background(), &pb.PublishRequest{
 		Topic:   *topic,
 		Payload: []byte(*payload),
@@ -1334,7 +1334,7 @@ func cmdSubscribeTopic(args []string) error {
 	}
 	defer conn.Close()
 
-	extClient := pb.NewExtClient(conn)
+	extClient := pb.NewA2ANodeClient(conn)
 	stream, err := extClient.SubscribeTopic(context.Background(), &pb.SubscribeTopicRequest{Topic: *topic})
 	if err != nil {
 		return err
@@ -1377,7 +1377,7 @@ func cmdSetWebhook(args []string) error {
 	}
 	defer conn.Close()
 
-	extClient := pb.NewExtClient(conn)
+	extClient := pb.NewA2ANodeClient(conn)
 	resp, err := extClient.SetWebhook(context.Background(), &pb.SetWebhookRequest{Url: *url, Secret: *secret})
 	if err != nil {
 		return err
@@ -1393,7 +1393,7 @@ func cmdClearWebhook(args []string) error {
 	}
 	defer conn.Close()
 
-	extClient := pb.NewExtClient(conn)
+	extClient := pb.NewA2ANodeClient(conn)
 	if _, err := extClient.ClearWebhook(context.Background(), &pb.Empty{}); err != nil {
 		return err
 	}
@@ -1408,7 +1408,7 @@ func cmdGetWebhook(args []string) error {
 	}
 	defer conn.Close()
 
-	extClient := pb.NewExtClient(conn)
+	extClient := pb.NewA2ANodeClient(conn)
 	resp, err := extClient.GetWebhook(context.Background(), &pb.Empty{})
 	if err != nil {
 		return err
@@ -1466,7 +1466,7 @@ func cmdNetworkCreate(args []string) error {
 	}
 	defer conn.Close()
 
-	extClient := pb.NewExtClient(conn)
+	extClient := pb.NewA2ANodeClient(conn)
 	net, err := extClient.CreateNetwork(context.Background(), &pb.CreateNetworkRequest{Name: *name})
 	if err != nil {
 		return err
@@ -1485,7 +1485,7 @@ func cmdNetworkJoin(args []string) error {
 	}
 	defer conn.Close()
 
-	extClient := pb.NewExtClient(conn)
+	extClient := pb.NewA2ANodeClient(conn)
 	net, err := extClient.JoinNetwork(context.Background(), &pb.JoinNetworkRequest{NetworkId: args[0]})
 	if err != nil {
 		return err
@@ -1504,7 +1504,7 @@ func cmdNetworkLeave(args []string) error {
 	}
 	defer conn.Close()
 
-	extClient := pb.NewExtClient(conn)
+	extClient := pb.NewA2ANodeClient(conn)
 	if _, err := extClient.LeaveNetwork(context.Background(), &pb.NetworkIDRequest{NetworkId: args[0]}); err != nil {
 		return err
 	}
@@ -1519,7 +1519,7 @@ func cmdNetworkList(args []string) error {
 	}
 	defer conn.Close()
 
-	extClient := pb.NewExtClient(conn)
+	extClient := pb.NewA2ANodeClient(conn)
 	resp, err := extClient.ListNetworks(context.Background(), &pb.Empty{})
 	if err != nil {
 		return err
@@ -1550,7 +1550,7 @@ func cmdNetworkMembers(args []string) error {
 	}
 	defer conn.Close()
 
-	extClient := pb.NewExtClient(conn)
+	extClient := pb.NewA2ANodeClient(conn)
 	resp, err := extClient.NetworkMembers(context.Background(), &pb.NetworkIDRequest{NetworkId: args[0]})
 	if err != nil {
 		return err
@@ -1593,7 +1593,7 @@ func cmdNetworkBroadcast(args []string) error {
 	}
 	defer conn.Close()
 
-	extClient := pb.NewExtClient(conn)
+	extClient := pb.NewA2ANodeClient(conn)
 	if _, err := extClient.BroadcastNetwork(context.Background(), &pb.BroadcastRequest{
 		NetworkId: *netID,
 		Payload:   []byte(*payload),
@@ -1614,7 +1614,7 @@ func cmdNetworkSubscribe(args []string) error {
 	}
 	defer conn.Close()
 
-	extClient := pb.NewExtClient(conn)
+	extClient := pb.NewA2ANodeClient(conn)
 	stream, err := extClient.SubscribeNetwork(context.Background(), &pb.NetworkIDRequest{NetworkId: args[0]})
 	if err != nil {
 		return err
@@ -1664,7 +1664,7 @@ func cmdNameClaim(args []string) error {
 	}
 	defer conn.Close()
 
-	extClient := pb.NewExtClient(conn)
+	extClient := pb.NewA2ANodeClient(conn)
 	resp, err := extClient.ClaimName(context.Background(), &pb.ClaimNameRequest{Name: name})
 	if err != nil {
 		return err
@@ -1689,7 +1689,7 @@ func cmdNameResolve(args []string) error {
 	}
 	defer conn.Close()
 
-	extClient := pb.NewExtClient(conn)
+	extClient := pb.NewA2ANodeClient(conn)
 	resp, err := extClient.ResolveName(context.Background(), &pb.ResolveNameRequest{Name: name})
 	if err != nil {
 		return fmt.Errorf("name %q not found: %w", name, err)
