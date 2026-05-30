@@ -33,16 +33,79 @@ The daemon handles all P2P complexity. Agents speak gRPC.
 ### Run the daemon
 
 ```bash
-go build -o molt-mesh-daemon ./cmd/daemon
-./molt-mesh-daemon
+go build -o moltmesh-daemon ./cmd/daemon
+
+# Start the daemon
+./moltmesh-daemon start
+
+# In another terminal, check status
+./moltmesh-daemon status
+./moltmesh-daemon info
+./moltmesh-daemon identity
 ```
 
-Configuration via env:
+The daemon CLI supports these commands:
+
+| Command | Description | Options |
+|---------|-------------|---------|
+| `start` | Start daemon in foreground | `--data-dir`, `--port`, `--grpc-addr`, `--verbose` |
+| `status` | Check if daemon is running and show basic info | `--data-dir`, `--grpc-addr` |
+| `info` | Get daemon identity, addresses, and public key | `--data-dir`, `--grpc-addr` |
+| `identity` | Show daemon DID (no daemon required) | `--data-dir` |
+| `config` | Show configuration paths | `--data-dir` |
+| `stop` | Gracefully stop daemon (requires running daemon) | `--data-dir`, `--grpc-addr` |
+| `version` | Show daemon version | |
+
+**Options:**
+
+- `--data-dir` - Data directory (default: `~/.moltmesh`)
+- `--port` - libp2p network port (default: auto-assign)
+- `--grpc-addr` - gRPC server address (default: unix socket at `~/.moltmesh/a2a.sock`)
+- `--verbose` - Enable verbose logging (JSON format)
+
+**Examples:**
 
 ```bash
-A2A_DATA_DIR=~/.molt-mesh          # data directory (default)
-A2A_GRPC_ADDR=~/.molt-mesh/a2a.sock  # Unix socket (default) or host:port
-A2A_PORT=4001                     # libp2p listen port (random if unset)
+# Start with custom data directory
+./moltmesh-daemon start --data-dir /opt/moltmesh
+
+# Start on specific port
+./moltmesh-daemon start --port 4001
+
+# Start with TCP gRPC endpoint
+./moltmesh-daemon start --grpc-addr localhost:5000
+
+# Check status while daemon is running
+./moltmesh-daemon status
+
+# Get daemon info (addresses, DID, public key)
+./moltmesh-daemon info
+
+# View identity without running daemon
+./moltmesh-daemon identity
+
+# View configuration
+./moltmesh-daemon config
+```
+
+Configuration via environment variables (legacy, still supported):
+
+```bash
+A2A_DATA_DIR=~/.moltmesh              # data directory
+A2A_GRPC_ADDR=~/.moltmesh/a2a.sock   # Unix socket or host:port
+A2A_PORT=4001                         # libp2p listen port
+```
+
+**To stop the daemon:**
+
+```bash
+# Gracefully via CLI
+./moltmesh-daemon stop
+
+# Or send signal to process
+pkill -f 'moltmesh-daemon start'
+# or
+kill <PID>
 ```
 
 ### Python
