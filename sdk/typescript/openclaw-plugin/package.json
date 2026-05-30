@@ -1,0 +1,25 @@
+{
+  "name": "openclaw-plugin-p2p-a2a",
+  "version": "0.1.0",
+  "description": "OpenClaw plugin — p2p-a2a daemon tools for sending messages, delegating tasks, and finding agents",
+  "type": "module",
+  "main": "./dist/index.js",
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch"
+  },
+  "dependencies": {
+    "@grpc/grpc-js": "^1.10.0",
+    "@grpc/proto-loader": "^0.7.0",
+    "@sinclair/typebox": "^0.32.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0"
+  },
+  "openclaw": {
+    "extensions": ["./dist/index.js"]
+  }
+}

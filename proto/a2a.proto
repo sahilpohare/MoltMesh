@@ -1,0 +1,401 @@
+syntax = "proto3";
+
+package a2a.v1;
+
+option go_package = "github.com/sahilpohare/p2p-a2a/gen/a2a/v1;a2av1";
+
+// ─── Identity ────────────────────────────────────────────────────────────────
+
+message AgentIdentity {
+  string did        = 1; // did:key:z6Mk...
+  string public_key = 2; // base64-encoded Ed25519 public key
+  repeated string multiaddrs = 3; // libp2p multiaddrs this agent is reachable at
+}
+
+// ─── Agent Card ──────────────────────────────────────────────────────────────
+
+message AgentCard {
+  string did         = 1;
+  string name        = 2;
+  string description = 3;
+  repeated Skill skills = 4;
+  repeated string multiaddrs = 5;
+  string public_key  = 6;
+  int64  published_at = 7;
+  int64  expires_at   = 8;
+  string signature    = 9; // base64 Ed25519 sig over canonical JSON of fields 1-8
+  map<string,string> metadata = 10;
+}
+
+message Skill {
+  string id          = 1; // e.g. "a2a:v1:cap:text-generation"
+  string name        = 2;
+  string description = 3;
+  bytes  input_schema  = 4; // JSON Schema as bytes
+  bytes  output_schema = 5;
+  repeated string tags = 6; // tier-2 namespaced tags
+}
+
+// ─── Artifacts ───────────────────────────────────────────────────────────────
+
+message Artifact {
+  string cid       = 1; // SHA256 multihash (IPLD-compatible)
+  string mime_type = 2;
+  int64  size      = 3;
+  bytes  inline    = 4; // populated for small artifacts (<64KB)
+  string uri       = 5; // populated for large artifacts (fetch separately)
+  string name      = 6;
+}
+
+// ─── Messages ────────────────────────────────────────────────────────────────
+
+message Message {
+  string id        = 1; // UUID v4, also used as content ID
+  string from_did  = 2;
+  string to_did    = 3;
+  string thread_id = 4;
+  string task_id   = 5; // optional — links message to a task
+  MessageKind kind = 6;
+  bytes  payload   = 7; // encrypted protobuf (TaskRequest | TaskEvent | TextMessage | etc)
+  int64  sent_at   = 8;
+  string signature = 9; // Ed25519 sig over fields 1-8
+}
+
+enum MessageKind {
+  MESSAGE_KIND_UNSPECIFIED  = 0;
+  MESSAGE_KIND_TEXT         = 1;
+  MESSAGE_KIND_TASK_REQUEST = 2;
+  MESSAGE_KIND_TASK_EVENT   = 3;
+  MESSAGE_KIND_TASK_RESULT  = 4;
+  MESSAGE_KIND_TASK_CANCEL  = 5;
+  MESSAGE_KIND_ACK          = 6;
+}
+
+message TextMessage {
+  string text = 1;
+  repeated Artifact attachments = 2;
+}
+
+// ─── Tasks ───────────────────────────────────────────────────────────────────
+
+message Task {
+  string     id           = 1;
+  string     initiator    = 2; // DID
+  string     assignee     = 3; // DID
+  string     thread_id    = 4;
+  string     skill        = 5; // capability ID
+  TaskStatus status       = 6;
+  repeated Artifact input_artifacts  = 7;
+  repeated Artifact output_artifacts = 8;
+  int64  created_at  = 9;
+  int64  updated_at  = 10;
+  string error       = 11;
+  map<string,string> metadata = 12;
+}
+
+enum TaskStatus {
+  TASK_STATUS_UNSPECIFIED = 0;
+  TASK_STATUS_SUBMITTED   = 1;
+  TASK_STATUS_WORKING     = 2;
+  TASK_STATUS_COMPLETED   = 3;
+  TASK_STATUS_FAILED      = 4;
+  TASK_STATUS_CANCELLED   = 5;
+}
+
+message TaskRequest {
+  string skill   = 1;
+  string thread_id = 2; // optional — attach to existing thread
+  repeated Artifact input_artifacts = 3;
+  map<string,string> metadata = 4;
+}
+
+message TaskEvent {
+  string    task_id   = 1;
+  TaskStatus status   = 2;
+  EventKind  kind     = 3;
+  bytes      data     = 4; // token chunk, tool call, status update, etc
+  int64      seq      = 5; // monotonic sequence number
+  int64      emitted_at = 6;
+}
+
+enum EventKind {
+  EVENT_KIND_UNSPECIFIED   = 0;
+  EVENT_KIND_TOKEN_CHUNK   = 1; // LLM streaming token
+  EVENT_KIND_TOOL_CALL     = 2;
+  EVENT_KIND_TOOL_RESULT   = 3;
+  EVENT_KIND_STATUS_UPDATE = 4;
+  EVENT_KIND_ARTIFACT      = 5; // intermediate artifact
+  EVENT_KIND_DONE          = 6; // final event — task complete
+  EVENT_KIND_ERROR         = 7;
+}
+
+message TaskStatusUpdate {
+  string     task_id = 1;
+  TaskStatus status  = 2;
+  string     error   = 3;
+  repeated Artifact output_artifacts = 4;
+}
+
+// ─── Discovery ───────────────────────────────────────────────────────────────
+
+message CapabilityQuery {
+  string capability = 1; // e.g. "a2a:v1:cap:text-generation"
+  repeated string tags = 2; // optional tier-2 filter tags
+  int32  limit     = 3; // max results, default 10
+}
+
+// ─── Inbox / Outbox ──────────────────────────────────────────────────────────
+
+message InboxQuery {
+  string thread_id = 1; // optional filter
+  string task_id   = 2; // optional filter
+  bool   unread_only = 3;
+  int32  limit     = 4;
+  int64  since     = 5; // unix timestamp
+}
+
+message OutboxQuery {
+  string status = 1; // pending | delivered | failed | expired
+  int32  limit  = 2;
+}
+
+message SubscribeRequest {
+  string thread_id = 1; // optional — subscribe to a specific thread
+  string task_id   = 2; // optional — subscribe to a specific task
+}
+
+message SendResult {
+  string message_id = 1;
+  bool   queued     = 2; // true if remote agent offline, message in outbox
+}
+
+message PublishResult {
+  bool   success = 1;
+  string error   = 2;
+}
+
+message TaskID {
+  string id = 1;
+}
+
+message Empty {}
+
+// ─── gRPC Service ────────────────────────────────────────────────────────────
+
+service A2ANode {
+  // Identity
+  rpc GetIdentity(Empty) returns (AgentIdentity);
+
+  // Registry
+  rpc PublishAgentCard(AgentCard) returns (PublishResult);
+  rpc GetAgentCard(AgentIdentityRequest) returns (AgentCard);
+  rpc FindAgents(CapabilityQuery) returns (stream AgentCard);
+
+  // Messaging
+  rpc SendMessage(Message) returns (SendResult);
+  rpc SubscribeInbox(SubscribeRequest) returns (stream Message);
+  rpc GetInbox(InboxQuery) returns (stream Message);
+  rpc GetOutbox(OutboxQuery) returns (stream Message);
+  rpc AckMessage(AckRequest) returns (Empty);
+
+  // Tasks
+  rpc CreateTask(CreateTaskRequest) returns (Task);
+  rpc GetTask(TaskID) returns (Task);
+  rpc UpdateTask(TaskStatusUpdate) returns (Task);
+  rpc CancelTask(TaskID) returns (Task);
+  rpc PublishTaskEvent(TaskEvent) returns (Empty);
+  rpc SubscribeTaskEvents(TaskID) returns (stream TaskEvent);
+
+  // Files
+  rpc SendFile(SendFileRequest) returns (Artifact);
+  rpc FetchFile(FetchFileRequest) returns (stream FileChunk);
+
+  // Threads (Tendermint BFT)
+  rpc CreateThread(CreateThreadRequest) returns (Thread);
+  rpc GetThread(ThreadID) returns (Thread);
+  rpc AppendEntry(AppendEntryRequest) returns (AppendEntryResult);
+  rpc GetThreadEntries(GetThreadEntriesRequest) returns (stream ThreadEntryWithPos);
+  rpc SubscribeThread(SubscribeThreadRequest) returns (stream ThreadEntryWithPos);
+}
+
+message AgentIdentityRequest {
+  string did = 1;
+}
+
+message AckRequest {
+  string message_id = 1;
+}
+
+message CreateTaskRequest {
+  string to_did  = 1; // assignee DID
+  TaskRequest task = 2;
+}
+
+// ─── Threads (Tendermint BFT) ─────────────────────────────────────────────────
+
+message Thread {
+  string   id           = 1;
+  string   creator_did  = 2;
+  repeated string replica_dids = 3; // ordered validator set, size N ≥ 3f+1
+  int32    n            = 4; // replica count
+  int32    f            = 5; // max byzantine faults tolerated
+  int64    epoch_ms     = 6; // timeoutPropose in ms (default 1000)
+  int64    created_at   = 7;
+  map<string,string> metadata = 8;
+}
+
+message ThreadEntry {
+  string author_did   = 1;
+  bytes  payload      = 2; // serialized Message, TaskEvent, or arbitrary bytes
+  string kind         = 3; // "message" | "task_event" | "custom"
+  string author_sig   = 4; // Ed25519 sig over (thread_id || height || payload)
+  int64  submitted_at = 5;
+}
+
+message ThreadBlock {
+  string   thread_id    = 1;
+  int64    height       = 2; // monotonic block number
+  int32    round        = 3; // round within height
+  string   parent_hash  = 4; // block_hash of height-1 committed block ("" for genesis)
+  repeated ThreadEntry entries = 5;
+  string   proposer_did = 6;
+  string   proposer_sig = 7; // sig over canonical(thread_id||height||round||parent_hash||entries_hash)
+  string   block_hash   = 8; // sha256 of above fields 1-7
+  int64    committed_at = 9; // set only on committed blocks
+}
+
+enum VoteType {
+  VOTE_TYPE_UNSPECIFIED = 0;
+  VOTE_TYPE_PREVOTE     = 1;
+  VOTE_TYPE_PRECOMMIT   = 2;
+}
+
+message Vote {
+  string   thread_id  = 1;
+  int64    height     = 2;
+  int32    round      = 3;
+  VoteType type       = 4;
+  string   block_hash = 5; // "" means nil vote
+  string   voter_did  = 6;
+  string   signature  = 7; // Ed25519 sig over (thread_id||height||round||type||block_hash)
+}
+
+message Proposal {
+  string      thread_id    = 1;
+  int64       height       = 2;
+  int32       round        = 3;
+  int32       pol_round    = 4; // proof-of-lock round (-1 if none)
+  ThreadBlock block        = 5;
+  string      proposer_did = 6;
+  string      signature    = 7; // sig over (thread_id||height||round||block_hash)
+}
+
+// ─── Raft messages ────────────────────────────────────────────────────────────
+
+message RaftRequestVote {
+  int64  term           = 1;
+  string candidate_did  = 2;
+  int64  last_log_index = 3;
+  int64  last_log_term  = 4;
+  string signature      = 5;
+}
+
+message RaftRequestVoteReply {
+  int64  term         = 1;
+  bool   vote_granted = 2;
+  string voter_did    = 3;
+  string signature    = 4;
+}
+
+message RaftAppendEntries {
+  int64  term           = 1;
+  string leader_did     = 2;
+  int64  prev_log_index = 3;
+  int64  prev_log_term  = 4;
+  repeated ThreadEntry entries = 5; // empty = heartbeat
+  int64  leader_commit  = 6;
+  string signature      = 7;
+}
+
+message RaftAppendEntriesReply {
+  int64  term      = 1;
+  bool   success   = 2;
+  string peer_did  = 3;
+  int64  match_index = 4; // highest index known to be replicated on peer
+  string signature = 5;
+}
+
+// ConsensusMsg wraps any consensus message for GossipSub/stream transport.
+message ConsensusMsg {
+  string thread_id = 1;
+  oneof payload {
+    Proposal              proposal              = 2;
+    Vote                  vote                  = 3;
+    RaftRequestVote       raft_request_vote     = 4;
+    RaftRequestVoteReply  raft_vote_reply       = 5;
+    RaftAppendEntries     raft_append_entries   = 6;
+    RaftAppendEntriesReply raft_append_reply    = 7;
+  }
+}
+
+// ─── Thread gRPC requests ──────────────────────────────────────────────────────
+
+message CreateThreadRequest {
+  repeated string replica_dids = 1; // desired validators (creator added automatically)
+  int32  f         = 2; // desired fault tolerance (N = 3f+1)
+  int64  epoch_ms  = 3; // timeoutPropose; 0 = default (1000ms)
+  map<string,string> metadata = 4;
+}
+
+message AppendEntryRequest {
+  string thread_id = 1;
+  bytes  payload   = 2;
+  string kind      = 3;
+}
+
+message AppendEntryResult {
+  string thread_id = 1;
+  int64  height    = 2; // height the entry will appear in (once committed)
+  string entry_id  = 3; // opaque ID for tracking
+}
+
+message GetThreadEntriesRequest {
+  string thread_id  = 1;
+  int64  since_height = 2; // 0 = from genesis
+  int32  limit      = 3;
+}
+
+message ThreadEntryWithPos {
+  int64       height = 1;
+  int32       index  = 2; // index within block
+  ThreadEntry entry  = 3;
+  string      block_hash = 4;
+}
+
+message SubscribeThreadRequest {
+  string thread_id    = 1;
+  int64  since_height = 2;
+}
+
+message ThreadID {
+  string id = 1;
+}
+
+// ─── Files ────────────────────────────────────────────────────────────────────
+
+message SendFileRequest {
+  bytes  data      = 1; // raw file bytes
+  string name      = 2; // original filename
+  string mime_type = 3;
+}
+
+message FetchFileRequest {
+  string cid    = 1; // CID to fetch
+  string from_did = 2; // peer to fetch from (must have published an AgentCard with multiaddrs)
+}
+
+message FileChunk {
+  bytes  data   = 1;
+  int64  offset = 2;
+  int64  total  = 3; // total file size in bytes
+}

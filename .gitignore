@@ -1,0 +1,39 @@
+# ── Go ────────────────────────────────────────────────────────────────────────
+p2p-a2a-daemon
+*.exe
+*.test
+*.out
+/vendor/
+
+# ── data / runtime ────────────────────────────────────────────────────────────
+~/.p2p-a2a/
+*.sock
+*.db
+*.db-shm
+*.db-wal
+
+# ── Python ────────────────────────────────────────────────────────────────────
+sdk/python/.venv/
+sdk/python/__pycache__/
+sdk/python/*.egg-info/
+sdk/python/dist/
+sdk/python/build/
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+.python-version
+
+# ── Node / TypeScript ─────────────────────────────────────────────────────────
+sdk/typescript/openclaw-plugin/node_modules/
+sdk/typescript/openclaw-plugin/dist/
+sdk/typescript/openclaw-plugin/*.js.map
+
+# ── proto generated code ──────────────────────────────────────────────────────
+gen/
+
+# ── editor / OS ───────────────────────────────────────────────────────────────
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
