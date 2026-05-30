@@ -1,5 +1,5 @@
 /**
- * p2p-a2a gRPC client.
+ * MoltMesh gRPC client.
  *
  * Low-level: createStub() + unary() / serverStream()
  * High-level: A2AClient class
@@ -89,7 +89,7 @@ export type CapabilityTag = string;
 // ── A2AClient ─────────────────────────────────────────────────────────────────
 
 /**
- * High-level async client for the p2p-a2a daemon.
+ * High-level async client for the MoltMesh daemon.
  *
  * All methods return Promises. Streaming methods return AsyncIterable.
  */

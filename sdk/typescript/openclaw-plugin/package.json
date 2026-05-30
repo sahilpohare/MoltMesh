@@ -1,7 +1,7 @@
 {
-  "name": "openclaw-plugin-p2p-a2a",
+  "name": "openclaw-plugin-moltmesh",
   "version": "0.1.0",
-  "description": "OpenClaw plugin — p2p-a2a daemon tools for sending messages, delegating tasks, and finding agents",
+  "description": "OpenClaw plugin — MoltMesh daemon tools for sending messages, delegating tasks, and finding agents",
   "type": "module",
   "main": "./dist/index.js",
   "exports": {

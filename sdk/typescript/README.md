@@ -1,6 +1,6 @@
-# p2p-a2a TypeScript SDK
+# MoltMesh TypeScript SDK
 
-TypeScript client for the p2p-a2a daemon, plus an OpenClaw plugin that exposes the network as agent tools.
+TypeScript client for the MoltMesh daemon, plus an OpenClaw plugin that exposes the network as agent tools.
 
 ## Contents
 
@@ -184,7 +184,7 @@ for await (const e of client.subscribeThread(thread.id)) {
 
 ## OpenClaw plugin
 
-The plugin registers p2p-a2a tools with the OpenClaw agent runtime.
+The plugin registers MoltMesh tools with the OpenClaw agent runtime.
 
 ### Setup
 

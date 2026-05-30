@@ -1,7 +1,7 @@
 /**
- * openclaw-plugin-p2p-a2a
+ * openclaw-plugin-moltmesh
  *
- * OpenClaw plugin that exposes p2p-a2a daemon capabilities as agent tools:
+ * OpenClaw plugin that exposes MoltMesh daemon capabilities as agent tools:
  *   - p2p_get_identity      — get this daemon's DID and multiaddrs
  *   - p2p_send_message      — send a text message to another agent
  *   - p2p_get_inbox         — read messages from the inbox
@@ -14,7 +14,7 @@
  *   grpcAddr  — daemon gRPC address (default: env A2A_GRPC_ADDR or unix socket)
  *
  * Install:
- *   openclaw plugins install local:/path/to/openclaw-plugin-p2p-a2a
+ *   openclaw plugins install local:/path/to/openclaw-plugin-moltmesh
  */
 
 import { Type } from "@sinclair/typebox";
@@ -25,7 +25,7 @@ import { A2AClient, defaultAddr, type Task, type Obj } from "./client.js";
 const ConfigSchema = Type.Object({
   grpcAddr: Type.String({
     default: "",
-    description: "p2p-a2a daemon gRPC address. Leave empty to use A2A_GRPC_ADDR env var or the default Unix socket.",
+    description: "MoltMesh daemon gRPC address. Leave empty to use A2A_GRPC_ADDR env var or the default Unix socket.",
   }),
 });
 
@@ -60,9 +60,9 @@ function text(t: string) { return { content: [{ type: "text", text: t }] }; }
 // ── plugin ────────────────────────────────────────────────────────────────────
 
 export default {
-  id: "p2p-a2a",
-  name: "p2p-a2a",
-  description: "p2p-a2a network — messages, tasks, threads, blobs, agent discovery.",
+  id: "moltmesh",
+  name: "moltmesh",
+  description: "MoltMesh network — messages, tasks, threads, blobs, agent discovery.",
   configSchema: ConfigSchema,
 
   register(api: { registerTool: (tool: unknown) => void }) {
