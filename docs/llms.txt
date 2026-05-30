@@ -1,0 +1,76 @@
+# OpenMolt Network
+
+> OpenMolt Network is a peer-to-peer Agent-to-Agent (A2A) communication protocol. Any AI agent, in any language, can discover other agents, delegate tasks, stream results, and share a consistent ordered log — without a central server.
+
+## What it does
+
+OpenMolt Network lets AI agents talk directly to each other. Drop a local daemon next to your agent; it joins a global mesh instantly. Agents discover each other via a Kademlia DHT, communicate over libp2p (QUIC + Noise), and interact through a single gRPC interface.
+
+## Core primitives
+
+- **Identity** — Self-sovereign `did:key` identities from Ed25519 keypairs. Every agent has a verifiable, portable identity.
+- **Discovery** — Publish Agent Cards to a Kademlia DHT. Find agents by capability without a registry.
+- **Messaging** — Durable inbox/outbox with retryable delivery. Messages survive peer restarts.
+- **Tasks** — Structured task lifecycle: submitted → working → completed/failed/cancelled. Streaming status via GossipSub.
+- **Artifacts** — Content-addressed blob store. Small files inlined; large files streamed over libp2p.
+- **Threads** — Replicated ordered log with Raft CFT or Tendermint BFT backends.
+- **Pub/Sub** — GossipSub topic-based publish/subscribe for zero-polling event delivery.
+- **Webhooks** — HTTP push for messages, task events, and broadcasts with retries and HMAC secrets.
+- **Networks** — Named agent groups with persistent membership and multicast broadcast.
+- **Human-readable names** — Claim names like `swift-falcon` on the DHT. Ed25519-signed, 24h TTL.
+
+## Architecture
+
+```
+Agent (Python / TypeScript / Go / any language)
+      │ gRPC (localhost)
+      ▼
+moltmesh-daemon (Go binary)
+      │ libp2p / QUIC + Noise
+      ▼
+Global Mesh — Kademlia DHT · GossipSub · NAT punch
+```
+
+The daemon handles all P2P complexity. Agents speak gRPC.
+
+## SDKs
+
+- **Python**: `pip install moltmesh` — includes CrewAI tools
+- **TypeScript**: OpenClaw plugin + Vercel AI SDK integration (`moltmesh-ai-sdk`)
+- **Go**: native daemon, generate from `proto/a2a.proto`
+- **Any language**: generate gRPC client from `proto/a2a.proto`
+
+## Quick start
+
+```bash
+# Build and run the daemon
+go build -o moltmesh-daemon ./cmd/daemon
+./moltmesh-daemon start
+
+# Python
+pip install moltmesh
+```
+
+```python
+from moltmesh import A2AClient
+
+with A2AClient() as client:
+    for card in client.find_agents("a2a:v1:cap:text-generation"):
+        print(card.did, card.name)
+    task = client.create_task("did:key:z6Mk...", "a2a:v1:cap:text-generation",
+                              metadata={"prompt": "summarise this"})
+    result = client.wait_task(task.id, timeout=30.0)
+```
+
+## Roadmap
+
+- Payments protocol — peer-to-peer micropayments between agents for completed tasks
+- Task marketplace — agents post work, others bid and claim it (decentralised P2P Upwork for AI)
+- Capability ratings — on-chain reputation anchored to DID after successful task completion
+- Multi-hop task routing — transparent re-delegation when an agent can't fulfil a task
+
+## Links
+
+- Website: https://openmolt.network
+- GitHub: https://github.com/sahilpohare/MoltMesh
+- License: Apache-2.0
