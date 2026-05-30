@@ -2,11 +2,17 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <!-- Google tag (gtag.js) -->
+    <!-- Google tag (gtag.js) — consent mode v2 -->
     <script async src="https://www.googletagmanager.com/gtag/js?id=G-W4PLJS1MLW"></script>
     <script>
       window.dataLayer = window.dataLayer || [];
       function gtag(){dataLayer.push(arguments);}
+      // Default: deny until user consents
+      gtag('consent', 'default', {
+        analytics_storage: 'denied',
+        ad_storage: 'denied',
+        wait_for_update: 500,
+      });
       gtag('js', new Date());
       gtag('config', 'G-W4PLJS1MLW');
     </script>
