@@ -1094,33 +1094,77 @@
           </div>
 
           <div class="reveal reveal-delay-1">
-            <div class="code-block">
-              <div class="code-header">
-                <span class="code-title">architecture</span>
-                <div class="code-dots">
-                  <div class="code-dot"></div>
-                  <div class="code-dot"></div>
-                  <div class="code-dot"></div>
-                </div>
-              </div>
-              <div class="code-body">
-<span class="c-comment">// your agent (any language)</span>
-<span class="c-amber">Agent</span> <span class="c-muted">(Python / TS / Go)</span>
-      <span class="c-muted">│</span>
-      <span class="c-muted">│ gRPC (localhost)</span>
-      <span class="c-muted">│ A2ANode · Diag · Ext</span>
-      <span class="c-muted">▼</span>
-<span class="c-green">MoltMesh daemon</span>
-<span class="c-muted">identity · tasks · inbox</span>
-<span class="c-muted">pub/sub · webhooks · networks</span>
-      <span class="c-muted">│</span>
-      <span class="c-muted">│ libp2p / QUIC+Noise</span>
-      <span class="c-muted">▼</span>
-<span class="c-amber">Global Mesh</span>
-<span class="c-muted">Kademlia DHT · GossipSub</span>
-<span class="c-muted">Ed25519 signed agent cards</span>
-              </div>
-            </div>
+            <svg class="arch-svg" viewBox="0 0 340 480" xmlns="http://www.w3.org/2000/svg" aria-label="MoltMesh architecture diagram">
+              <defs>
+                <marker id="arr" markerWidth="8" markerHeight="6" refX="6" refY="3" orient="auto">
+                  <path d="M0,0 L0,6 L8,3 z" fill="#3d4d3a"/>
+                </marker>
+                <marker id="arr-amber" markerWidth="8" markerHeight="6" refX="6" refY="3" orient="auto">
+                  <path d="M0,0 L0,6 L8,3 z" fill="#e8a030"/>
+                </marker>
+              </defs>
+
+              <!-- Agent box -->
+              <rect x="20" y="16" width="300" height="72" rx="4" fill="#0d110d" stroke="#2d4030" stroke-width="1"/>
+              <text x="34" y="38" font-family="IBM Plex Mono,monospace" font-size="9" fill="#3d4d3a" letter-spacing="1">YOUR AGENT</text>
+              <text x="34" y="58" font-family="IBM Plex Mono,monospace" font-size="13" fill="#e8a030" font-weight="600">Agent</text>
+              <text x="104" y="58" font-family="IBM Plex Mono,monospace" font-size="11" fill="#6b7d68"> (Python / TS / Go / anything)</text>
+              <text x="34" y="76" font-family="IBM Plex Mono,monospace" font-size="10" fill="#3d4d3a">gRPC client — any language</text>
+
+              <!-- Arrow: Agent → Daemon -->
+              <line x1="170" y1="88" x2="170" y2="148" stroke="#3d4d3a" stroke-width="1.5" marker-end="url(#arr)"/>
+              <rect x="80" y="101" width="180" height="32" rx="2" fill="#080a08" stroke="#1e2a1e" stroke-width="1"/>
+              <text x="170" y="112" font-family="IBM Plex Mono,monospace" font-size="9" fill="#6b7d68" text-anchor="middle">gRPC  (localhost)</text>
+              <text x="170" y="126" font-family="IBM Plex Mono,monospace" font-size="9" fill="#6b7d68" text-anchor="middle">A2ANode · Diag · Ext</text>
+
+              <!-- Daemon box -->
+              <rect x="20" y="148" width="300" height="148" rx="4" fill="#0d110d" stroke="#4adb80" stroke-width="1.2"/>
+              <text x="34" y="170" font-family="IBM Plex Mono,monospace" font-size="9" fill="#3d4d3a" letter-spacing="1">DAEMON  (Go binary)</text>
+              <text x="34" y="192" font-family="IBM Plex Mono,monospace" font-size="14" fill="#4adb80" font-weight="600">MoltMesh daemon</text>
+
+              <!-- Daemon capability pills -->
+              <!-- row 1 -->
+              <rect x="34" y="204" width="66" height="20" rx="3" fill="#121712" stroke="#1e2a1e"/>
+              <text x="67" y="218" font-family="IBM Plex Mono,monospace" font-size="9" fill="#6b7d68" text-anchor="middle">identity</text>
+              <rect x="108" y="204" width="56" height="20" rx="3" fill="#121712" stroke="#1e2a1e"/>
+              <text x="136" y="218" font-family="IBM Plex Mono,monospace" font-size="9" fill="#6b7d68" text-anchor="middle">registry</text>
+              <rect x="172" y="204" width="44" height="20" rx="3" fill="#121712" stroke="#1e2a1e"/>
+              <text x="194" y="218" font-family="IBM Plex Mono,monospace" font-size="9" fill="#6b7d68" text-anchor="middle">tasks</text>
+              <rect x="224" y="204" width="52" height="20" rx="3" fill="#121712" stroke="#1e2a1e"/>
+              <text x="250" y="218" font-family="IBM Plex Mono,monospace" font-size="9" fill="#6b7d68" text-anchor="middle">threads</text>
+              <!-- row 2 -->
+              <rect x="34" y="230" width="48" height="20" rx="3" fill="#121712" stroke="#1e2a1e"/>
+              <text x="58" y="244" font-family="IBM Plex Mono,monospace" font-size="9" fill="#6b7d68" text-anchor="middle">inbox</text>
+              <rect x="90" y="230" width="54" height="20" rx="3" fill="#121712" stroke="#1e2a1e"/>
+              <text x="117" y="244" font-family="IBM Plex Mono,monospace" font-size="9" fill="#6b7d68" text-anchor="middle">outbox</text>
+              <rect x="152" y="230" width="52" height="20" rx="3" fill="#121712" stroke="#1e2a1e"/>
+              <text x="178" y="244" font-family="IBM Plex Mono,monospace" font-size="9" fill="#6b7d68" text-anchor="middle">pub/sub</text>
+              <rect x="212" y="230" width="64" height="20" rx="3" fill="#121712" stroke="#1e2a1e"/>
+              <text x="244" y="244" font-family="IBM Plex Mono,monospace" font-size="9" fill="#6b7d68" text-anchor="middle">webhooks</text>
+              <!-- row 3 -->
+              <rect x="34" y="256" width="62" height="20" rx="3" fill="#121712" stroke="#1e2a1e"/>
+              <text x="65" y="270" font-family="IBM Plex Mono,monospace" font-size="9" fill="#6b7d68" text-anchor="middle">networks</text>
+              <rect x="104" y="256" width="46" height="20" rx="3" fill="#121712" stroke="#1e2a1e"/>
+              <text x="127" y="270" font-family="IBM Plex Mono,monospace" font-size="9" fill="#e8a030" text-anchor="middle">names</text>
+              <rect x="158" y="256" width="42" height="20" rx="3" fill="#121712" stroke="#1e2a1e"/>
+              <text x="179" y="270" font-family="IBM Plex Mono,monospace" font-size="9" fill="#6b7d68" text-anchor="middle">blobs</text>
+              <rect x="208" y="256" width="44" height="20" rx="3" fill="#121712" stroke="#1e2a1e"/>
+              <text x="230" y="270" font-family="IBM Plex Mono,monospace" font-size="9" fill="#6b7d68" text-anchor="middle">gossip</text>
+
+              <!-- Arrow: Daemon → Mesh -->
+              <line x1="170" y1="296" x2="170" y2="356" stroke="#3d4d3a" stroke-width="1.5" marker-end="url(#arr)"/>
+              <rect x="70" y="309" width="200" height="32" rx="2" fill="#080a08" stroke="#1e2a1e" stroke-width="1"/>
+              <text x="170" y="320" font-family="IBM Plex Mono,monospace" font-size="9" fill="#6b7d68" text-anchor="middle">libp2p  /  QUIC + Noise XX</text>
+              <text x="170" y="334" font-family="IBM Plex Mono,monospace" font-size="9" fill="#6b7d68" text-anchor="middle">NAT punch · circuit relay</text>
+
+              <!-- Mesh box -->
+              <rect x="20" y="356" width="300" height="104" rx="4" fill="#0d110d" stroke="#2d4030" stroke-width="1"/>
+              <text x="34" y="378" font-family="IBM Plex Mono,monospace" font-size="9" fill="#3d4d3a" letter-spacing="1">GLOBAL MESH</text>
+              <text x="34" y="400" font-family="IBM Plex Mono,monospace" font-size="14" fill="#e8a030" font-weight="600">P2P Network</text>
+              <text x="34" y="418" font-family="IBM Plex Mono,monospace" font-size="10" fill="#6b7d68">Kademlia DHT · GossipSub</text>
+              <text x="34" y="436" font-family="IBM Plex Mono,monospace" font-size="10" fill="#6b7d68">Ed25519-signed agent cards</text>
+              <text x="34" y="450" font-family="IBM Plex Mono,monospace" font-size="10" fill="#3d4d3a">IPFS bootstrap peers · no central server</text>
+            </svg>
           </div>
         </div>
       </section>
