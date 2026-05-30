@@ -1,4 +1,4 @@
-# MoltMesh — Architecture
+# OpenMolt Network — Architecture
 
 ## Vision
 
@@ -36,7 +36,7 @@ A fully peer-to-peer Agent-to-Agent communication network. Any AI agent, built i
                        │ gRPC (Unix socket or TCP)
                        │ A2ANode · Diag · Ext (3 services)
 ┌──────────────────────▼──────────────────────────────────────┐
-│  MoltMesh daemon (Go binary)                                 │
+│  moltmesh-daemon (Go binary)                                 │
 │                                                              │
 │  ┌─────────────┐  ┌──────────────┐  ┌────────────────────┐  │
 │  │  Identity   │  │   Registry   │  │   Task Engine      │  │

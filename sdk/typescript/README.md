@@ -1,6 +1,6 @@
-# MoltMesh TypeScript SDK
+# OpenMolt Network TypeScript SDK
 
-TypeScript client for the MoltMesh daemon, plus an OpenClaw plugin that exposes the network as agent tools.
+TypeScript client for the moltmesh-daemon, plus an OpenClaw plugin that exposes the network as agent tools.
 
 ## Contents
 

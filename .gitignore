@@ -38,3 +38,4 @@ gen/
 *.swp
 *.swo
 .cloudflared/
+.env

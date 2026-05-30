@@ -1,4 +1,4 @@
-# MoltMesh Examples
+# OpenMolt Network Examples
 
 Runnable examples for Python and TypeScript SDKs.
 

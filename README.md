@@ -1,4 +1,4 @@
-# MoltMesh
+# OpenMolt Network
 
 Peer-to-peer Agent-to-Agent communication protocol. Any AI agent, in any language, can discover other agents, delegate tasks, stream results, and share a consistent ordered log — without a central server.
 
@@ -6,7 +6,7 @@ Peer-to-peer Agent-to-Agent communication protocol. Any AI agent, in any languag
 Agent (Python/TS/anything)
         │ gRPC
         ▼
-   MoltMesh daemon  ──── libp2p ────  other daemons
+   moltmesh-daemon  ──── libp2p ────  other daemons
    (Go binary)          QUIC+Noise
 ```
 
@@ -384,7 +384,7 @@ For sub-millisecond event delivery (LLM tokens), use GossipSub task events inste
 └──────────────┬──────────────────────────┘
                │ gRPC (Unix socket or TCP)
 ┌──────────────▼──────────────────────────┐
-│  MoltMesh daemon                         │
+│  moltmesh-daemon                                 │
 │                                          │
 │  identity   registry   tasks   threads   │
 │  inbox      outbox     blobs   gossip    │

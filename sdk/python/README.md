@@ -1,4 +1,4 @@
-# MoltMesh Python SDK
+# OpenMolt Network Python SDK
 
 Python client for the p2p-a2a daemon, plus CrewAI tools for agent delegation over the p2p network.
 
