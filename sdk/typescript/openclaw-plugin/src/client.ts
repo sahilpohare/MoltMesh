@@ -49,7 +49,7 @@ export function defaultAddr(): string {
   const env = process.env["A2A_GRPC_ADDR"];
   if (env) return env;
   const home = process.env["HOME"] ?? "/root";
-  return `unix://${home}/.p2p-a2a/a2a.sock`;
+  return `unix://${home}/.moltmesh/a2a.sock`;
 }
 
 /** Wrap a gRPC unary call in a Promise. */
@@ -83,6 +83,13 @@ export interface Task { id: string; status: string; skill: string; assignee: str
 export interface Artifact { cid: string; data: Uint8Array; mimeType: string; filename: string; size: string }
 export interface Thread { id: string; creatorDid: string; replicaDids: string[]; n: number; f: number }
 export interface ThreadEntry { height: string; index: number; entry: { authorDid: string; payload: Uint8Array; kind: string }; blockHash: string }
+export interface HealthInfo { version: string; did: string; peerCount: number; uptimeSecs: number }
+export interface PeerInfo { peerId: string; multiaddrs: string[]; did: string }
+export interface PingResult { did: string; latencyMs: number; reachable: boolean; error: string }
+export interface TopicMessage { topic: string; payload: Uint8Array; emittedAt: string }
+export interface NetworkInfo { id: string; name: string; creatorDid: string; createdAt: string }
+export interface NetworkMember { did: string; joinedAt: string }
+export interface BroadcastMessage { networkId: string; payload: Uint8Array; emittedAt: string }
 export type CapabilityId = string;
 export type CapabilityTag = string;
 
@@ -248,6 +255,78 @@ export class A2AClient {
 
   subscribeThread(threadId: string): AsyncIterable<ThreadEntry> {
     return toAsyncIterable(this.stub["subscribeThread"]({ threadId }) as grpc.ClientReadableStream<ThreadEntry>);
+  }
+
+  // ── diagnostics ───────────────────────────────────────────────────────────
+
+  health(): Promise<HealthInfo> {
+    return unary(this.stub, "health", {});
+  }
+
+  ping(did = ""): Promise<PingResult> {
+    return unary(this.stub, "ping", { did });
+  }
+
+  listPeers(): Promise<PeerInfo[]> {
+    return serverStream(this.stub, "listPeers", {});
+  }
+
+  // ── pub/sub ───────────────────────────────────────────────────────────────
+
+  async publish(topic: string, payload: string | Uint8Array): Promise<void> {
+    const data = typeof payload === "string" ? Buffer.from(payload) : payload;
+    await unary(this.stub, "publish", { topic, payload: data });
+  }
+
+  subscribeTopic(topic: string): AsyncIterable<TopicMessage> {
+    return toAsyncIterable(this.stub["subscribeTopic"]({ topic }) as grpc.ClientReadableStream<TopicMessage>);
+  }
+
+  // ── webhooks ──────────────────────────────────────────────────────────────
+
+  async setWebhook(url: string, secret = ""): Promise<string> {
+    const r: Obj = await unary(this.stub, "setWebhook", { url, secret });
+    return (r["url"] as string) ?? url;
+  }
+
+  async clearWebhook(): Promise<void> {
+    await unary(this.stub, "clearWebhook", {});
+  }
+
+  async getWebhook(): Promise<string> {
+    const r: Obj = await unary(this.stub, "getWebhook", {});
+    return (r["url"] as string) ?? "";
+  }
+
+  // ── networks ──────────────────────────────────────────────────────────────
+
+  createNetwork(name: string): Promise<NetworkInfo> {
+    return unary(this.stub, "createNetwork", { name });
+  }
+
+  joinNetwork(networkId: string): Promise<NetworkInfo> {
+    return unary(this.stub, "joinNetwork", { networkId });
+  }
+
+  async leaveNetwork(networkId: string): Promise<void> {
+    await unary(this.stub, "leaveNetwork", { networkId });
+  }
+
+  listNetworks(): Promise<NetworkInfo[]> {
+    return serverStream(this.stub, "listNetworks", {});
+  }
+
+  networkMembers(networkId: string): Promise<NetworkMember[]> {
+    return serverStream(this.stub, "networkMembers", { networkId });
+  }
+
+  async broadcastNetwork(networkId: string, payload: string | Uint8Array): Promise<void> {
+    const data = typeof payload === "string" ? Buffer.from(payload) : payload;
+    await unary(this.stub, "broadcastNetwork", { networkId, payload: data });
+  }
+
+  subscribeNetwork(networkId: string): AsyncIterable<BroadcastMessage> {
+    return toAsyncIterable(this.stub["subscribeNetwork"]({ networkId }) as grpc.ClientReadableStream<BroadcastMessage>);
   }
 }
 

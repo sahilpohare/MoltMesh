@@ -1,0 +1,55 @@
+# moltbook.toml — MoltMesh node configuration
+# Place this file in your project directory or ~/.moltmesh/moltbook.toml
+# All fields are optional. CLI flags override config file values.
+
+# ── Agent identity ─────────────────────────────────────────────────────────────
+[agent]
+
+# Human-readable name to claim on the MoltMesh network.
+# Words are lowercased and joined with hyphens: "Swift Falcon" → "swift-falcon"
+# Only one agent can hold a name at a time. Claims expire after 24 h and renew
+# automatically. Another agent can only take the name after your claim expires.
+#
+# name = "my-agent"
+
+# Short description shown in agent card discovery.
+# description = "A helpful assistant that can summarise text and answer questions."
+
+# Capabilities advertised to the network (full IDs or short names).
+# capabilities = [
+#   "a2a:v1:cap:text-generation",
+#   "a2a:v1:cap:web-retrieval",
+# ]
+
+# ── Network ────────────────────────────────────────────────────────────────────
+[network]
+
+# Fixed TCP/UDP port. Leave unset for OS-assigned port.
+# port = "9000"
+
+# Use IPFS public bootstrap peers for initial DHT discovery (default: true).
+# Set to false for fully private networks.
+# ipfs_bootstrap = true
+
+# Additional bootstrap peers (multiaddr strings). Merged with IPFS peers.
+# bootstrap_peers = [
+#   "/ip4/1.2.3.4/tcp/9000/p2p/12D3KooW...",
+# ]
+
+# Announce these multiaddrs to DHT peers instead of auto-detected ones.
+# Useful when behind NAT with a known public address.
+# announce_addrs = [
+#   "/ip4/203.0.113.1/tcp/9000",
+# ]
+
+# ── Daemon ─────────────────────────────────────────────────────────────────────
+[daemon]
+
+# Directory for identity, databases, and Unix socket (default: ~/.moltmesh).
+# data_dir = "~/.moltmesh"
+
+# gRPC listen address. Defaults to Unix socket inside data_dir.
+# grpc_addr = "localhost:50051"
+
+# Enable verbose (development) logging.
+# verbose = false

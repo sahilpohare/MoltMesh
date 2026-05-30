@@ -1635,3 +1635,70 @@ func cmdNetworkSubscribe(args []string) error {
 		}
 	}
 }
+
+// ── Name commands ─────────────────────────────────────────────────────────────
+
+func cmdName(args []string) error {
+	if len(args) == 0 {
+		fmt.Fprintln(os.Stderr, "usage: moltmesh-daemon name <claim|resolve> ...")
+		return fmt.Errorf("sub-command required")
+	}
+	switch args[0] {
+	case "claim":
+		return cmdNameClaim(args[1:])
+	case "resolve":
+		return cmdNameResolve(args[1:])
+	default:
+		return fmt.Errorf("unknown name sub-command: %s", args[0])
+	}
+}
+
+func cmdNameClaim(args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("usage: name claim <human-readable-name>")
+	}
+	name := strings.Join(args, " ")
+	conn, _, _, err := dialClient(nil, "ext")
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+
+	extClient := pb.NewExtClient(conn)
+	resp, err := extClient.ClaimName(context.Background(), &pb.ClaimNameRequest{Name: name})
+	if err != nil {
+		return err
+	}
+	if jsonMode {
+		jsonOut(resp)
+	} else {
+		fmt.Printf("Name claimed: %s\n  DID:        %s\n  Expires:    %s\n",
+			resp.Name, resp.Did, format.UnixMs(resp.ExpiresAt))
+	}
+	return nil
+}
+
+func cmdNameResolve(args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("usage: name resolve <name>")
+	}
+	name := strings.Join(args, " ")
+	conn, _, _, err := dialClient(nil, "ext")
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+
+	extClient := pb.NewExtClient(conn)
+	resp, err := extClient.ResolveName(context.Background(), &pb.ResolveNameRequest{Name: name})
+	if err != nil {
+		return fmt.Errorf("name %q not found: %w", name, err)
+	}
+	if jsonMode {
+		jsonOut(resp)
+	} else {
+		fmt.Printf("Name: %s\n  DID:        %s\n  Published:  %s\n  Expires:    %s\n",
+			resp.Name, resp.Did, format.UnixMs(resp.PublishedAt), format.UnixMs(resp.ExpiresAt))
+	}
+	return nil
+}

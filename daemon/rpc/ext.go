@@ -10,6 +10,7 @@ import (
 
 	pb "github.com/sahilpohare/p2p-a2a/gen/a2a/v1"
 	"github.com/sahilpohare/p2p-a2a/daemon/network"
+	"github.com/sahilpohare/p2p-a2a/daemon/names"
 	"github.com/sahilpohare/p2p-a2a/daemon/webhook"
 )
 
@@ -188,7 +189,46 @@ func (s *Server) SubscribeNetwork(req *pb.NetworkIDRequest, stream grpc.ServerSt
 	}
 }
 
+// ── Names ─────────────────────────────────────────────────────────────────────
+
+func (s *Server) ClaimName(ctx context.Context, req *pb.ClaimNameRequest) (*pb.NameClaimResponse, error) {
+	if req.Name == "" {
+		return nil, fmt.Errorf("name is required")
+	}
+	if s.nameReg == nil {
+		return nil, fmt.Errorf("name registry not initialised")
+	}
+	claim, err := s.nameReg.Claim(ctx, req.Name)
+	if err != nil {
+		return nil, err
+	}
+	return claimToProto(claim), nil
+}
+
+func (s *Server) ResolveName(ctx context.Context, req *pb.ResolveNameRequest) (*pb.NameClaimResponse, error) {
+	if req.Name == "" {
+		return nil, fmt.Errorf("name is required")
+	}
+	if s.nameReg == nil {
+		return nil, fmt.Errorf("name registry not initialised")
+	}
+	claim, err := s.nameReg.Resolve(ctx, req.Name)
+	if err != nil {
+		return nil, err
+	}
+	return claimToProto(claim), nil
+}
+
 // ── helpers ───────────────────────────────────────────────────────────────────
+
+func claimToProto(c *names.Claim) *pb.NameClaimResponse {
+	return &pb.NameClaimResponse{
+		Name:        c.Name,
+		Did:         c.DID,
+		PublishedAt: c.PublishedAt,
+		ExpiresAt:   c.ExpiresAt,
+	}
+}
 
 func networkToProto(n *network.Network) *pb.NetworkInfo {
 	return &pb.NetworkInfo{

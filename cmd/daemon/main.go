@@ -17,8 +17,10 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 
 	pb "github.com/sahilpohare/p2p-a2a/gen/a2a/v1"
+	"github.com/sahilpohare/p2p-a2a/pkg/config"
 	"github.com/sahilpohare/p2p-a2a/pkg/format"
 	"github.com/sahilpohare/p2p-a2a/daemon/blob"
+	"github.com/sahilpohare/p2p-a2a/daemon/names"
 	"github.com/sahilpohare/p2p-a2a/daemon/deliver"
 	"github.com/sahilpohare/p2p-a2a/daemon/gossip"
 	"github.com/sahilpohare/p2p-a2a/daemon/identity"
@@ -159,6 +161,10 @@ func main() {
 	case "network":
 		err = cmdNetwork(args[1:])
 
+	// Names
+	case "name":
+		err = cmdName(args[1:])
+
 	default:
 		fmt.Fprintf(os.Stderr, "unknown command: %s\n\n", args[0])
 		printUsage()
@@ -225,6 +231,10 @@ Webhook:
   set-webhook             Set webhook URL (--url, --secret)
   clear-webhook           Remove webhook configuration
   get-webhook             Show current webhook URL
+
+Names:
+  name claim <name>             Claim a human-readable name on the network
+  name resolve <name>           Resolve a name to the DID that claims it
 
 Networks:
   network create <name>         Create a named network
@@ -304,17 +314,31 @@ func resolveGRPCAddr(grpcAddr, dataDir string) string {
 
 func cmdStart(args []string) error {
 	fs := flag.NewFlagSet("start", flag.ExitOnError)
-	dataDir := fs.String("data-dir", "", "Data directory")
-	port := fs.String("port", "", "Network port")
+	dataDir  := fs.String("data-dir",  "", "Data directory")
+	port     := fs.String("port",      "", "Network port")
 	grpcAddr := fs.String("grpc-addr", "", "gRPC server address")
-	verbose := fs.Bool("verbose", false, "Enable verbose logging")
+	verbose  := fs.Bool("verbose",  false, "Enable verbose logging")
+	cfgPath  := fs.String("config",    "", "Path to moltbook.toml (default: auto-detect)")
 	fs.Parse(args)
 
-	dir, err := resolveDataDir(*dataDir)
+	cfg, err := config.Load(*cfgPath)
+	if err != nil {
+		return fmt.Errorf("load config: %w", err)
+	}
+
+	// CLI flags override config file
+	if *dataDir  != "" { cfg.Daemon.DataDir  = *dataDir }
+	if *port     != "" { cfg.Network.Port     = *port }
+	if *grpcAddr != "" { cfg.Daemon.GRPCAddr  = *grpcAddr }
+	if *verbose           { cfg.Daemon.Verbose  = true }
+
+	dir, err := resolveDataDir(cfg.Daemon.DataDir)
 	if err != nil {
 		return err
 	}
-	return runDaemon(dir, *port, *grpcAddr, *verbose)
+	cfg.Daemon.DataDir = dir
+
+	return runDaemon(cfg)
 }
 
 func cmdVersion() {
@@ -374,9 +398,20 @@ func cmdConfig(args []string) error {
 	return nil
 }
 
-func runDaemon(dataDir, port, grpcAddr string, verbose bool) error {
+func agentCardFromConfig(cfg *config.Config) *pb.AgentCard {
+	card := &pb.AgentCard{
+		Name:        names.Normalize(cfg.Agent.Name),
+		Description: cfg.Agent.Description,
+	}
+	for _, cap := range cfg.Agent.Capabilities {
+		card.Skills = append(card.Skills, &pb.Skill{Id: cap})
+	}
+	return card
+}
+
+func runDaemon(cfg *config.Config) error {
 	var log *zap.Logger
-	if verbose {
+	if cfg.Daemon.Verbose {
 		log, _ = zap.NewDevelopment()
 	} else {
 		log, _ = zap.NewProduction()
@@ -385,15 +420,19 @@ func runDaemon(dataDir, port, grpcAddr string, verbose bool) error {
 
 	log.Info("MoltMesh Daemon starting", zap.String("version", version))
 
-	if err := os.MkdirAll(dataDir, 0700); err != nil {
+	if err := os.MkdirAll(cfg.Daemon.DataDir, 0700); err != nil {
 		return fmt.Errorf("create data dir: %w", err)
 	}
-	log.Info("data directory ready", zap.String("path", dataDir))
+	log.Info("data directory ready", zap.String("path", cfg.Daemon.DataDir))
 
-	return run(dataDir, port, grpcAddr, log)
+	return run(cfg, log)
 }
 
-func run(dataDir, port, grpcAddr string, log *zap.Logger) error {
+func run(cfg *config.Config, log *zap.Logger) error {
+	dataDir  := cfg.Daemon.DataDir
+	port     := cfg.Network.Port
+	grpcAddr := cfg.Daemon.GRPCAddr
+	_ = port // used below
 	// ── identity ────────────────────────────────────────────────────────────
 	idPath := filepath.Join(dataDir, "identity.json")
 	var id *identity.Identity
@@ -430,8 +469,10 @@ func run(dataDir, port, grpcAddr string, log *zap.Logger) error {
 	}
 
 	n, err := node.New(ctx, id, node.Config{
-		ListenAddrs: listenAddrs,
-		DataDir:     dataDir,
+		ListenAddrs:    listenAddrs,
+		BootstrapPeers: cfg.Network.BootstrapPeers,
+		IPFSBootstrap:  cfg.IPFSBootstrapEnabled(),
+		DataDir:        dataDir,
 	}, log)
 	if err != nil {
 		return fmt.Errorf("create node: %w", err)
@@ -454,6 +495,34 @@ func run(dataDir, port, grpcAddr string, log *zap.Logger) error {
 	// ── registry ────────────────────────────────────────────────────────────
 	reg := registry.New(n.DHT, id, log)
 	go reg.RunRepublish(ctx)
+
+	// ── name registry ────────────────────────────────────────────────────────
+	nameReg := names.New(n.DHT, id, log)
+	if cfg.Agent.Name != "" {
+		claimCtx, claimCancel := context.WithTimeout(ctx, 15*time.Second)
+		if _, err := nameReg.Claim(claimCtx, cfg.Agent.Name); err != nil {
+			log.Warn("name claim failed", zap.String("name", cfg.Agent.Name), zap.Error(err))
+		}
+		claimCancel()
+		go nameReg.RunRepublish(ctx)
+	}
+
+	// Auto-publish agent card from config
+	if cfg.Agent.Name != "" || cfg.Agent.Description != "" || len(cfg.Agent.Capabilities) > 0 {
+		card := agentCardFromConfig(cfg)
+		cardCtx, cardCancel := context.WithTimeout(ctx, 15*time.Second)
+		if err := reg.Publish(cardCtx, card); err != nil {
+			log.Warn("auto-publish agent card", zap.Error(err))
+		}
+		cardCancel()
+		for _, cap := range cfg.Agent.Capabilities {
+			capCtx, capCancel := context.WithTimeout(ctx, 10*time.Second)
+			if err := reg.AdvertiseCapability(capCtx, cap); err != nil {
+				log.Warn("advertise capability", zap.String("cap", cap), zap.Error(err))
+			}
+			capCancel()
+		}
+	}
 
 	// ── gossip ──────────────────────────────────────────────────────────────
 	gm := gossip.New(n.PubSub, log)
@@ -506,7 +575,7 @@ func run(dataDir, port, grpcAddr string, log *zap.Logger) error {
 	}
 
 	rpc.SetVersion(version)
-	srv := rpc.New(id, ib, ob, ts, reg, gm, bs, dlv, tm, nm, wh, n, n.Addrs(), log)
+	srv := rpc.New(id, ib, ob, ts, reg, gm, bs, dlv, tm, nm, wh, nameReg, n, n.Addrs(), log)
 	grpcServer := grpc.NewServer()
 	pb.RegisterA2ANodeServer(grpcServer, srv)
 	pb.RegisterDiagServer(grpcServer, srv)

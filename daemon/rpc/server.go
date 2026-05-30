@@ -23,6 +23,7 @@ import (
 	"github.com/sahilpohare/p2p-a2a/daemon/tasks"
 	"github.com/sahilpohare/p2p-a2a/daemon/thread"
 	"github.com/sahilpohare/p2p-a2a/daemon/webhook"
+	"github.com/sahilpohare/p2p-a2a/daemon/names"
 	"github.com/google/uuid"
 )
 
@@ -65,6 +66,7 @@ type Server struct {
 	threads   *thread.Manager
 	networks  *network.Manager
 	webhooks  *webhook.Dispatcher
+	nameReg   *names.Registry
 	node      *node.Node
 	addrs     []string
 	startedAt time.Time
@@ -84,6 +86,7 @@ func New(
 	tm *thread.Manager,
 	nm *network.Manager,
 	wh *webhook.Dispatcher,
+	nr *names.Registry,
 	n *node.Node,
 	addrs []string,
 	log *zap.Logger,
@@ -100,6 +103,7 @@ func New(
 		threads:   tm,
 		networks:  nm,
 		webhooks:  wh,
+		nameReg:   nr,
 		node:      n,
 		addrs:     addrs,
 		startedAt: time.Now(),

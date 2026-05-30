@@ -23,7 +23,8 @@ import (
 // Config holds node configuration.
 type Config struct {
 	ListenAddrs    []string
-	BootstrapPeers []string
+	BootstrapPeers []string // explicit bootstrap peers (multiaddr strings)
+	IPFSBootstrap  bool     // if true, also use IPFS public bootstrap peers (default true)
 	DataDir        string
 }
 
@@ -94,7 +95,7 @@ func New(ctx context.Context, id *identity.Identity, cfg Config, log *zap.Logger
 	}
 
 	// bootstrap
-	if err := n.bootstrap(ctx, cfg.BootstrapPeers); err != nil {
+	if err := n.bootstrap(ctx, cfg); err != nil {
 		log.Warn("bootstrap incomplete", zap.Error(err))
 	}
 
@@ -127,33 +128,34 @@ func (n *Node) Addrs() []string {
 
 // ─── internal ────────────────────────────────────────────────────────────────
 
-func (n *Node) bootstrap(ctx context.Context, peers []string) error {
+func (n *Node) bootstrap(ctx context.Context, cfg Config) error {
 	var bootstrapPeers []peer.AddrInfo
 
-	if len(peers) == 0 {
-		// convert default bootstrap multiaddrs to AddrInfo
+	// Always include IPFS public bootstrap peers unless explicitly disabled.
+	if cfg.IPFSBootstrap {
 		for _, ma := range dht.DefaultBootstrapPeers {
 			ai, err := peer.AddrInfoFromP2pAddr(ma)
 			if err != nil {
-				n.log.Debug("skip default bootstrap peer", zap.Error(err))
+				n.log.Debug("skip ipfs bootstrap peer", zap.Error(err))
 				continue
 			}
 			bootstrapPeers = append(bootstrapPeers, *ai)
 		}
-	} else {
-		for _, p := range peers {
-			ma, err := multiaddr.NewMultiaddr(p)
-			if err != nil {
-				n.log.Warn("invalid bootstrap peer", zap.String("addr", p), zap.Error(err))
-				continue
-			}
-			ai, err := peer.AddrInfoFromP2pAddr(ma)
-			if err != nil {
-				n.log.Warn("parse bootstrap peer", zap.Error(err))
-				continue
-			}
-			bootstrapPeers = append(bootstrapPeers, *ai)
+	}
+
+	// Add any explicit peers from config / CLI.
+	for _, p := range cfg.BootstrapPeers {
+		ma, err := multiaddr.NewMultiaddr(p)
+		if err != nil {
+			n.log.Warn("invalid bootstrap peer", zap.String("addr", p), zap.Error(err))
+			continue
 		}
+		ai, err := peer.AddrInfoFromP2pAddr(ma)
+		if err != nil {
+			n.log.Warn("parse bootstrap peer", zap.Error(err))
+			continue
+		}
+		bootstrapPeers = append(bootstrapPeers, *ai)
 	}
 
 	connected := 0

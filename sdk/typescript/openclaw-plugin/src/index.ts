@@ -18,7 +18,7 @@
  */
 
 import { Type } from "@sinclair/typebox";
-import { A2AClient, defaultAddr, type Task, type Obj } from "./client.js";
+import { A2AClient, defaultAddr, type Task, type Obj, type NetworkInfo } from "./client.js";
 
 // ── plugin config schema ──────────────────────────────────────────────────────
 
@@ -40,6 +40,10 @@ function getClient(config: { grpcAddr?: string }): A2AClient {
 }
 
 // ── formatting helpers ────────────────────────────────────────────────────────
+
+function fmtNetwork(net: NetworkInfo): string {
+  return `${net.id.slice(0, 8)}  ${net.name}  (creator: ${net.creatorDid.slice(0, 16)}...)`;
+}
 
 function fmtTask(task: Task): string {
   const lines = [
@@ -259,6 +263,145 @@ export default {
           `  [h=${e.height} i=${e.index}] ${e.entry.kind}: ${Buffer.from(e.entry.payload).toString("utf8").slice(0, 80)}`
         );
         return text(`${entries.length} entry/entries:\n${lines.join("\n")}`);
+      },
+    });
+
+    // ── diagnostics ───────────────────────────────────────────────────────
+
+    api.registerTool({
+      name: "p2p_health",
+      description: "Return the daemon's health: version, DID, peer count, uptime.",
+      parameters: Type.Object({}),
+      async execute(_: string, _p: unknown, cfg: { grpcAddr?: string }) {
+        const h = await C(cfg).health();
+        return text(
+          `Daemon health:\n  Version: ${h.version}\n  DID:     ${h.did}\n  Peers:   ${h.peerCount}\n  Uptime:  ${h.uptimeSecs.toFixed(1)}s`
+        );
+      },
+    });
+
+    api.registerTool({
+      name: "p2p_ping",
+      description: "Measure round-trip latency to a peer by DID. Empty DID = loopback.",
+      parameters: Type.Object({
+        did: Type.Optional(Type.String({ description: "Peer DID (empty = loopback)" })),
+      }),
+      async execute(_: string, p: { did?: string }, cfg: { grpcAddr?: string }) {
+        const r = await C(cfg).ping(p.did ?? "");
+        if (!r.reachable) return text(`Peer ${p.did || "loopback"} unreachable: ${r.error}`);
+        return text(`Ping ${r.did || "loopback"}: ${r.latencyMs.toFixed(1)}ms`);
+      },
+    });
+
+    // ── pub/sub ───────────────────────────────────────────────────────────
+
+    api.registerTool({
+      name: "p2p_publish",
+      description: "Publish a UTF-8 message to a GossipSub topic on the mesh.",
+      parameters: Type.Object({
+        topic:   Type.String({ description: "GossipSub topic name" }),
+        payload: Type.String({ description: "UTF-8 text payload" }),
+      }),
+      async execute(_: string, p: { topic: string; payload: string }, cfg: { grpcAddr?: string }) {
+        await C(cfg).publish(p.topic, p.payload);
+        return text(`Published to topic '${p.topic}'.`);
+      },
+    });
+
+    // ── webhooks ──────────────────────────────────────────────────────────
+
+    api.registerTool({
+      name: "p2p_set_webhook",
+      description: "Configure a webhook URL to receive daemon events via HTTP POST.",
+      parameters: Type.Object({
+        url:    Type.String({ description: "HTTP endpoint URL" }),
+        secret: Type.Optional(Type.String({ description: "Shared secret for X-MoltMesh-Secret header" })),
+      }),
+      async execute(_: string, p: { url: string; secret?: string }, cfg: { grpcAddr?: string }) {
+        const configured = await C(cfg).setWebhook(p.url, p.secret ?? "");
+        return text(`Webhook configured: ${configured}`);
+      },
+    });
+
+    api.registerTool({
+      name: "p2p_get_webhook",
+      description: "Return the currently configured webhook URL.",
+      parameters: Type.Object({}),
+      async execute(_: string, _p: unknown, cfg: { grpcAddr?: string }) {
+        const url = await C(cfg).getWebhook();
+        return text(url ? `Webhook: ${url}` : "No webhook configured.");
+      },
+    });
+
+    api.registerTool({
+      name: "p2p_clear_webhook",
+      description: "Remove the configured webhook.",
+      parameters: Type.Object({}),
+      async execute(_: string, _p: unknown, cfg: { grpcAddr?: string }) {
+        await C(cfg).clearWebhook();
+        return text("Webhook cleared.");
+      },
+    });
+
+    // ── networks ──────────────────────────────────────────────────────────
+
+    api.registerTool({
+      name: "p2p_network_create",
+      description: "Create a named agent group. The creator is automatically a member.",
+      parameters: Type.Object({
+        name: Type.String({ description: "Human-readable network name" }),
+      }),
+      async execute(_: string, p: { name: string }, cfg: { grpcAddr?: string }) {
+        const net = await C(cfg).createNetwork(p.name);
+        return text(`Network created.\n  ID:   ${net.id}\n  Name: ${net.name}`);
+      },
+    });
+
+    api.registerTool({
+      name: "p2p_network_join",
+      description: "Join an existing named network by its ID.",
+      parameters: Type.Object({
+        networkId: Type.String({ description: "Network UUID" }),
+      }),
+      async execute(_: string, p: { networkId: string }, cfg: { grpcAddr?: string }) {
+        const net = await C(cfg).joinNetwork(p.networkId);
+        return text(`Joined network '${net.name}' (${net.id}).`);
+      },
+    });
+
+    api.registerTool({
+      name: "p2p_network_leave",
+      description: "Leave a network.",
+      parameters: Type.Object({
+        networkId: Type.String({ description: "Network UUID" }),
+      }),
+      async execute(_: string, p: { networkId: string }, cfg: { grpcAddr?: string }) {
+        await C(cfg).leaveNetwork(p.networkId);
+        return text(`Left network ${p.networkId}.`);
+      },
+    });
+
+    api.registerTool({
+      name: "p2p_network_list",
+      description: "List all networks this agent belongs to.",
+      parameters: Type.Object({}),
+      async execute(_: string, _p: unknown, cfg: { grpcAddr?: string }) {
+        const nets = await C(cfg).listNetworks();
+        if (!nets.length) return text("Not a member of any network.");
+        return text([`${nets.length} network(s):`, ...nets.map(n => `  ${fmtNetwork(n)}`)].join("\n"));
+      },
+    });
+
+    api.registerTool({
+      name: "p2p_network_broadcast",
+      description: "Broadcast a UTF-8 message to all members of a network via GossipSub.",
+      parameters: Type.Object({
+        networkId: Type.String({ description: "Network UUID" }),
+        payload:   Type.String({ description: "UTF-8 text to broadcast" }),
+      }),
+      async execute(_: string, p: { networkId: string; payload: string }, cfg: { grpcAddr?: string }) {
+        await C(cfg).broadcastNetwork(p.networkId, p.payload);
+        return text(`Broadcast sent to network ${p.networkId}.`);
       },
     });
   },
