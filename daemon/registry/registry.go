@@ -9,6 +9,8 @@ import (
 	"time"
 
 	dht "github.com/libp2p/go-libp2p-kad-dht"
+	"github.com/multiformats/go-multihash"
+	cid "github.com/ipfs/go-cid"
 	"go.uber.org/zap"
 
 	pb "github.com/sahilpohare/p2p-a2a/gen/a2a/v1"
@@ -79,23 +81,43 @@ func (r *Registry) Resolve(ctx context.Context, did string) (*pb.AgentCard, erro
 	return &card, nil
 }
 
-// FindByCapability searches the DHT for agents advertising a capability.
+// FindByCapability searches the DHT for agents advertising a capability
+// using FindProviders (the counterpart to Provide/AdvertiseCapability).
+// For each provider found, it resolves their AgentCard from the DHT.
 func (r *Registry) FindByCapability(ctx context.Context, capability string, limit int) ([]*pb.AgentCard, error) {
-	key := capabilityKey(capability)
-	// DHT GetValue returns one record; for multi-value we use SearchValue
-	ch, err := r.dht.SearchValue(ctx, key)
+	c, err := capabilityCID(capability)
 	if err != nil {
-		return nil, fmt.Errorf("dht search %q: %w", capability, err)
+		return nil, fmt.Errorf("capability CID: %w", err)
 	}
 
+	provCh := r.dht.FindProvidersAsync(ctx, c, limit)
 	var cards []*pb.AgentCard
-	for data := range ch {
-		var card pb.AgentCard
-		if err := json.Unmarshal(data, &card); err != nil {
-			r.log.Warn("unmarshal card from search", zap.Error(err))
+	for prov := range provCh {
+		if prov.ID == r.dht.Host().ID() {
+			// skip self
+			if r.card != nil {
+				cards = append(cards, r.card)
+			}
 			continue
 		}
-		cards = append(cards, &card)
+		// Resolve the provider's AgentCard by their peer ID.
+		// We derive a did:key from their public key.
+		pubKey, err := prov.ID.ExtractPublicKey()
+		if err != nil {
+			r.log.Debug("skip provider, cannot extract pubkey", zap.String("peer", prov.ID.String()))
+			continue
+		}
+		rawPub, err := pubKey.Raw()
+		if err != nil {
+			continue
+		}
+		did := identity.DIDFromPubBytes(rawPub)
+		card, err := r.Resolve(ctx, did)
+		if err != nil {
+			r.log.Debug("skip provider, card not found", zap.String("did", did), zap.Error(err))
+			continue
+		}
+		cards = append(cards, card)
 		if limit > 0 && len(cards) >= limit {
 			break
 		}
@@ -103,17 +125,18 @@ func (r *Registry) FindByCapability(ctx context.Context, capability string, limi
 	return cards, nil
 }
 
-// AdvertiseCapability publishes this agent under a capability key in the DHT.
+// AdvertiseCapability announces this agent as a provider of a capability via
+// DHT Provide. Unlike PutValue (single-writer), Provide allows multiple agents
+// to advertise the same capability without overwriting each other.
 func (r *Registry) AdvertiseCapability(ctx context.Context, capability string) error {
 	if r.card == nil {
 		return fmt.Errorf("publish agent card first")
 	}
-	data, err := json.Marshal(r.card)
+	c, err := capabilityCID(capability)
 	if err != nil {
-		return err
+		return fmt.Errorf("capability CID: %w", err)
 	}
-	key := capabilityKey(capability)
-	return r.dht.PutValue(ctx, key, data)
+	return r.dht.Provide(ctx, c, true)
 }
 
 // RunRepublish periodically re-publishes the Agent Card before TTL expiry.
@@ -141,8 +164,14 @@ func dhtKey(did string) string {
 	return "/a2a/agents/" + did
 }
 
-func capabilityKey(capability string) string {
-	return "/a2a/caps/" + capability
+// capabilityCID derives a deterministic CID from a capability name for use
+// with DHT Provide/FindProviders.
+func capabilityCID(capability string) (cid.Cid, error) {
+	hash, err := multihash.Sum([]byte("/a2a/caps/"+capability), multihash.SHA2_256, -1)
+	if err != nil {
+		return cid.Undef, err
+	}
+	return cid.NewCidV1(cid.Raw, hash), nil
 }
 
 func cardCanonical(card *pb.AgentCard) ([]byte, error) {

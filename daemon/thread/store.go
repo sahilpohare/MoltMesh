@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	_ "github.com/mattn/go-sqlite3"
+	"github.com/sahilpohare/p2p-a2a/pkg/sqlite"
 	pb "github.com/sahilpohare/p2p-a2a/gen/a2a/v1"
 	"google.golang.org/protobuf/proto"
 )
@@ -17,7 +17,7 @@ type Store struct {
 }
 
 func NewStore(path string) (*Store, error) {
-	db, err := sql.Open("sqlite3", path+"?_journal=WAL&_busy_timeout=5000")
+	db, err := sqlite.Open(path)
 	if err != nil {
 		return nil, fmt.Errorf("open thread db: %w", err)
 	}

@@ -11,7 +11,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
+	"net/url"
+	"strings"
 	"sync"
 	"time"
 
@@ -58,11 +61,55 @@ func New(log *zap.Logger) *Dispatcher {
 }
 
 // Set configures the webhook URL and optional secret.
-func (d *Dispatcher) Set(url, secret string) {
+// Returns an error if the URL points to a private/internal network.
+func (d *Dispatcher) Set(rawURL, secret string) error {
+	if err := validateWebhookURL(rawURL); err != nil {
+		return fmt.Errorf("invalid webhook URL: %w", err)
+	}
 	d.mu.Lock()
-	d.url = url
+	d.url = rawURL
 	d.secret = secret
 	d.mu.Unlock()
+	return nil
+}
+
+// validateWebhookURL rejects URLs targeting localhost, private networks,
+// link-local, and cloud metadata endpoints.
+func validateWebhookURL(rawURL string) error {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return fmt.Errorf("parse URL: %w", err)
+	}
+	if u.Scheme != "https" && u.Scheme != "http" {
+		return fmt.Errorf("scheme %q not allowed, use http or https", u.Scheme)
+	}
+	host := u.Hostname()
+
+	// Block obvious hostnames
+	lower := strings.ToLower(host)
+	if lower == "localhost" || lower == "metadata.google.internal" {
+		return fmt.Errorf("host %q is not allowed", host)
+	}
+
+	// Resolve and check IPs
+	ips, err := net.LookupHost(host)
+	if err != nil {
+		return fmt.Errorf("resolve host %q: %w", host, err)
+	}
+	for _, ipStr := range ips {
+		ip := net.ParseIP(ipStr)
+		if ip == nil {
+			continue
+		}
+		if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
+			return fmt.Errorf("host %q resolves to private/internal IP %s", host, ipStr)
+		}
+		// Block cloud metadata (169.254.169.254)
+		if ip.Equal(net.ParseIP("169.254.169.254")) {
+			return fmt.Errorf("host %q resolves to cloud metadata IP", host)
+		}
+	}
+	return nil
 }
 
 // Clear disables webhook delivery.

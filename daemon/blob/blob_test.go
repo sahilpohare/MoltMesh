@@ -74,7 +74,7 @@ func TestGet_RoundTrip(t *testing.T) {
 
 func TestGet_NotFound(t *testing.T) {
 	s := newTestStore(t)
-	_, err := s.Get("sha256:doesnotexist")
+	_, err := s.Get("sha256:0000000000000000000000000000000000000000000000000000000000000000")
 	if err != ErrNotFound {
 		t.Errorf("expected ErrNotFound, got %v", err)
 	}

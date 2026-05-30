@@ -49,6 +49,20 @@ func newInbox(t *testing.T) *inbox.Inbox {
 
 // ─── tests ────────────────────────────────────────────────────────────────────
 
+// didFromHost derives the did:key DID from a libp2p host's public key.
+func didFromHost(t *testing.T, h host.Host) string {
+	t.Helper()
+	pubKey, err := h.ID().ExtractPublicKey()
+	if err != nil {
+		t.Fatalf("ExtractPublicKey: %v", err)
+	}
+	raw, err := pubKey.Raw()
+	if err != nil {
+		t.Fatalf("Raw: %v", err)
+	}
+	return identity.DIDFromPubBytes(raw)
+}
+
 func TestSendDirect_DeliveredToInbox(t *testing.T) {
 	log, _ := zap.NewDevelopment()
 
@@ -64,14 +78,12 @@ func TestSendDirect_DeliveredToInbox(t *testing.T) {
 	// Sender Deliverer (nil registry — using SendDirect)
 	senderDlv := deliver.New(senderHost, nil, newInbox(t), log)
 
-	senderID, err := identity.Generate()
-	if err != nil {
-		t.Fatalf("identity.Generate: %v", err)
-	}
+	// Derive DID from the sender's libp2p host key so it matches the peer identity.
+	senderDID := didFromHost(t, senderHost)
 
 	msg := &pb.Message{
 		Id:      "test-msg-001",
-		FromDid: senderID.DID,
+		FromDid: senderDID,
 		ToDid:   "did:key:zReceiver",
 		Kind:    pb.MessageKind_MESSAGE_KIND_TEXT,
 	}
@@ -93,7 +105,7 @@ func TestSendDirect_DeliveredToInbox(t *testing.T) {
 	if msgs[0].Id != "test-msg-001" {
 		t.Errorf("message ID mismatch: %q", msgs[0].Id)
 	}
-	if msgs[0].FromDid != senderID.DID {
+	if msgs[0].FromDid != senderDID {
 		t.Errorf("FromDid mismatch: %q", msgs[0].FromDid)
 	}
 }
@@ -109,13 +121,16 @@ func TestSendDirect_MultipleMessages(t *testing.T) {
 	deliver.New(h2, nil, ib, log)
 	dlv := deliver.New(h1, nil, newInbox(t), log)
 
+	senderDID := didFromHost(t, h1)
+
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	for i := 0; i < 3; i++ {
 		msg := &pb.Message{
-			Id:   fmt.Sprintf("msg-%d", i),
-			Kind: pb.MessageKind_MESSAGE_KIND_TEXT,
+			Id:      fmt.Sprintf("msg-%d", i),
+			FromDid: senderDID,
+			Kind:    pb.MessageKind_MESSAGE_KIND_TEXT,
 		}
 		if err := dlv.SendDirect(ctx, h2.ID(), msg); err != nil {
 			t.Fatalf("SendDirect msg-%d: %v", i, err)

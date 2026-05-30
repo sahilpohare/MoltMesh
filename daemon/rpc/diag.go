@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/network"
+	"github.com/sahilpohare/p2p-a2a/pkg/p2putil"
 	pb "github.com/sahilpohare/p2p-a2a/gen/a2a/v1"
 )
 
@@ -41,7 +42,7 @@ func (s *Server) Ping(ctx context.Context, req *pb.PingRequest) (*pb.PingRespons
 		}}}, nil
 	}
 
-	addrInfo, err := peerAddrInfo(card.Multiaddrs)
+	addrInfo, err := p2putil.AddrsToAddrInfo(card.Multiaddrs)
 	if err != nil {
 		return &pb.PingResponse{Results: []*pb.PingResult{{
 			TargetDid: req.TargetDid,

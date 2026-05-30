@@ -61,7 +61,9 @@ func (s *Server) SetWebhook(ctx context.Context, req *pb.SetWebhookRequest) (*pb
 	if req.Url == "" {
 		return nil, fmt.Errorf("url is required")
 	}
-	s.webhooks.Set(req.Url, req.Secret)
+	if err := s.webhooks.Set(req.Url, req.Secret); err != nil {
+		return nil, err
+	}
 	s.log.Info("webhook configured", zap.String("url", req.Url))
 	return &pb.WebhookResponse{Url: req.Url}, nil
 }

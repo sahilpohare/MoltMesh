@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	_ "github.com/mattn/go-sqlite3"
+	"github.com/sahilpohare/p2p-a2a/pkg/sqlite"
 
 	pb "github.com/sahilpohare/p2p-a2a/gen/a2a/v1"
 	"google.golang.org/protobuf/proto"
@@ -21,7 +21,7 @@ type Inbox struct {
 
 // New opens (or creates) the inbox database at the given path.
 func New(path string) (*Inbox, error) {
-	db, err := sql.Open("sqlite3", path+"?_journal=WAL&_busy_timeout=5000")
+	db, err := sqlite.Open(path)
 	if err != nil {
 		return nil, fmt.Errorf("open inbox db: %w", err)
 	}
@@ -32,6 +32,8 @@ func New(path string) (*Inbox, error) {
 }
 
 // Put stores an incoming message and notifies live subscribers.
+// The DB write is synchronous (so we never ACK before persisting),
+// but subscriber fan-out is async to unblock the network stream.
 func (b *Inbox) Put(msg *pb.Message) error {
 	data, err := proto.Marshal(msg)
 	if err != nil {
@@ -45,7 +47,7 @@ func (b *Inbox) Put(msg *pb.Message) error {
 	if err != nil {
 		return err
 	}
-	b.notify(msg)
+	go b.notify(msg)
 	return nil
 }
 
@@ -113,19 +115,7 @@ func (b *Inbox) Get(threadID, taskID string, unreadOnly bool, limit int, since i
 	}
 	defer rows.Close()
 
-	var msgs []*pb.Message
-	for rows.Next() {
-		var data []byte
-		if err := rows.Scan(&data); err != nil {
-			return nil, err
-		}
-		var msg pb.Message
-		if err := proto.Unmarshal(data, &msg); err != nil {
-			return nil, err
-		}
-		msgs = append(msgs, &msg)
-	}
-	return msgs, rows.Err()
+	return sqlite.ScanProtos(rows, func() *pb.Message { return &pb.Message{} })
 }
 
 // Ack marks a message as read.

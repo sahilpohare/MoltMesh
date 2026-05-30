@@ -20,20 +20,31 @@ package deliver
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-msgio"
-	"github.com/multiformats/go-multiaddr"
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/sahilpohare/p2p-a2a/pkg/p2putil"
 	pb "github.com/sahilpohare/p2p-a2a/gen/a2a/v1"
 	"github.com/sahilpohare/p2p-a2a/daemon/inbox"
+	"github.com/sahilpohare/p2p-a2a/daemon/identity"
 	"github.com/sahilpohare/p2p-a2a/daemon/registry"
 )
+
+// marshalBufPool reduces GC pressure by reusing marshal buffers on the
+// send hot path. Each buffer starts at 4KB and grows as needed.
+var marshalBufPool = sync.Pool{
+	New: func() any {
+		b := make([]byte, 0, 4096)
+		return &b
+	},
+}
 
 const (
 	Protocol      = "/a2a/msg/1.0.0"
@@ -86,7 +97,7 @@ func (d *Deliverer) Send(ctx context.Context, msg *pb.Message) error {
 	}
 
 	// 2. Parse multiaddrs and connect
-	addrInfo, err := addrsToAddrInfo(card.Multiaddrs)
+	addrInfo, err := p2putil.AddrsToAddrInfo(card.Multiaddrs)
 	if err != nil {
 		return fmt.Errorf("parse multiaddrs for %q: %w", msg.ToDid, err)
 	}
@@ -110,14 +121,19 @@ func (d *Deliverer) sendToPeer(ctx context.Context, peerID peer.ID, msg *pb.Mess
 	defer s.Close()
 	s.SetDeadline(time.Now().Add(streamTimeout)) //nolint:errcheck
 
-	data, err := proto.Marshal(msg)
+	bufp := marshalBufPool.Get().(*[]byte)
+	data, err := proto.MarshalOptions{}.MarshalAppend((*bufp)[:0], msg)
 	if err != nil {
+		marshalBufPool.Put(bufp)
 		return fmt.Errorf("marshal message: %w", err)
 	}
 	w := msgio.NewWriter(s)
 	if err := w.WriteMsg(data); err != nil {
+		marshalBufPool.Put(bufp)
 		return fmt.Errorf("write message: %w", err)
 	}
+	*bufp = data[:0]
+	marshalBufPool.Put(bufp)
 
 	ack := make([]byte, 1)
 	if _, err := s.Read(ack); err != nil {
@@ -157,6 +173,34 @@ func (d *Deliverer) receiveHandler(ib *inbox.Inbox) network.StreamHandler {
 			return
 		}
 
+		// Verify the sender's DID matches the libp2p peer identity.
+		// The stream's remote peer is authenticated by libp2p's secure
+		// transport, so we derive the expected DID from the peer's
+		// public key and reject mismatches to prevent spoofing.
+		remotePeer := s.Conn().RemotePeer()
+		remotePubKey, err := remotePeer.ExtractPublicKey()
+		if err != nil {
+			d.log.Warn("extract remote peer pubkey", zap.Error(err))
+			s.Write([]byte{0x00}) //nolint:errcheck
+			return
+		}
+		rawPub, err := remotePubKey.Raw()
+		if err != nil {
+			d.log.Warn("extract raw pubkey", zap.Error(err))
+			s.Write([]byte{0x00}) //nolint:errcheck
+			return
+		}
+		expectedDID := identity.DIDFromPubBytes(rawPub)
+		if msg.FromDid != expectedDID {
+			d.log.Warn("sender DID mismatch",
+				zap.String("claimed", msg.FromDid),
+				zap.String("expected", expectedDID),
+				zap.String("peer", remotePeer.String()),
+			)
+			s.Write([]byte{0x00}) //nolint:errcheck
+			return
+		}
+
 		if err := ib.Put(&msg); err != nil {
 			d.log.Warn("inbox put", zap.String("msg_id", msg.Id), zap.Error(err))
 			s.Write([]byte{0x00}) //nolint:errcheck
@@ -173,27 +217,3 @@ func (d *Deliverer) receiveHandler(ib *inbox.Inbox) network.StreamHandler {
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
-// addrsToAddrInfo parses a list of multiaddr strings and returns a peer.AddrInfo.
-// All addrs must embed the same peer ID (p2p component).
-func addrsToAddrInfo(addrs []string) (*peer.AddrInfo, error) {
-	var maddrs []multiaddr.Multiaddr
-	for _, a := range addrs {
-		ma, err := multiaddr.NewMultiaddr(a)
-		if err != nil {
-			continue // skip malformed
-		}
-		maddrs = append(maddrs, ma)
-	}
-	if len(maddrs) == 0 {
-		return nil, fmt.Errorf("no valid multiaddrs")
-	}
-	// peer.AddrInfosFromP2pAddrs deduplicates peer ID and collects all addrs
-	infos, err := peer.AddrInfosFromP2pAddrs(maddrs...)
-	if err != nil {
-		return nil, err
-	}
-	if len(infos) == 0 {
-		return nil, fmt.Errorf("could not extract peer info")
-	}
-	return &infos[0], nil
-}

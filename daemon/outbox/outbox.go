@@ -4,9 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"sync"
 	"time"
 
-	_ "github.com/mattn/go-sqlite3"
+	"github.com/sahilpohare/p2p-a2a/pkg/sqlite"
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/proto"
 
@@ -31,7 +32,7 @@ type Outbox struct {
 
 // New opens (or creates) the outbox database at the given path.
 func New(path string, deliver DeliverFunc, log *zap.Logger) (*Outbox, error) {
-	db, err := sql.Open("sqlite3", path+"?_journal=WAL&_busy_timeout=5000")
+	db, err := sqlite.Open(path)
 	if err != nil {
 		return nil, fmt.Errorf("open outbox db: %w", err)
 	}
@@ -75,19 +76,7 @@ func (o *Outbox) List(status string, limit int) ([]*pb.Message, error) {
 	}
 	defer rows.Close()
 
-	var msgs []*pb.Message
-	for rows.Next() {
-		var data []byte
-		if err := rows.Scan(&data); err != nil {
-			return nil, err
-		}
-		var msg pb.Message
-		if err := proto.Unmarshal(data, &msg); err != nil {
-			return nil, err
-		}
-		msgs = append(msgs, &msg)
-	}
-	return msgs, rows.Err()
+	return sqlite.ScanProtos(rows, func() *pb.Message { return &pb.Message{} })
 }
 
 // Run starts the retry loop. Blocks until ctx is cancelled.
@@ -119,12 +108,16 @@ func (o *Outbox) flush(ctx context.Context) {
 		o.log.Warn("outbox expire", zap.Error(err))
 	}
 
-	// fetch pending messages
+	// Atomically claim pending messages by transitioning to 'processing'.
+	// This prevents overlapping flushes from picking the same batch.
 	rows, err := o.db.Query(`
-		SELECT id, payload, attempts FROM outbox
-		WHERE status = 'pending' AND (last_attempt IS NULL OR last_attempt < ?)
-		LIMIT 50`,
-		time.Now().Add(-retryBaseDelay).UnixMilli(),
+		UPDATE outbox SET status = 'processing', last_attempt = ?
+		WHERE id IN (
+			SELECT id FROM outbox
+			WHERE status = 'pending' AND (last_attempt IS NULL OR last_attempt < ?)
+			LIMIT 50
+		) RETURNING id, payload, attempts`,
+		now, time.Now().Add(-retryBaseDelay).UnixMilli(),
 	)
 	if err != nil {
 		o.log.Warn("outbox query", zap.Error(err))
@@ -147,30 +140,37 @@ func (o *Outbox) flush(ctx context.Context) {
 	}
 	rows.Close()
 
+	var wg sync.WaitGroup
 	for _, item := range items {
-		var msg pb.Message
-		if err := proto.Unmarshal(item.payload, &msg); err != nil {
-			o.log.Warn("outbox unmarshal", zap.String("id", item.id), zap.Error(err))
-			continue
-		}
-
-		err := o.deliver(ctx, &msg)
-
-		attempts := item.attempts + 1
-		if err == nil {
-			o.db.Exec(`UPDATE outbox SET status = 'delivered', attempts = ?, last_attempt = ? WHERE id = ?`,
-				attempts, now, item.id)
-			o.log.Debug("outbox delivered", zap.String("id", item.id))
-		} else {
-			status := "pending"
-			if attempts >= maxAttempts {
-				status = "failed"
-				o.log.Warn("outbox max attempts", zap.String("id", item.id))
+		wg.Add(1)
+		go func(item pending) {
+			defer wg.Done()
+			var msg pb.Message
+			if err := proto.Unmarshal(item.payload, &msg); err != nil {
+				o.log.Warn("outbox unmarshal", zap.String("id", item.id), zap.Error(err))
+				return
 			}
-			o.db.Exec(`UPDATE outbox SET status = ?, attempts = ?, last_attempt = ? WHERE id = ?`,
-				status, attempts, now, item.id)
-		}
+
+			err := o.deliver(ctx, &msg)
+
+			attempts := item.attempts + 1
+			finishNow := time.Now().UnixMilli()
+			if err == nil {
+				o.db.Exec(`UPDATE outbox SET status = 'delivered', attempts = ?, last_attempt = ? WHERE id = ?`,
+					attempts, finishNow, item.id)
+				o.log.Debug("outbox delivered", zap.String("id", item.id))
+			} else {
+				status := "pending"
+				if attempts >= maxAttempts {
+					status = "failed"
+					o.log.Warn("outbox max attempts", zap.String("id", item.id))
+				}
+				o.db.Exec(`UPDATE outbox SET status = ?, attempts = ?, last_attempt = ? WHERE id = ?`,
+					status, attempts, finishNow, item.id)
+			}
+		}(item)
 	}
+	wg.Wait()
 }
 
 func migrate(db *sql.DB) error {

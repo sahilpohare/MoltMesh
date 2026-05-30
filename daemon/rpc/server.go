@@ -8,8 +8,7 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/libp2p/go-libp2p/core/peer"
-	"github.com/multiformats/go-multiaddr"
+	"github.com/sahilpohare/p2p-a2a/pkg/p2putil"
 	pb "github.com/sahilpohare/p2p-a2a/gen/a2a/v1"
 	"github.com/sahilpohare/p2p-a2a/daemon/blob"
 	"github.com/sahilpohare/p2p-a2a/daemon/deliver"
@@ -27,27 +26,7 @@ import (
 	"github.com/google/uuid"
 )
 
-func peerAddrInfo(addrs []string) (*peer.AddrInfo, error) {
-	var maddrs []multiaddr.Multiaddr
-	for _, a := range addrs {
-		ma, err := multiaddr.NewMultiaddr(a)
-		if err != nil {
-			continue
-		}
-		maddrs = append(maddrs, ma)
-	}
-	if len(maddrs) == 0 {
-		return nil, fmt.Errorf("no valid multiaddrs")
-	}
-	infos, err := peer.AddrInfosFromP2pAddrs(maddrs...)
-	if err != nil {
-		return nil, err
-	}
-	if len(infos) == 0 {
-		return nil, fmt.Errorf("could not extract peer info")
-	}
-	return &infos[0], nil
-}
+
 
 // Server implements the A2ANode gRPC service.
 type Server struct {
@@ -347,7 +326,10 @@ func (s *Server) SubscribeTaskEvents(req *pb.TaskID, stream pb.A2ANode_Subscribe
 
 // ─── Files ────────────────────────────────────────────────────────────────────
 
-const fileChunkSize = 256 * 1024 // 256 KB per streaming chunk
+const (
+	fileChunkSize = 256 * 1024  // 256 KB per streaming chunk
+	maxBlobSize   = 256 << 20   // 256 MB — max blob we'll cache from a remote peer
+)
 
 // SendFile stores a file in the local blob store and returns an Artifact.
 // Files ≤ 64 KB are returned with Artifact.Inline populated (no disk write).
@@ -486,13 +468,16 @@ func (s *Server) FetchFile(req *pb.FetchFileRequest, stream pb.A2ANode_FetchFile
 		if resolveErr != nil {
 			return fmt.Errorf("resolve %q: %w", req.FromDid, resolveErr)
 		}
-		addrInfo, parseErr := peerAddrInfo(card.Multiaddrs)
+		addrInfo, parseErr := p2putil.AddrsToAddrInfo(card.Multiaddrs)
 		if parseErr != nil {
 			return fmt.Errorf("parse multiaddrs: %w", parseErr)
 		}
 		data, err = s.dlv.FetchBlob(stream.Context(), addrInfo.ID, req.Cid)
 		if err != nil {
 			return fmt.Errorf("fetch blob from peer: %w", err)
+		}
+		if len(data) > maxBlobSize {
+			return fmt.Errorf("fetched blob exceeds max size (%d > %d)", len(data), maxBlobSize)
 		}
 		// Cache locally
 		if saveErr := s.blobs.Save(req.Cid, data); saveErr != nil {

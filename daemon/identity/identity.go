@@ -120,6 +120,11 @@ func didKeyFromPub(pub ed25519.PublicKey) string {
 	return "did:key:z" + encoded
 }
 
+// DIDFromPubBytes derives a did:key DID from raw Ed25519 public key bytes.
+func DIDFromPubBytes(pub []byte) string {
+	return didKeyFromPub(ed25519.PublicKey(pub))
+}
+
 // PubKeyFromDID extracts the Ed25519 public key from a did:key DID.
 func PubKeyFromDID(did string) (ed25519.PublicKey, error) {
 	const prefix = "did:key:z"

@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	_ "github.com/mattn/go-sqlite3"
+	"github.com/sahilpohare/p2p-a2a/pkg/sqlite"
 )
 
 // Network describes a named agent group.
@@ -38,7 +38,7 @@ type Store struct {
 
 // New opens (or creates) the network store at the given path.
 func New(path string) (*Store, error) {
-	db, err := sql.Open("sqlite3", path+"?_journal=WAL&_busy_timeout=5000")
+	db, err := sqlite.Open(path)
 	if err != nil {
 		return nil, fmt.Errorf("open network db: %w", err)
 	}

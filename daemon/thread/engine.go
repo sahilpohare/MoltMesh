@@ -102,6 +102,11 @@ func (e *Engine) handleCommit(block *pb.ThreadBlock) {
 			select {
 			case sub <- ep:
 			default:
+				e.log.Warn("subscriber channel full, dropping entry",
+					zap.Int64("height", block.Height),
+					zap.Int("index", i),
+					zap.String("thread", block.ThreadId),
+				)
 			}
 		}
 	}

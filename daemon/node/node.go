@@ -26,6 +26,8 @@ type Config struct {
 	BootstrapPeers []string // explicit bootstrap peers (multiaddr strings)
 	IPFSBootstrap  bool     // if true, also use IPFS public bootstrap peers (default true)
 	DataDir        string
+	ConnLowWater   int      // min connections before pruning (default 50)
+	ConnHighWater  int      // max connections before pruning (default 200)
 }
 
 // Node wraps a libp2p host with DHT and GossipSub.
@@ -48,7 +50,14 @@ func New(ctx context.Context, id *identity.Identity, cfg Config, log *zap.Logger
 		listenAddrs = append(listenAddrs, ma)
 	}
 
-	connMgr, err := connmgr.NewConnManager(50, 200, connmgr.WithGracePeriod(30*time.Second))
+	lo, hi := cfg.ConnLowWater, cfg.ConnHighWater
+	if lo <= 0 {
+		lo = 50
+	}
+	if hi <= 0 {
+		hi = 200
+	}
+	connMgr, err := connmgr.NewConnManager(lo, hi, connmgr.WithGracePeriod(30*time.Second))
 	if err != nil {
 		return nil, fmt.Errorf("conn manager: %w", err)
 	}
