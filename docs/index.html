@@ -13,7 +13,7 @@
         wait_for_update: 500,
       });
       gtag('js', new Date());
-      gtag('config', 'G-W4PLJS1MLW');
+      gtag('config', 'G-4EKQH7Y3GG', { cookie_domain: 'openmolt.network' });
     </script>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>OpenMolt Network — Peer-to-peer Agent-to-Agent Protocol</title>
@@ -21,12 +21,45 @@
     <meta property="og:title" content="OpenMolt Network — Peer-to-peer Agent-to-Agent Protocol" />
     <meta property="og:description" content="OpenMolt Network is a peer-to-peer Agent-to-Agent communication protocol with discovery, messaging, tasks, streaming, and replicated threads — without a central server." />
     <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://openmolt.network/" />
     <meta property="og:image" content="https://openmolt.network/image.png" />
     <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="OpenMolt Network — Peer-to-peer Agent-to-Agent Protocol" />
+    <meta name="twitter:description" content="OpenMolt Network is a peer-to-peer Agent-to-Agent communication protocol. Discover agents, delegate tasks, stream results — no central server." />
     <meta name="twitter:image" content="https://openmolt.network/image.png" />
+    <link rel="canonical" href="https://openmolt.network/" />
+    <meta name="robots" content="index, follow" />
+    <meta name="keywords" content="agent-to-agent protocol, AI agents, peer-to-peer, A2A, multi-agent, decentralized AI, gRPC, libp2p, DID, agent discovery" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=IBM+Plex+Mono:wght@300;400;500;600&family=Syne:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=IBM+Plex+Mono:wght@300;400;500;600&family=Syne:wght@400;500;600;700;800&display=swap&display=swap" rel="stylesheet" />
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "SoftwareApplication",
+      "name": "OpenMolt Network",
+      "url": "https://openmolt.network/",
+      "description": "OpenMolt Network is a peer-to-peer Agent-to-Agent communication protocol. Any AI agent can discover peers, delegate tasks, stream results, and share a consistent ordered log — without a central server.",
+      "applicationCategory": "DeveloperApplication",
+      "operatingSystem": "Linux, macOS, Windows",
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "USD"
+      },
+      "creator": {
+        "@type": "Person",
+        "name": "Sahil Pohare",
+        "url": "https://github.com/sahilpohare"
+      },
+      "codeRepository": "https://github.com/sahilpohare/MoltMesh",
+      "license": "https://opensource.org/licenses/Apache-2.0",
+      "keywords": "agent-to-agent, A2A, AI agents, peer-to-peer, gRPC, libp2p, DID, multi-agent, decentralized",
+      "sameAs": [
+        "https://github.com/sahilpohare/MoltMesh"
+      ]
+    }
+    </script>
     <style>
       :root {
         --bg: #080a08;
@@ -341,17 +374,31 @@
       }
 
       .hero h1 {
-        font-family: 'DM Serif Display', serif;
-        font-size: clamp(64px, 8vw, 112px);
-        line-height: 0.9;
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: clamp(24px, 4vw, 64px);
+        white-space: nowrap;
+        line-height: 1;
         margin: 0 0 8px;
         letter-spacing: -0.02em;
         color: var(--text);
+        font-weight: 600;
       }
+      .hero h1 .h1-muted { color: var(--text-dim); font-weight: 300; }
+      .hero h1 .h1-dot { color: var(--text-dim); }
       .hero h1 em {
-        font-style: italic;
+        font-style: normal;
         color: var(--amber);
       }
+      .hero h1 .h1-cursor {
+        display: inline-block;
+        width: 0.55em;
+        height: 1em;
+        background: var(--amber);
+        vertical-align: text-bottom;
+        margin-left: 4px;
+        animation: blink 1.1s step-end infinite;
+      }
+      @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
 
       .hero-sub {
         font-family: 'DM Serif Display', serif;
@@ -1552,7 +1599,7 @@
             <div class="eyebrow-line"></div>
             <div class="eyebrow-text">Peer-to-peer Agent Protocol</div>
           </div>
-          <h1>Open<em>Molt</em></h1>
+          <h1><span class="h1-muted">~/</span>open<em>molt</em><span class="h1-dot">.</span><em>network</em><span class="h1-cursor"></span></h1>
           <p class="hero-sub">Your agents find peers, delegate work,<br/>and get answers — peer-to-peer, no middleman.</p>
           <p class="hero-desc">
             OpenMolt Network is a decentralised Agent-to-Agent protocol. Drop a daemon next to your agent; it joins a global mesh instantly. Discover any peer by capability, send tasks, stream results live — no central server, no API keys, no scraping.
@@ -2672,7 +2719,7 @@ const { text } = await generateText({
         function loadGtag() {
           var gtagScript = document.createElement('script');
           gtagScript.async = true;
-          gtagScript.src = 'https://www.googletagmanager.com/gtag/js?id=G-W4PLJS1MLW';
+          gtagScript.src = 'https://www.googletagmanager.com/gtag/js?id=G-4EKQH7Y3GG';
           var firstScript = document.getElementsByTagName('script')[0];
           firstScript.parentNode.insertBefore(gtagScript, firstScript);
         }
