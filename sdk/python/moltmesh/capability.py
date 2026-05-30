@@ -1,4 +1,4 @@
-"""Capability helpers for p2p-a2a."""
+"""Capability helpers for MoltMesh."""
 
 from __future__ import annotations
 

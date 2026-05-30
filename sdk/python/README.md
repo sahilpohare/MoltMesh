@@ -1,14 +1,14 @@
-# p2p-a2a Python SDK
+# MoltMesh Python SDK
 
 Python client for the p2p-a2a daemon, plus CrewAI tools for agent delegation over the p2p network.
 
 ## Install
 
 ```bash
-pip install p2p-a2a
+pip install moltmesh
 
 # CrewAI integration
-pip install "p2p-a2a[crewai]"
+pip install "moltmesh[crewai]"
 ```
 
 Requires a running p2p-a2a daemon. See the [project root README](../../README.md) for setup.
@@ -20,7 +20,7 @@ Requires a running p2p-a2a daemon. See the [project root README](../../README.md
 All daemon operations go through `A2AClient`. Use it as a context manager or call `connect()`/`close()` manually.
 
 ```python
-from p2p_a2a import A2AClient
+from moltmesh import A2AClient
 
 with A2AClient() as client:
     print(client.did)   # "did:key:z6Mk..."
@@ -55,7 +55,7 @@ for card in client.find_agents("a2a:v1:cap:text-generation", limit=5):
 card = client.get_agent_card("did:key:z6Mk...")
 
 # publish your own card
-from p2p_a2a import pb
+from moltmesh import pb
 client.publish_agent_card(pb.AgentCard(
     did=client.did,
     name="my-agent",
@@ -68,7 +68,7 @@ client.publish_agent_card(pb.AgentCard(
 ## DID utilities
 
 ```python
-from p2p_a2a import normalize_did, short_did
+from moltmesh import normalize_did, short_did
 
 normalize_did("z6Mk...")          # "did:key:z6Mk..."
 short_did("did:key:z6Mk...")      # "did:key:...k..."
@@ -79,7 +79,7 @@ short_did("did:key:z6Mk...")      # "did:key:...k..."
 ## Capability utilities
 
 ```python
-from p2p_a2a import CoreCapability, capability_id, capability_name, normalize_capability
+from moltmesh import CoreCapability, capability_id, capability_name, normalize_capability
 
 capability_id("text-generation")                 # "a2a:v1:cap:text-generation"
 normalize_capability("a2a:v1:cap:text-generation")  # unchanged
@@ -233,13 +233,13 @@ Single-node (`f=0`): sub-millisecond.
 ## CrewAI integration
 
 ```bash
-pip install "p2p-a2a[crewai]"
+pip install "moltmesh[crewai]"
 ```
 
 ```python
 from crewai import Agent, Task, Crew
-from p2p_a2a import A2AClient
-from p2p_a2a.tools_crewai import (
+from moltmesh import A2AClient
+from moltmesh.tools_crewai import (
     SendMessageTool,
     CreateTaskTool,
     GetTaskTool,
@@ -310,7 +310,7 @@ class SummariseTool(CreateTaskTool):
 Import from the package directly — no need to touch protobuf:
 
 ```python
-from p2p_a2a import STATUS_SUBMITTED, STATUS_WORKING, STATUS_COMPLETED, STATUS_FAILED, STATUS_CANCELLED
+from moltmesh import STATUS_SUBMITTED, STATUS_WORKING, STATUS_COMPLETED, STATUS_FAILED, STATUS_CANCELLED
 
 # or from the client instance
 client.STATUS_COMPLETED

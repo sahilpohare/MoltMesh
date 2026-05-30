@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "p2p-a2a"
+name = "moltmesh"
 version = "0.1.0"
 description = "Python SDK for the p2p-a2a daemon — gRPC client, CrewAI tools"
 requires-python = ">=3.10"
@@ -17,4 +17,4 @@ dependencies = [
 crewai = ["crewai>=0.80.0", "pydantic>=2.0"]
 
 [tool.hatch.build.targets.wheel]
-packages = ["p2p_a2a"]
+packages = ["moltmesh"]

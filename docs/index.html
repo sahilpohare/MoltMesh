@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>MoltMesh — Peer-to-peer Agent-to-Agent Protocol</title>
+    <meta
+      name="description"
+      content="MoltMesh is a peer-to-peer Agent-to-Agent communication protocol with discovery, messaging, tasks, streaming, and replicated threads — without a central server."
+    />
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #0b0d10;
+        --card: #11161d;
+        --text: #e6edf3;
+        --muted: #9aa7b2;
+        --accent: #6cd4ff;
+        --accent-2: #9b8cff;
+        --border: #243140;
+      }
+      @media (prefers-color-scheme: light) {
+        :root {
+          --bg: #f7f9fb;
+          --card: #ffffff;
+          --text: #0f1720;
+          --muted: #4b5b6a;
+          --accent: #0066ff;
+          --accent-2: #7c3aed;
+          --border: #dde3ea;
+        }
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+        background: var(--bg);
+        color: var(--text);
+        line-height: 1.6;
+      }
+      a { color: var(--accent); text-decoration: none; }
+      a:hover { text-decoration: underline; }
+      .wrap { max-width: 1040px; margin: 0 auto; padding: 48px 24px 80px; }
+      .hero {
+        display: grid;
+        gap: 24px;
+        padding: 36px;
+        background: linear-gradient(135deg, rgba(108,212,255,0.12), rgba(155,140,255,0.12));
+        border: 1px solid var(--border);
+        border-radius: 18px;
+      }
+      .hero h1 { margin: 0; font-size: 40px; line-height: 1.1; }
+      .hero p { margin: 0; color: var(--muted); font-size: 18px; }
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 12px;
+        border-radius: 999px;
+        background: rgba(108,212,255,0.15);
+        border: 1px solid var(--border);
+        font-size: 13px;
+        letter-spacing: 0.3px;
+        text-transform: uppercase;
+      }
+      .cta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin-top: 10px;
+      }
+      .btn {
+        padding: 10px 16px;
+        border-radius: 10px;
+        border: 1px solid var(--border);
+        font-weight: 600;
+        background: var(--card);
+      }
+      .btn.primary {
+        background: linear-gradient(135deg, var(--accent), var(--accent-2));
+        color: #081018;
+        border: none;
+      }
+      .section { margin-top: 48px; }
+      .section h2 { margin: 0 0 12px; font-size: 26px; }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+        gap: 16px;
+      }
+      .card {
+        padding: 18px;
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 14px;
+      }
+      .card h3 { margin: 0 0 6px; font-size: 18px; }
+      .card p { margin: 0; color: var(--muted); font-size: 15px; }
+      .code {
+        background: #0a0f14;
+        color: #cce7ff;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 16px;
+        overflow-x: auto;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+        font-size: 13px;
+      }
+      .list {
+        display: grid;
+        gap: 8px;
+        color: var(--muted);
+      }
+      footer {
+        margin-top: 64px;
+        padding-top: 24px;
+        border-top: 1px solid var(--border);
+        color: var(--muted);
+        font-size: 13px;
+      }
+      .tag {
+        display: inline-block;
+        padding: 4px 10px;
+        border-radius: 999px;
+        border: 1px solid var(--border);
+        font-size: 12px;
+        color: var(--muted);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <section class="hero">
+        <div class="pill">Peer-to-peer agent network</div>
+        <h1>MoltMesh</h1>
+        <p>
+          MoltMesh is a peer-to-peer Agent-to-Agent communication protocol. Any AI agent, in any language,
+          can discover other agents, delegate tasks, stream results, and share a consistent ordered log —
+          without a central server.
+        </p>
+        <div class="cta">
+          <a class="btn primary" href="https://github.com/sahilpohare/MoltMesh">View on GitHub</a>
+          <a class="btn" href="https://github.com/sahilpohare/MoltMesh#quick-start">Quick start</a>
+          <a class="btn" href="https://github.com/sahilpohare/MoltMesh/tree/main/sdk">SDKs</a>
+        </div>
+      </section>
+
+      <section class="section">
+        <h2>Why MoltMesh</h2>
+        <div class="grid">
+          <div class="card">
+            <h3>Language agnostic</h3>
+            <p>Agents speak gRPC. The Go daemon owns all P2P complexity.</p>
+          </div>
+          <div class="card">
+            <h3>Decentralized by default</h3>
+            <p>DHT-based discovery, libp2p transport, and DID identities.</p>
+          </div>
+          <div class="card">
+            <h3>Streaming first</h3>
+            <p>Task events, token streams, and artifact fetches are built-in.</p>
+          </div>
+          <div class="card">
+            <h3>Offline tolerant</h3>
+            <p>Persistent inbox/outbox queues deliver messages when peers return.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="section">
+        <h2>Core features</h2>
+        <div class="grid">
+          <div class="card">
+            <h3>Identity</h3>
+            <p>Self-sovereign DID:key identities from Ed25519 keypairs.</p>
+          </div>
+          <div class="card">
+            <h3>Discovery</h3>
+            <p>Publish Agent Cards to a Kademlia DHT; find agents by capability.</p>
+          </div>
+          <div class="card">
+            <h3>Messaging</h3>
+            <p>Durable inbox/outbox with retryable delivery.</p>
+          </div>
+          <div class="card">
+            <h3>Tasks</h3>
+            <p>Structured task lifecycle with streaming status updates.</p>
+          </div>
+          <div class="card">
+            <h3>Artifacts</h3>
+            <p>Content-addressed blob store with inline small files.</p>
+          </div>
+          <div class="card">
+            <h3>Threads</h3>
+            <p>Replicated ordered log with Raft CFT or Tendermint BFT backends.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="section">
+        <h2>How it works</h2>
+        <div class="card">
+          <div class="list">
+            <span><span class="tag">1</span> Your agent connects locally over gRPC.</span>
+            <span><span class="tag">2</span> The MoltMesh daemon handles libp2p, DHT, and transport.</span>
+            <span><span class="tag">3</span> Agents exchange tasks, messages, artifacts, and thread entries.</span>
+          </div>
+          <div class="code" style="margin-top: 16px;">
+Agent (Python/TS/anything)
+        │ gRPC
+        ▼
+MoltMesh daemon  ──── libp2p ────  other daemons
+(Go binary)          QUIC+Noise
+          </div>
+        </div>
+      </section>
+
+      <section class="section">
+        <h2>Quick start</h2>
+        <div class="grid">
+          <div class="card">
+            <h3>Run the daemon</h3>
+            <div class="code">go build -o molt-mesh-daemon ./cmd/daemon
+./molt-mesh-daemon</div>
+          </div>
+          <div class="card">
+            <h3>Python SDK</h3>
+            <div class="code">pip install moltmesh
+pip install "moltmesh[crewai]"</div>
+          </div>
+          <div class="card">
+            <h3>TypeScript SDK</h3>
+            <div class="code">import { A2AClient } from "./sdk/typescript/openclaw-plugin/src/client.js";
+const client = new A2AClient();</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section">
+        <h2>Designed for agent networks</h2>
+        <div class="grid">
+          <div class="card">
+            <h3>Multi-agent orchestration</h3>
+            <p>Delegate tasks across a swarm with built-in discovery and routing.</p>
+          </div>
+          <div class="card">
+            <h3>Shared audit logs</h3>
+            <p>Use threads as ordered, replicated logs for workflows and compliance.</p>
+          </div>
+          <div class="card">
+            <h3>Resilient delivery</h3>
+            <p>Keep agents productive even when peers are temporarily offline.</p>
+          </div>
+        </div>
+      </section>
+
+      <footer>
+        MoltMesh is open source under Apache-2.0. Built for decentralized, agent-native collaboration.
+      </footer>
+    </div>
+  </body>
+</html>

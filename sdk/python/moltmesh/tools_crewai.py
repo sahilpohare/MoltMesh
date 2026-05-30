@@ -1,11 +1,11 @@
 """
-p2p_a2a.tools_crewai — CrewAI BaseTool wrappers for the p2p-a2a daemon.
+moltmesh.tools_crewai — CrewAI BaseTool wrappers for the p2p-a2a daemon.
 
-Install extras:  pip install "p2p-a2a[crewai]"
+Install extras:  pip install "moltmesh[crewai]"
 
 Usage:
-    from p2p_a2a import A2AClient
-    from p2p_a2a.tools_crewai import (
+    from moltmesh import A2AClient
+    from moltmesh.tools_crewai import (
         SendMessageTool,
         CreateTaskTool,
         GetTaskTool,
@@ -38,11 +38,11 @@ try:
     from crewai.tools import BaseTool
 except ImportError as e:
     raise ImportError(
-        "crewai is required for this module. Install with: pip install 'p2p-a2a[crewai]'"
+        "crewai is required for this module. Install with: pip install 'moltmesh[crewai]'"
     ) from e
 
 if TYPE_CHECKING:
-    from p2p_a2a.client import A2AClient
+    from moltmesh.client import A2AClient
 
 
 # ── input schemas ─────────────────────────────────────────────────────────────

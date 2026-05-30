@@ -1,8 +1,8 @@
 """
-p2p_a2a.client — gRPC client for the p2p-a2a daemon.
+moltmesh.client — gRPC client for the p2p-a2a daemon.
 
 Usage:
-    from p2p_a2a import A2AClient
+    from moltmesh import A2AClient
 
     with A2AClient() as client:
         me = client.get_identity()
@@ -36,8 +36,8 @@ from typing import Iterator
 
 import grpc
 
-from p2p_a2a.proto import a2a_pb2 as pb
-from p2p_a2a.proto import a2a_pb2_grpc as rpc
+from moltmesh.proto import a2a_pb2 as pb
+from moltmesh.proto import a2a_pb2_grpc as rpc
 
 
 def _default_addr() -> str:

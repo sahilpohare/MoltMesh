@@ -1,4 +1,4 @@
-"""DID helpers for p2p-a2a."""
+"""DID helpers for MoltMesh."""
 
 from __future__ import annotations
 
