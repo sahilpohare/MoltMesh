@@ -29,6 +29,7 @@ Usage:
 
 from __future__ import annotations
 
+import base64
 import os
 import time
 from pathlib import Path
@@ -38,13 +39,18 @@ import grpc
 
 from moltmesh.proto import a2a_pb2 as pb
 from moltmesh.proto import a2a_pb2_grpc as rpc
+from moltmesh.ext_stub import (
+    DiagStub, ExtStub,
+    HealthInfo, PeerInfo, PingResult,
+    TopicMessage, NetworkInfo, NetworkMember, BroadcastMessage,
+)
 
 
 def _default_addr() -> str:
     env = os.environ.get("A2A_GRPC_ADDR", "")
     if env:
         return env
-    sock = Path.home() / ".p2p-a2a" / "a2a.sock"
+    sock = Path.home() / ".moltmesh" / "a2a.sock"
     return f"unix://{sock}"
 
 
@@ -66,12 +72,16 @@ class A2AClient:
         self._addr = addr or _default_addr()
         self._channel: grpc.Channel | None = None
         self._stub: rpc.A2ANodeStub | None = None
+        self._diag: DiagStub | None = None
+        self._ext: ExtStub | None = None
 
     # ── lifecycle ────────────────────────────────────────────────────────────
 
     def connect(self) -> "A2AClient":
         self._channel = grpc.insecure_channel(self._addr)
         self._stub = rpc.A2ANodeStub(self._channel)
+        self._diag = DiagStub(self._channel)
+        self._ext = ExtStub(self._channel)
         return self
 
     def close(self) -> None:
@@ -79,6 +89,8 @@ class A2AClient:
             self._channel.close()
             self._channel = None
             self._stub = None
+            self._diag = None
+            self._ext = None
 
     def __enter__(self) -> "A2AClient":
         return self.connect()
@@ -93,6 +105,18 @@ class A2AClient:
                 "not connected — use 'with A2AClient() as c' or call connect()"
             )
         return self._stub
+
+    @property
+    def diag(self) -> DiagStub:
+        if self._diag is None:
+            raise RuntimeError("not connected")
+        return self._diag
+
+    @property
+    def ext(self) -> ExtStub:
+        if self._ext is None:
+            raise RuntimeError("not connected")
+        return self._ext
 
     # ── identity ─────────────────────────────────────────────────────────────
 
@@ -433,3 +457,147 @@ class A2AClient:
         return pb.Artifact(
             cid=cid, mime_type=mime_type, filename=filename, size=len(data)
         )
+
+    # ── diagnostics ───────────────────────────────────────────────────────────
+
+    def health(self) -> HealthInfo:
+        """Return daemon version, DID, peer count, and uptime."""
+        r = self.diag.Health({})
+        return HealthInfo(
+            version=r.get("version", ""),
+            did=r.get("did", ""),
+            peer_count=int(r.get("peerCount", 0)),
+            uptime_secs=float(r.get("uptimeSecs", 0)),
+        )
+
+    def ping(self, did: str = "") -> PingResult:
+        """
+        Measure round-trip latency to a peer by DID.
+        Omit did to ping the local daemon (loopback).
+        """
+        r = self.diag.Ping({"did": did})
+        # r is a PingResponse containing a list of results
+        results = r.get("results", [])
+        if not results:
+            return PingResult(did=did, reachable=False, error="no result")
+        item = results[0]
+        return PingResult(
+            did=item.get("did", did),
+            latency_ms=float(item.get("latencyMs", 0)),
+            reachable=bool(item.get("reachable", False)),
+            error=item.get("error", ""),
+        )
+
+    def list_peers(self) -> list[PeerInfo]:
+        """Return all currently connected libp2p peers."""
+        r = self.diag.ListPeers({})
+        peers = r.get("peers", [])
+        return [
+            PeerInfo(
+                peer_id=p.get("peerId", ""),
+                multiaddrs=p.get("multiaddrs", []),
+                did=p.get("did", ""),
+            )
+            for p in peers
+        ]
+
+    # ── pub/sub ───────────────────────────────────────────────────────────────
+
+    def publish(self, topic: str, payload: bytes | str) -> None:
+        """Publish a message to a GossipSub topic."""
+        if isinstance(payload, str):
+            payload = payload.encode()
+        self.ext.Publish({
+            "topic": topic,
+            "payload": base64.b64encode(payload).decode(),
+        })
+
+    def subscribe_topic(self, topic: str) -> Iterator[TopicMessage]:
+        """Stream messages from a GossipSub topic."""
+        stream = self.ext.SubscribeTopic({"topic": topic})
+        for item in stream:
+            payload_b64 = item.get("payload", "")
+            yield TopicMessage(
+                topic=item.get("topic", topic),
+                payload=base64.b64decode(payload_b64) if payload_b64 else b"",
+                emitted_at=int(item.get("emittedAt", 0)),
+            )
+
+    # ── webhooks ──────────────────────────────────────────────────────────────
+
+    def set_webhook(self, url: str, secret: str = "") -> str:
+        """Configure webhook URL. Returns the configured URL."""
+        r = self.ext.SetWebhook({"url": url, "secret": secret})
+        return r.get("url", url)
+
+    def clear_webhook(self) -> None:
+        """Remove webhook configuration."""
+        self.ext.ClearWebhook({})
+
+    def get_webhook(self) -> str:
+        """Return the currently configured webhook URL (empty if none)."""
+        r = self.ext.GetWebhook({})
+        return r.get("url", "")
+
+    # ── networks ──────────────────────────────────────────────────────────────
+
+    def create_network(self, name: str) -> NetworkInfo:
+        """Create a named agent group. Creator is automatically a member."""
+        r = self.ext.CreateNetwork({"name": name})
+        return _net_from_dict(r)
+
+    def join_network(self, network_id: str) -> NetworkInfo:
+        """Join an existing network by ID."""
+        r = self.ext.JoinNetwork({"network_id": network_id})
+        return _net_from_dict(r)
+
+    def leave_network(self, network_id: str) -> None:
+        """Leave a network."""
+        self.ext.LeaveNetwork({"network_id": network_id})
+
+    def list_networks(self) -> list[NetworkInfo]:
+        """List all networks this agent belongs to."""
+        r = self.ext.ListNetworks({})
+        return [_net_from_dict(n) for n in r.get("networks", [])]
+
+    def network_members(self, network_id: str) -> list[NetworkMember]:
+        """Return members of a network."""
+        r = self.ext.NetworkMembers({"network_id": network_id})
+        return [
+            NetworkMember(
+                did=m.get("did", ""),
+                joined_at=int(m.get("joinedAt", 0)),
+            )
+            for m in r.get("members", [])
+        ]
+
+    def broadcast_network(self, network_id: str, payload: bytes | str) -> None:
+        """Multicast a message to all members of a network."""
+        if isinstance(payload, str):
+            payload = payload.encode()
+        self.ext.BroadcastNetwork({
+            "network_id": network_id,
+            "payload": base64.b64encode(payload).decode(),
+        })
+
+    def subscribe_network(self, network_id: str) -> Iterator[BroadcastMessage]:
+        """Stream broadcasts from a network."""
+        stream = self.ext.SubscribeNetwork({"network_id": network_id})
+        for item in stream:
+            payload_b64 = item.get("payload", "")
+            yield BroadcastMessage(
+                network_id=item.get("networkId", network_id),
+                payload=base64.b64decode(payload_b64) if payload_b64 else b"",
+                emitted_at=int(item.get("emittedAt", 0)),
+            )
+
+
+# ── helpers ───────────────────────────────────────────────────────────────────
+
+def _net_from_dict(d: dict) -> NetworkInfo:
+    return NetworkInfo(
+        id=d.get("id", ""),
+        name=d.get("name", ""),
+        creator_did=d.get("creatorDid", ""),
+        created_at=int(d.get("createdAt", 0)),
+    )

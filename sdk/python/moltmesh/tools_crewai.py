@@ -230,3 +230,196 @@ class GetInboxTool(BaseTool):
         for m in msgs:
             lines.append(f"  [{m.id[:8]}] from={m.from_did}  kind={m.kind}")
         return "\n".join(lines)
+
+
+# ── PubSub tools ──────────────────────────────────────────────────────────────
+
+class PublishInput(BaseModel):
+    topic: str = Field(description="GossipSub topic name")
+    payload: str = Field(description="UTF-8 text payload to publish")
+
+
+class SubscribeTopicInput(BaseModel):
+    topic: str = Field(description="GossipSub topic to subscribe to")
+    max_messages: int = Field(default=10, description="Stop after this many messages")
+
+
+class PublishTool(BaseTool):
+    name: str = "p2p_publish"
+    description: str = "Publish a message to a GossipSub topic on the mesh."
+    args_schema: Type[BaseModel] = PublishInput
+    client: Any
+
+    class Config:
+        arbitrary_types_allowed = True
+
+    def _run(self, topic: str, payload: str) -> str:
+        self.client.publish(topic, payload)
+        return f"Published to topic '{topic}'."
+
+
+# ── Webhook tools ─────────────────────────────────────────────────────────────
+
+class SetWebhookInput(BaseModel):
+    url: str = Field(description="HTTP endpoint to receive events")
+    secret: str = Field(default="", description="Optional shared secret for X-MoltMesh-Secret header")
+
+
+class SetWebhookTool(BaseTool):
+    name: str = "p2p_set_webhook"
+    description: str = "Configure a webhook URL so external processes receive daemon events."
+    args_schema: Type[BaseModel] = SetWebhookInput
+    client: Any
+
+    class Config:
+        arbitrary_types_allowed = True
+
+    def _run(self, url: str, secret: str = "") -> str:
+        configured = self.client.set_webhook(url, secret)
+        return f"Webhook configured: {configured}"
+
+
+class GetWebhookTool(BaseTool):
+    name: str = "p2p_get_webhook"
+    description: str = "Return the currently configured webhook URL."
+    args_schema: Type[BaseModel] = type("_E", (BaseModel,), {})
+    client: Any
+
+    class Config:
+        arbitrary_types_allowed = True
+
+    def _run(self) -> str:
+        url = self.client.get_webhook()
+        return f"Webhook: {url}" if url else "No webhook configured."
+
+
+# ── Network tools ─────────────────────────────────────────────────────────────
+
+class NetworkNameInput(BaseModel):
+    name: str = Field(description="Human-readable network name")
+
+
+class NetworkIDInput(BaseModel):
+    network_id: str = Field(description="Network UUID")
+
+
+class BroadcastNetworkInput(BaseModel):
+    network_id: str = Field(description="Network UUID")
+    payload: str = Field(description="UTF-8 text to broadcast")
+
+
+class CreateNetworkTool(BaseTool):
+    name: str = "p2p_network_create"
+    description: str = "Create a named agent group. The creator is automatically a member."
+    args_schema: Type[BaseModel] = NetworkNameInput
+    client: Any
+
+    class Config:
+        arbitrary_types_allowed = True
+
+    def _run(self, name: str) -> str:
+        net = self.client.create_network(name)
+        return f"Network created.\n  ID:   {net.id}\n  Name: {net.name}"
+
+
+class JoinNetworkTool(BaseTool):
+    name: str = "p2p_network_join"
+    description: str = "Join an existing named network by its ID."
+    args_schema: Type[BaseModel] = NetworkIDInput
+    client: Any
+
+    class Config:
+        arbitrary_types_allowed = True
+
+    def _run(self, network_id: str) -> str:
+        net = self.client.join_network(network_id)
+        return f"Joined network '{net.name}' ({net.id})."
+
+
+class LeaveNetworkTool(BaseTool):
+    name: str = "p2p_network_leave"
+    description: str = "Leave a network."
+    args_schema: Type[BaseModel] = NetworkIDInput
+    client: Any
+
+    class Config:
+        arbitrary_types_allowed = True
+
+    def _run(self, network_id: str) -> str:
+        self.client.leave_network(network_id)
+        return f"Left network {network_id}."
+
+
+class ListNetworksTool(BaseTool):
+    name: str = "p2p_network_list"
+    description: str = "List all networks this agent belongs to."
+    args_schema: Type[BaseModel] = type("_E", (BaseModel,), {})
+    client: Any
+
+    class Config:
+        arbitrary_types_allowed = True
+
+    def _run(self) -> str:
+        nets = self.client.list_networks()
+        if not nets:
+            return "Not a member of any network."
+        lines = [f"{len(nets)} network(s):"]
+        for n in nets:
+            lines.append(f"  [{n.id[:8]}] {n.name}")
+        return "\n".join(lines)
+
+
+class BroadcastNetworkTool(BaseTool):
+    name: str = "p2p_network_broadcast"
+    description: str = "Broadcast a message to all members of a network via GossipSub."
+    args_schema: Type[BaseModel] = BroadcastNetworkInput
+    client: Any
+
+    class Config:
+        arbitrary_types_allowed = True
+
+    def _run(self, network_id: str, payload: str) -> str:
+        self.client.broadcast_network(network_id, payload)
+        return f"Broadcast sent to network {network_id}."
+
+
+# ── Diagnostics tools ─────────────────────────────────────────────────────────
+
+class HealthTool(BaseTool):
+    name: str = "p2p_health"
+    description: str = "Return the daemon's health: version, DID, peer count, uptime."
+    args_schema: Type[BaseModel] = type("_E", (BaseModel,), {})
+    client: Any
+
+    class Config:
+        arbitrary_types_allowed = True
+
+    def _run(self) -> str:
+        h = self.client.health()
+        return (
+            f"Daemon health:\n"
+            f"  Version:    {h.version}\n"
+            f"  DID:        {h.did}\n"
+            f"  Peers:      {h.peer_count}\n"
+            f"  Uptime:     {h.uptime_secs:.1f}s"
+        )
+
+
+class PingInput(BaseModel):
+    did: str = Field(default="", description="DID to ping (empty = loopback)")
+
+
+class PingTool(BaseTool):
+    name: str = "p2p_ping"
+    description: str = "Measure round-trip latency to a peer by DID."
+    args_schema: Type[BaseModel] = PingInput
+    client: Any
+
+    class Config:
+        arbitrary_types_allowed = True
+
+    def _run(self, did: str = "") -> str:
+        r = self.client.ping(did)
+        if not r.reachable:
+            return f"Peer {did or 'loopback'} unreachable: {r.error}"
+        return f"Ping {r.did or 'loopback'}: {r.latency_ms:.1f}ms"

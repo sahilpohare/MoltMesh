@@ -10,6 +10,15 @@ from moltmesh.capability import (
     normalize_capability,
 )
 from moltmesh.did import normalize_did, short_did
+from moltmesh.ext_stub import (
+    HealthInfo,
+    PeerInfo,
+    PingResult,
+    TopicMessage,
+    NetworkInfo,
+    NetworkMember,
+    BroadcastMessage,
+)
 from moltmesh.proto import a2a_pb2 as pb
 
 # Task status constants at package level
@@ -37,4 +46,11 @@ __all__ = [
     "normalize_capability",
     "normalize_did",
     "short_did",
+    "HealthInfo",
+    "PeerInfo",
+    "PingResult",
+    "TopicMessage",
+    "NetworkInfo",
+    "NetworkMember",
+    "BroadcastMessage",
 ]

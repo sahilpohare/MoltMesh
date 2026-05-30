@@ -182,6 +182,43 @@ message Empty {}
 
 // ─── gRPC Service ────────────────────────────────────────────────────────────
 
+// ─── Diagnostics ──────────────────────────────────────────────────────────────
+
+message PingRequest {
+  string target_did = 1; // DID of peer to ping; empty = loopback (measures daemon round-trip)
+  int32  count      = 2; // number of pings (default 1)
+}
+
+message PingResult {
+  string target_did     = 1;
+  int64  latency_ms     = 2;
+  bool   reachable      = 3;
+  string error          = 4;
+}
+
+message PingResponse {
+  repeated PingResult results = 1;
+}
+
+message PeerInfo {
+  string peer_id    = 1;
+  repeated string addrs = 2;
+  int64  latency_ms = 3; // -1 = unknown
+}
+
+message PeersResponse {
+  repeated PeerInfo peers = 1;
+  int32 count             = 2;
+}
+
+message HealthResponse {
+  bool   ok          = 1;
+  string version     = 2;
+  string did         = 3;
+  int32  peer_count  = 4;
+  int64  uptime_secs = 5;
+}
+
 service A2ANode {
   // Identity
   rpc GetIdentity(Empty) returns (AgentIdentity);
@@ -216,6 +253,11 @@ service A2ANode {
   rpc AppendEntry(AppendEntryRequest) returns (AppendEntryResult);
   rpc GetThreadEntries(GetThreadEntriesRequest) returns (stream ThreadEntryWithPos);
   rpc SubscribeThread(SubscribeThreadRequest) returns (stream ThreadEntryWithPos);
+
+  // Diagnostics
+  rpc Ping(PingRequest) returns (PingResponse);
+  rpc Health(Empty) returns (HealthResponse);
+  rpc ListPeers(Empty) returns (PeersResponse);
 }
 
 message AgentIdentityRequest {

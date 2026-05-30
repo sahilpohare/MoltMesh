@@ -2,6 +2,8 @@ package registry
 
 import (
 	"context"
+	"crypto/ed25519"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"time"
@@ -33,18 +35,17 @@ func New(d *dht.IpfsDHT, id *identity.Identity, log *zap.Logger) *Registry {
 
 // Publish signs and publishes an Agent Card to the DHT.
 func (r *Registry) Publish(ctx context.Context, card *pb.AgentCard) error {
-	// sign the card
 	card.Did = r.id.DID
 	card.PublicKey = r.id.PublicKeyBase64()
 	card.PublishedAt = time.Now().UnixMilli()
 	card.ExpiresAt = time.Now().Add(agentCardTTL).UnixMilli()
+	card.Signature = "" // clear before signing
 
 	canonical, err := cardCanonical(card)
 	if err != nil {
 		return fmt.Errorf("canonical card: %w", err)
 	}
-	card.Signature = r.id.PublicKeyBase64() // placeholder; real: base64(sign(canonical))
-	_ = r.id.Sign(canonical)               // sign but store properly in real impl
+	card.Signature = base64.StdEncoding.EncodeToString(r.id.Sign(canonical))
 
 	data, err := json.Marshal(card)
 	if err != nil {
@@ -61,7 +62,7 @@ func (r *Registry) Publish(ctx context.Context, card *pb.AgentCard) error {
 	return nil
 }
 
-// Resolve fetches an Agent Card by DID from the DHT.
+// Resolve fetches an Agent Card by DID from the DHT and verifies its signature.
 func (r *Registry) Resolve(ctx context.Context, did string) (*pb.AgentCard, error) {
 	key := dhtKey(did)
 	data, err := r.dht.GetValue(ctx, key)
@@ -71,6 +72,9 @@ func (r *Registry) Resolve(ctx context.Context, did string) (*pb.AgentCard, erro
 	var card pb.AgentCard
 	if err := json.Unmarshal(data, &card); err != nil {
 		return nil, fmt.Errorf("unmarshal card: %w", err)
+	}
+	if err := verifyCard(&card); err != nil {
+		return nil, fmt.Errorf("invalid agent card signature for %q: %w", did, err)
 	}
 	return &card, nil
 }
@@ -142,8 +146,36 @@ func capabilityKey(capability string) string {
 }
 
 func cardCanonical(card *pb.AgentCard) ([]byte, error) {
-	// canonical = JSON of card without signature field
 	tmp := *card
 	tmp.Signature = ""
 	return json.Marshal(tmp)
+}
+
+// verifyCard verifies the Ed25519 signature on a resolved agent card.
+// It extracts the public key from the DID itself (did:key), so no external
+// trust anchor is needed — the DID is the key.
+func verifyCard(card *pb.AgentCard) error {
+	if card.Signature == "" {
+		return fmt.Errorf("card has no signature")
+	}
+
+	pub, err := identity.PubKeyFromDID(card.Did)
+	if err != nil {
+		return fmt.Errorf("extract pubkey from DID: %w", err)
+	}
+
+	sig, err := base64.StdEncoding.DecodeString(card.Signature)
+	if err != nil {
+		return fmt.Errorf("decode signature: %w", err)
+	}
+
+	canonical, err := cardCanonical(card)
+	if err != nil {
+		return fmt.Errorf("canonical card: %w", err)
+	}
+
+	if !ed25519.Verify(pub, canonical, sig) {
+		return fmt.Errorf("signature verification failed")
+	}
+	return nil
 }

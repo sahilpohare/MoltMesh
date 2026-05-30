@@ -18,13 +18,16 @@ The daemon handles all P2P complexity. Agents speak gRPC.
 
 | Feature | How |
 |---|---|
-| **Identity** | `did:key` from Ed25519 keypair. Permanent, portable, self-sovereign. |
+| **Identity** | `did:key` from Ed25519 keypair. Permanent, portable, self-sovereign. Agent Cards are Ed25519-signed and verified on resolve. |
 | **Discovery** | Kademlia DHT. Publish an Agent Card; find agents by capability. |
-| **Messaging** | Persistent inbox/outbox. Messages survive offline peers. |
+| **Messaging** | Persistent inbox/outbox. Messages survive offline peers. Live push via `SubscribeInbox`. |
 | **Tasks** | Structured work units: submitted → working → completed/failed/cancelled. |
 | **Files** | Content-addressed blob store. Small files inline; large files streamed over libp2p. |
 | **Threads** | Ordered, replicated log. Raft CFT (default) or Tendermint BFT. Powered by etcd raft. |
 | **Streaming** | Task events (token chunks, tool calls, status) via GossipSub. No polling. |
+| **Pub/Sub** | Topic-based GossipSub publish/subscribe exposed over gRPC. Any agent can publish or subscribe to arbitrary topics. |
+| **Webhooks** | Configure an HTTP endpoint; the daemon POSTs events (messages, task updates, pubsub) with retries and a shared secret. |
+| **Networks** | Named groups of agents with broadcast messaging and SQLite membership. Multicast to a group with one call. |
 
 ---
 
@@ -46,6 +49,8 @@ go build -o moltmesh-daemon ./cmd/daemon
 
 The daemon CLI supports these commands:
 
+**Daemon management**
+
 | Command | Description | Options |
 |---------|-------------|---------|
 | `start` | Start daemon in foreground | `--data-dir`, `--port`, `--grpc-addr`, `--verbose` |
@@ -55,6 +60,51 @@ The daemon CLI supports these commands:
 | `config` | Show configuration paths | `--data-dir` |
 | `stop` | Gracefully stop daemon (requires running daemon) | `--data-dir`, `--grpc-addr` |
 | `version` | Show daemon version | |
+
+**Diagnostics**
+
+| Command | Description |
+|---------|-------------|
+| `health` | Show version, uptime, DID, peer count |
+| `ping [did]` | Measure latency to a peer (loopback if no DID) |
+| `peers` | List connected libp2p peers |
+
+**PubSub**
+
+| Command | Description |
+|---------|-------------|
+| `publish --topic <t> --payload <p>` | Publish a message to a GossipSub topic |
+| `subscribe-topic --topic <t>` | Stream messages from a topic |
+
+**Webhooks**
+
+| Command | Description |
+|---------|-------------|
+| `set-webhook <url> [--secret <s>]` | Configure webhook endpoint |
+| `clear-webhook` | Remove webhook configuration |
+| `get-webhook` | Show configured webhook URL |
+
+**Networks**
+
+| Command | Description |
+|---------|-------------|
+| `network create <name>` | Create a named agent group |
+| `network join <id>` | Join an existing network |
+| `network leave <id>` | Leave a network |
+| `network list` | List networks you belong to |
+| `network members <id>` | List network members |
+| `network broadcast <id> <payload>` | Broadcast to all network members |
+| `network subscribe <id>` | Stream broadcasts from a network |
+
+**Format utilities** (no daemon required)
+
+| Command | Description |
+|---------|-------------|
+| `format did <did>` | Validate and shorten a `did:key` |
+| `format capability <cap>` | Parse a capability ID |
+| `format multiaddr <addr>` | Shorten a multiaddr |
+| `format bytes <n>` | Human-readable byte size |
+| `format time <unix_ms>` | Format a Unix millisecond timestamp |
 
 **Options:**
 
@@ -276,10 +326,11 @@ For sub-millisecond event delivery (LLM tokens), use GossipSub task events inste
 └──────────────┬──────────────────────────┘
                │ gRPC (Unix socket or TCP)
 ┌──────────────▼──────────────────────────┐
-│  molt-mesh daemon                          │
+│  MoltMesh daemon                         │
 │                                          │
 │  identity   registry   tasks   threads   │
 │  inbox      outbox     blobs   gossip    │
+│  network    webhook    pub/sub           │
 │                                          │
 │  deliver (/a2a/msg/1.0.0 stream)         │
 │  blob    (/a2a/blob/1.0.0 stream)        │
@@ -289,17 +340,21 @@ For sub-millisecond event delivery (LLM tokens), use GossipSub task events inste
 │  P2P network                             │
 │  Kademlia DHT · GossipSub · NAT punch   │
 └─────────────────────────────────────────┘
+               │ outbound HTTP (optional)
+┌──────────────▼──────────────────────────┐
+│  Your HTTP endpoint (webhook receiver)   │
+└─────────────────────────────────────────┘
 ```
 
 ### Key packages
 
 ```
-cmd/daemon/          — binary entrypoint
+cmd/daemon/          — binary entrypoint + CLI
 daemon/
   identity/          — DID generation, Ed25519, signing
   node/              — libp2p host, DHT, GossipSub
-  registry/          — Agent Card publish/resolve via DHT
-  inbox/             — persistent incoming message queue (SQLite)
+  registry/          — Agent Card publish/resolve/verify via DHT
+  inbox/             — persistent incoming queue (SQLite) + live fan-out
   outbox/            — persistent outgoing queue with retry
   deliver/           — libp2p stream protocols for messages and blobs
   blob/              — content-addressed file store (SHA-256 CID)
@@ -312,9 +367,16 @@ daemon/
     gossip.go        — GossipSub bridge
     manager.go       — per-thread engine lifecycle
     store.go         — SQLite persistence
-  gossip/            — GossipSub topic management
-  rpc/               — gRPC server
+  gossip/            — GossipSub topic management + raw Publish/Subscribe
+  network/           — named agent groups, SQLite membership, broadcast
+  webhook/           — HTTP event delivery with retries and HMAC secret
+  rpc/               — gRPC server (A2ANode + Diag + Ext services)
+pkg/
+  did/               — DID validation, parsing, formatting helpers
+  capability/        — capability ID namespace utilities
+  format/            — human-readable output for CLI (tables, DIDs, etc.)
 proto/a2a.proto      — canonical API contract
+gen/a2a/v1/          — hand-written gRPC Go stubs (diag.go, extensions.go)
 sdk/python/          — Python client + CrewAI tools
 sdk/typescript/      — TypeScript client + OpenClaw plugin
 e2e/                 — end-to-end tests
@@ -337,6 +399,16 @@ GossipSub topics:
 | `a2a/tasks/{id}/done` | Task completion |
 | `a2a/agents/{did}/presence` | Heartbeat / presence |
 | `a2a/threads/{id}/consensus` | Raft / Tendermint consensus messages |
+| `a2a/networks/{id}/broadcast` | Network group broadcast |
+| `<user-defined>` | Application pub/sub via `publish` / `subscribe-topic` |
+
+Webhook events (HTTP POST, JSON):
+
+| Event kind | When fired |
+|---|---|
+| `message` | Incoming message delivered to inbox |
+| `task_event` | Task status updated |
+| `pubsub` | Network broadcast received |
 
 ---
 

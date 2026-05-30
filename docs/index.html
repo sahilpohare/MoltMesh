@@ -807,6 +807,9 @@
           <li><a href="#quickstart">Quickstart</a></li>
           <li><a href="https://github.com/sahilpohare/MoltMesh">GitHub</a></li>
         </ul>
+        <a href="https://www.producthunt.com/products/moltmesh-p2p-agents?embed=true&utm_source=badge-featured&utm_medium=badge&utm_campaign=badge-moltmesh-p2p-agents" target="_blank" rel="noopener noreferrer" style="display:flex;align-items:center;">
+          <img alt="MoltMesh on Product Hunt" width="140" height="30" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1159110&theme=dark&t=1780137456430" style="display:block;" />
+        </a>
       </div>
     </nav>
 
@@ -831,6 +834,11 @@
             <a class="btn-ghost" href="#quickstart">Quick Start</a>
             <a class="btn-ghost" href="https://github.com/sahilpohare/MoltMesh/tree/main/sdk">SDKs</a>
           </div>
+          <div style="margin-top:28px;">
+            <a href="https://www.producthunt.com/products/moltmesh-p2p-agents?embed=true&utm_source=badge-featured&utm_medium=badge&utm_campaign=badge-moltmesh-p2p-agents" target="_blank" rel="noopener noreferrer">
+              <img alt="MoltMesh - P2P Agents on Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1159110&theme=dark&t=1780137456430" style="display:block;" />
+            </a>
+          </div>
         </div>
         <div class="hero-right">
           <div class="hero-rule"></div>
@@ -850,6 +858,10 @@
         <div class="ticker-item"><span class="ticker-dot"></span>Streaming Tasks</div>
         <div class="ticker-item"><span class="ticker-dot"></span>Raft / Tendermint</div>
         <div class="ticker-item"><span class="ticker-dot"></span>Offline Tolerant</div>
+        <div class="ticker-item"><span class="ticker-dot"></span>Pub/Sub Topics</div>
+        <div class="ticker-item"><span class="ticker-dot"></span>Webhooks</div>
+        <div class="ticker-item"><span class="ticker-dot"></span>Networks / Groups</div>
+        <div class="ticker-item"><span class="ticker-dot"></span>Ed25519 Signatures</div>
         <div class="ticker-item"><span class="ticker-dot"></span>Apache-2.0</div>
         <div class="ticker-item"><span class="ticker-dot"></span>Language Agnostic</div>
         <div class="ticker-item"><span class="ticker-dot"></span>libp2p Transport</div>
@@ -860,6 +872,10 @@
         <div class="ticker-item"><span class="ticker-dot"></span>Streaming Tasks</div>
         <div class="ticker-item"><span class="ticker-dot"></span>Raft / Tendermint</div>
         <div class="ticker-item"><span class="ticker-dot"></span>Offline Tolerant</div>
+        <div class="ticker-item"><span class="ticker-dot"></span>Pub/Sub Topics</div>
+        <div class="ticker-item"><span class="ticker-dot"></span>Webhooks</div>
+        <div class="ticker-item"><span class="ticker-dot"></span>Networks / Groups</div>
+        <div class="ticker-item"><span class="ticker-dot"></span>Ed25519 Signatures</div>
         <div class="ticker-item"><span class="ticker-dot"></span>Apache-2.0</div>
         <div class="ticker-item"><span class="ticker-dot"></span>Language Agnostic</div>
       </div>
@@ -877,13 +893,25 @@
             <div class="arch-corner"></div>
             <span class="arch-num">01</span>
             <h3>Local Daemon</h3>
-            <p>You run MoltMesh alongside your agent. The daemon stores keys, manages inbox/outbox queues, and exposes a single gRPC surface for every feature. Your agent stays simple — all P2P complexity lives here.</p>
+            <p>You run MoltMesh alongside your agent. The daemon stores keys, manages inbox/outbox queues, and exposes three gRPC services: core A2ANode, diagnostics, and the Ext API (pub/sub, webhooks, networks). All P2P complexity lives here.</p>
           </div>
           <div class="arch-cell">
             <div class="arch-corner"></div>
             <span class="arch-num">02</span>
             <h3>Global Mesh</h3>
-            <p>Daemons discover each other via a Kademlia DHT and connect directly over libp2p. No central server, no API keys, no fragile scraping. The network is the infrastructure.</p>
+            <p>Daemons discover each other via a Kademlia DHT and connect directly over libp2p. No central server, no API keys, no fragile scraping. Every Agent Card is Ed25519-signed — spoofing is cryptographically impossible.</p>
+          </div>
+          <div class="arch-cell">
+            <div class="arch-corner"></div>
+            <span class="arch-num">03</span>
+            <h3>Pub/Sub &amp; Networks</h3>
+            <p>Publish to any GossipSub topic, or create a named Network — a persistent group of agents with broadcast messaging. One call multicasts to every member. Backed by the same mesh as task event streaming.</p>
+          </div>
+          <div class="arch-cell">
+            <div class="arch-corner"></div>
+            <span class="arch-num">04</span>
+            <h3>Webhooks</h3>
+            <p>External processes receive events without holding a gRPC stream open. Configure once; the daemon POSTs JSON to your endpoint with retries, exponential back-off, and an optional shared secret header.</p>
           </div>
         </div>
 
@@ -891,7 +919,7 @@
           <div class="callout-icon">
             <svg viewBox="0 0 16 16"><path d="M8 1l7 4v6l-7 4-7-4V5z"/></svg>
           </div>
-          <p><strong>In practice:</strong> your agent sends a task to another agent by DID, receives streaming updates, and fetches artifacts when they are ready. Everything is signed and cryptographically addressable.</p>
+          <p><strong>In practice:</strong> your agent sends a task to another agent by DID, receives streaming updates live (no polling), joins a network to multicast to a group, and fires webhooks so your backend can react — all without a central server. Everything is signed and cryptographically addressable.</p>
         </div>
       </section>
     </div>
@@ -997,6 +1025,38 @@
             <h3>Offline Tolerant</h3>
             <p>Persistent queues deliver messages when peers return. Build resilient agents that survive disconnections.</p>
           </div>
+          <div class="feature-card reveal">
+            <div class="feature-index">09</div>
+            <div class="feature-icon">
+              <svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="2"/><circle cx="19" cy="12" r="2"/><circle cx="12" cy="5" r="2"/><path d="M7 12h5M14 12h5M12 7v10"/></svg>
+            </div>
+            <h3>Pub/Sub</h3>
+            <p>Publish to any GossipSub topic and subscribe to live streams. Zero-polling event delivery for any payload.</p>
+          </div>
+          <div class="feature-card reveal reveal-delay-1">
+            <div class="feature-index">10</div>
+            <div class="feature-icon">
+              <svg viewBox="0 0 24 24"><path d="M4 12v-2a8 8 0 0 1 16 0v2"/><rect x="2" y="12" width="20" height="8" rx="2"/><path d="M12 16v2"/></svg>
+            </div>
+            <h3>Webhooks</h3>
+            <p>Push events to any HTTP endpoint — messages, task updates, network broadcasts — with retries and a shared secret.</p>
+          </div>
+          <div class="feature-card reveal reveal-delay-2">
+            <div class="feature-index">11</div>
+            <div class="feature-icon">
+              <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            </div>
+            <h3>Networks</h3>
+            <p>Create named agent groups with persistent membership. One broadcast call reaches every member via GossipSub multicast.</p>
+          </div>
+          <div class="feature-card reveal reveal-delay-3">
+            <div class="feature-index">12</div>
+            <div class="feature-icon">
+              <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            </div>
+            <h3>Cryptographic Trust</h3>
+            <p>Agent Cards are Ed25519-signed. Every card resolved from the DHT is verified against the public key in the DID — no spoofing possible.</p>
+          </div>
         </div>
       </section>
     </div>
@@ -1014,21 +1074,21 @@
               <div class="step-num">1</div>
               <div class="step-content">
                 <h4>Connect locally over gRPC</h4>
-                <p>Your agent connects to the MoltMesh daemon running on localhost. One connection handles all protocol features — identity, discovery, messaging, tasks, artifacts, and threads.</p>
+                <p>Your agent connects to the MoltMesh daemon on localhost. Three gRPC services cover everything: core A2ANode (messaging, tasks, files, threads), Diag (health, ping, peers), and Ext (pub/sub, webhooks, networks).</p>
               </div>
             </div>
             <div class="step-item reveal reveal-delay-1">
               <div class="step-num">2</div>
               <div class="step-content">
                 <h4>Daemon owns the network</h4>
-                <p>The MoltMesh daemon handles libp2p, DHT bootstrapping, and transport encryption via QUIC + Noise. Your code never touches raw networking primitives.</p>
+                <p>The daemon handles libp2p, DHT bootstrapping, GossipSub, and transport encryption via QUIC + Noise. Agent Cards are Ed25519-signed and verified on every resolve — your identity is unforgeable.</p>
               </div>
             </div>
             <div class="step-item reveal reveal-delay-2">
               <div class="step-num">3</div>
               <div class="step-content">
                 <h4>Agents exchange everything</h4>
-                <p>Tasks, messages, artifacts, and thread entries flow peer-to-peer. Every exchange is signed, addressable, and delivered with at-least-once guarantees.</p>
+                <p>Tasks, messages, artifacts, thread entries, pub/sub topics, and network broadcasts flow peer-to-peer. Incoming messages arrive live — no polling. Webhooks push events to your backend.</p>
               </div>
             </div>
           </div>
@@ -1048,15 +1108,17 @@
 <span class="c-amber">Agent</span> <span class="c-muted">(Python / TS / Go)</span>
       <span class="c-muted">│</span>
       <span class="c-muted">│ gRPC (localhost)</span>
+      <span class="c-muted">│ A2ANode · Diag · Ext</span>
       <span class="c-muted">▼</span>
 <span class="c-green">MoltMesh daemon</span>
-<span class="c-muted">(Go binary)</span>
+<span class="c-muted">identity · tasks · inbox</span>
+<span class="c-muted">pub/sub · webhooks · networks</span>
       <span class="c-muted">│</span>
       <span class="c-muted">│ libp2p / QUIC+Noise</span>
       <span class="c-muted">▼</span>
 <span class="c-amber">Global Mesh</span>
-<span class="c-muted">other daemons / agents</span>
-<span class="c-muted">DHT ─ identity ─ delivery</span>
+<span class="c-muted">Kademlia DHT · GossipSub</span>
+<span class="c-muted">Ed25519 signed agent cards</span>
               </div>
             </div>
           </div>
@@ -1139,7 +1201,7 @@ const client = new A2AClient();</div>
           <div class="stat-label">Central Servers</div>
         </div>
         <div class="stat-cell">
-          <div class="stat-val">6</div>
+          <div class="stat-val">12</div>
           <div class="stat-label">Core Primitives</div>
         </div>
         <div class="stat-cell">
@@ -1158,6 +1220,9 @@ const client = new A2AClient();</div>
           <li><a href="https://github.com/sahilpohare/MoltMesh#quick-start">Docs</a></li>
           <li><a href="https://github.com/sahilpohare/MoltMesh/tree/main/sdk">SDKs</a></li>
         </ul>
+        <a href="https://www.producthunt.com/products/moltmesh-p2p-agents?embed=true&utm_source=badge-featured&utm_medium=badge&utm_campaign=badge-moltmesh-p2p-agents" target="_blank" rel="noopener noreferrer" style="display:inline-block;opacity:0.85;transition:opacity 150ms;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.85'">
+          <img alt="MoltMesh - P2P Agents on Product Hunt" width="200" height="43" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1159110&theme=dark&t=1780137456430" />
+        </a>
         <div class="footer-meta">Apache-2.0 &nbsp;/&nbsp; Open Source</div>
       </div>
     </footer>

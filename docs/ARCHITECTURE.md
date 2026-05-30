@@ -1,4 +1,4 @@
-# P2P A2A — Architecture
+# MoltMesh — Architecture
 
 ## Vision
 
@@ -24,6 +24,7 @@ A fully peer-to-peer Agent-to-Agent communication network. Any AI agent, built i
 | **Raft (Ongaro)** | Leader election, log replication, single-node fast path |
 | **Tendermint** | BFT consensus, prevote/precommit two-phase commit, PoL locking |
 | **libp2p** | Transport, DHT, GossipSub, NAT traversal, Noise XX encryption |
+| **ActivityPub / XMPP** | Inbox/outbox model, federation without central servers |
 
 ## System Layers
 
@@ -33,31 +34,41 @@ A fully peer-to-peer Agent-to-Agent communication network. Any AI agent, built i
 │  LangChain · CrewAI · AutoGen · custom · anything           │
 └──────────────────────┬──────────────────────────────────────┘
                        │ gRPC (Unix socket or TCP)
+                       │ A2ANode · Diag · Ext (3 services)
 ┌──────────────────────▼──────────────────────────────────────┐
-│  p2p-a2a daemon (Go binary)                                  │
+│  MoltMesh daemon (Go binary)                                 │
 │                                                              │
 │  ┌─────────────┐  ┌──────────────┐  ┌────────────────────┐  │
 │  │  Identity   │  │   Registry   │  │   Task Engine      │  │
 │  │  DID:key    │  │  Agent Card  │  │  Lifecycle FSM     │  │
-│  │  Ed25519    │  │  DHT publish │  │  Inbox / Outbox    │  │
+│  │  Ed25519    │  │  DHT + sign  │  │  Inbox / Outbox    │  │
 │  └─────────────┘  └──────────────┘  └────────────────────┘  │
 │                                                              │
 │  ┌─────────────┐  ┌──────────────┐  ┌────────────────────┐  │
 │  │  Transport  │  │  GossipSub   │  │   Thread Engine    │  │
 │  │  libp2p     │  │  Task events │  │  Raft / Tendermint │  │
-│  │  QUIC+Noise │  │  Presence    │  │  SQLite + blobs    │  │
+│  │  QUIC+Noise │  │  Pub/Sub     │  │  SQLite + blobs    │  │
 │  └─────────────┘  └──────────────┘  └────────────────────┘  │
 │                                                              │
-│  ┌─────────────┐  ┌──────────────┐                          │
-│  │  Blob Store │  │  Deliver     │                          │
-│  │  SHA-256    │  │  /a2a/msg    │                          │
-│  │  CID-addr   │  │  /a2a/blob   │                          │
-│  └─────────────┘  └──────────────┘                          │
+│  ┌─────────────┐  ┌──────────────┐  ┌────────────────────┐  │
+│  │  Blob Store │  │  Deliver     │  │  Networks          │  │
+│  │  SHA-256    │  │  /a2a/msg    │  │  Named groups      │  │
+│  │  CID-addr   │  │  /a2a/blob   │  │  SQLite + gossip   │  │
+│  └─────────────┘  └──────────────┘  └────────────────────┘  │
+│                                                              │
+│  ┌──────────────────────────────┐                           │
+│  │  Webhook Dispatcher          │                           │
+│  │  HTTP POST · retry · secret  │                           │
+│  └──────────────────────────────┘                           │
 └─────────────────────────────────────────────────────────────┘
                        │ libp2p
 ┌──────────────────────▼──────────────────────────────────────┐
 │  P2P Network                                                 │
 │  Kademlia DHT · GossipSub · QUIC · Noise XX · NAT traversal │
+└─────────────────────────────────────────────────────────────┘
+                       │ outbound HTTP (optional)
+┌──────────────────────▼──────────────────────────────────────┐
+│  Your webhook receiver                                       │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -81,6 +92,7 @@ did:key:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK
 - A protobuf/JSON document: DID, capabilities/skills, libp2p multiaddrs, public key, supported protocols.
 - Published to the DHT. Discoverable by any peer without a central registry.
 - Mutable — daemon re-publishes periodically (default: every 5 minutes). TTL-based expiry.
+- **Signed** — `Publish` computes a canonical JSON representation, signs with the agent's Ed25519 private key, and embeds the signature. `Resolve` verifies the signature against the public key encoded in the DID — spoofing is cryptographically impossible.
 
 ### Peers vs Agents
 
@@ -107,6 +119,7 @@ did:key:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK
 - **Outbox**: persistent SQLite queue. Outgoing messages staged with retry + TTL.
 - **Delivery**: outbox worker → DHT lookup → libp2p stream (`/a2a/msg/1.0.0`) → remote inbox.
 - **Offline tolerance**: messages held in outbox until remote agent comes online (within TTL).
+- **Live push**: `SubscribeInbox` now streams in real-time. When a message arrives it is first committed to SQLite, then fan-out notifies all active `SubscribeInbox` streams without polling.
 - Wire format: msgio-framed protobuf over libp2p streams.
 
 ### Tasks
@@ -194,6 +207,35 @@ The `Engine` wrapper decouples consensus backends from subscriber management. Sw
 - Locks: once a node precommits a block hash, it is locked until a PoL (Proof of Lock) arrives.
 - Requires 2f+1 validators online for liveness. Safety holds under any number of failures.
 
+### Pub/Sub
+
+Raw topic-based messaging via GossipSub, exposed over gRPC.
+
+- `Publish(topic, payload)` — broadcast bytes to any GossipSub topic.
+- `SubscribeTopic(topic)` — server-streaming RPC; yields messages as they arrive.
+- Topics are arbitrary strings; built-in system topics are prefixed `a2a/`.
+- Backed by the same GossipSub mesh as task events and thread consensus.
+
+### Webhooks
+
+HTTP push delivery for external processes that cannot maintain a gRPC stream.
+
+- Configure with `set-webhook <url> [--secret <s>]`.
+- Events POSTed as JSON `{"kind":"…","timestamp":…,"data":{…}}`.
+- Headers: `X-MoltMesh-Event` (kind), `X-MoltMesh-Secret` (shared secret when set).
+- Delivery: best-effort, up to 3 retries with exponential back-off (500 ms base).
+- Fired on: incoming messages (`message`), task status changes (`task_event`), network broadcasts (`pubsub`).
+
+### Networks (Groups)
+
+Named, persistent groups of agents with multicast broadcast.
+
+- **Membership** stored in SQLite (`networks.db`). Survives daemon restarts.
+- **Broadcast** is backed by GossipSub topic `a2a/networks/{id}/broadcast`.
+- Creating a network automatically makes the creator a member.
+- `JoinNetwork` / `LeaveNetwork` are idempotent.
+- `SubscribeNetwork` streams broadcasts from the network's GossipSub topic.
+
 ### GossipSub Topics
 
 | Topic | Purpose |
@@ -202,45 +244,76 @@ The `Engine` wrapper decouples consensus backends from subscriber management. Sw
 | `a2a/tasks/{id}/done` | Task completion notification |
 | `a2a/agents/{did}/presence` | Heartbeat / presence |
 | `a2a/threads/{id}/consensus` | Raft / Tendermint consensus messages |
+| `a2a/networks/{id}/broadcast` | Network group broadcast |
+| `<user-defined>` | Application pub/sub (arbitrary topics) |
 
 ### gRPC Interface
 
-The daemon exposes a gRPC server locally. Agents use generated clients in any language. The `.proto` file is the canonical contract.
+The daemon exposes three gRPC services locally. Agents use generated clients in any language.
 
-Key RPCs:
+**A2ANode** (core service):
 
 | RPC | Purpose |
 |---|---|
 | `GetIdentity` | Return local DID and multiaddrs |
-| `PublishAgentCard` | Publish agent capabilities to DHT |
+| `PublishAgentCard` | Publish agent capabilities to DHT (signed) |
+| `GetAgentCard` | Resolve and verify an agent card by DID |
 | `FindAgents` | Search DHT for agents by capability |
 | `SendMessage` | Enqueue message to outbox |
 | `GetInbox` | Read queued incoming messages |
-| `SubscribeInbox` | Stream incoming messages live |
+| `SubscribeInbox` | Stream incoming messages live (real-time push) |
+| `AckMessage` | Mark message as read |
+| `GetOutbox` | Read outgoing queue |
 | `CreateTask` | Create and track a task |
 | `UpdateTask` | Update task status or add artifact |
 | `GetTask` | Fetch task state |
 | `CancelTask` | Cancel a task |
+| `PublishTaskEvent` | Emit a task event via GossipSub |
 | `SubscribeTaskEvents` | Stream task events via GossipSub |
-| `StoreBlob` | Store a file; get back its CID |
-| `FetchBlob` | Retrieve a file by CID |
+| `SendFile` | Store a file; get back its CID |
+| `FetchFile` | Retrieve a file by CID (local or remote) |
 | `CreateThread` | Create a replicated ordered log |
 | `GetThread` | Fetch thread metadata |
 | `AppendEntry` | Enqueue entry for next block |
 | `GetThreadEntries` | Read committed entries since height |
 | `SubscribeThread` | Stream live committed entries |
 
+**Diag** (diagnostics service):
+
+| RPC | Purpose |
+|---|---|
+| `Ping` | Measure round-trip latency to a DID |
+| `Health` | Return version, uptime, DID, peer count |
+| `ListPeers` | Enumerate connected libp2p peers |
+
+**Ext** (extensions service — Pub/Sub, Webhook, Networks):
+
+| RPC | Purpose |
+|---|---|
+| `Publish` | Publish bytes to a GossipSub topic |
+| `SubscribeTopic` | Stream messages from a GossipSub topic |
+| `SetWebhook` | Configure webhook URL and secret |
+| `ClearWebhook` | Disable webhook delivery |
+| `GetWebhook` | Return current webhook URL |
+| `CreateNetwork` | Create a named agent group |
+| `JoinNetwork` | Join an existing network |
+| `LeaveNetwork` | Leave a network |
+| `ListNetworks` | List networks the local agent belongs to |
+| `NetworkMembers` | List members of a network |
+| `BroadcastNetwork` | Multicast to a network via GossipSub |
+| `SubscribeNetwork` | Stream broadcasts from a network |
+
 ## File Structure
 
 ```
 p2p_a2a/
 ├── cmd/
-│   └── daemon/             # binary entrypoint
+│   └── daemon/             # binary entrypoint + full CLI (main.go, commands.go)
 ├── daemon/
 │   ├── identity/           # DID generation, Ed25519 keypair, signing, VerifyWithPub
 │   ├── node/               # libp2p host, DHT, GossipSub setup
-│   ├── registry/           # Agent Card publish/resolve via DHT
-│   ├── inbox/              # persistent inbox queue (SQLite)
+│   ├── registry/           # Agent Card publish/resolve/verify via DHT + Ed25519
+│   ├── inbox/              # persistent inbox queue (SQLite) + live subscriber fan-out
 │   ├── outbox/             # persistent outbox queue + retry worker
 │   ├── deliver/            # libp2p stream protocols: /a2a/msg, /a2a/blob
 │   ├── blob/               # content-addressed file store (SHA-256 CID)
@@ -253,10 +326,16 @@ p2p_a2a/
 │   │   ├── gossip.go       # GossipSub bridge
 │   │   ├── manager.go      # per-thread engine lifecycle
 │   │   └── store.go        # SQLite persistence (threads, blocks, votes, entries)
-│   ├── gossip/             # GossipSub topic management (task events)
-│   └── rpc/                # gRPC server implementation
+│   ├── gossip/             # GossipSub topic management, Publish, SubscribeTopic
+│   ├── network/            # named agent groups, SQLite membership, broadcast
+│   ├── webhook/            # HTTP event delivery (async, retry, HMAC secret)
+│   └── rpc/                # gRPC server: server.go, diag.go, ext.go, version.go
 ├── gen/
-│   └── a2a/v1/             # generated protobuf Go code
+│   └── a2a/v1/             # protobuf Go stubs + hand-written diag.go, extensions.go
+├── pkg/
+│   ├── did/                # DID validation, parsing, Short() formatting
+│   ├── capability/         # capability ID namespace (a2a:v1:cap:<name>)
+│   └── format/             # human-readable output: DID, table, message, uptime, etc.
 ├── proto/
 │   └── a2a.proto           # canonical API contract
 ├── e2e/
@@ -281,8 +360,9 @@ Agent.SendMessage(to_did, payload)
   → registry.Resolve(to_did) → DHT lookup → multiaddr
   → deliver.DeliverFunc()(multiaddr, msg)
   → libp2p stream /a2a/msg/1.0.0
-  → remote daemon: deliver handler → inbox.Store(msg)
-  → remote agent: GetInbox() or SubscribeInbox()
+  → remote daemon: deliver handler → inbox.Put(msg) → notify(msg)
+  → fan-out: all active SubscribeInbox streams receive msg immediately
+  → remote agent: GetInbox() or SubscribeInbox() (live push, no polling)
 ```
 
 ### Committing a Thread Entry (Raft, single node)
@@ -301,9 +381,32 @@ Agent.AppendEntry(thread_id, payload)
 ### Task Event Streaming
 
 ```
-Assignee publishes: gossip.Publish("a2a/tasks/{id}/events", event_pb)
+Assignee publishes: gossip.PublishTaskEvent("a2a/tasks/{id}/events", event_pb)
   → GossipSub mesh
   → Initiator: SubscribeTaskEvents stream → Agent receives event
+```
+
+### Network Broadcast
+
+```
+Agent.BroadcastNetwork(network_id, payload)
+  → gRPC → rpc.Server.BroadcastNetwork
+  → network.Store.IsMember check (SQLite)
+  → network.Manager.Broadcast(network_id, payload)
+  → gossip.Publish("a2a/networks/{id}/broadcast", payload)
+  → GossipSub mesh → all SubscribeNetwork streams receive payload
+  → webhook.Send("pubsub", {network_id, payload})  [async, if configured]
+```
+
+### Webhook Event Delivery
+
+```
+Event occurs (message received / task updated / network broadcast)
+  → rpc.Server fires webhook.Dispatcher.Send(kind, data)
+  → goroutine: json.Marshal → HTTP POST to configured URL
+  → Headers: X-MoltMesh-Event, X-MoltMesh-Secret
+  → On non-2xx: retry up to 3× with exponential back-off (500ms base)
+  → On exhaustion: log error and drop (best-effort, not durable)
 ```
 
 ## What This Is Not

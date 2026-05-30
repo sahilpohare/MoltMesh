@@ -3,6 +3,7 @@ package inbox
 import (
 	"database/sql"
 	"fmt"
+	"sync"
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -11,9 +12,11 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-// Inbox is a persistent SQLite-backed message queue.
+// Inbox is a persistent SQLite-backed message queue with live push.
 type Inbox struct {
-	db *sql.DB
+	db   *sql.DB
+	mu   sync.Mutex
+	subs []chan<- *pb.Message
 }
 
 // New opens (or creates) the inbox database at the given path.
@@ -28,7 +31,7 @@ func New(path string) (*Inbox, error) {
 	return &Inbox{db: db}, nil
 }
 
-// Put stores an incoming message.
+// Put stores an incoming message and notifies live subscribers.
 func (b *Inbox) Put(msg *pb.Message) error {
 	data, err := proto.Marshal(msg)
 	if err != nil {
@@ -39,7 +42,45 @@ func (b *Inbox) Put(msg *pb.Message) error {
 		VALUES (?, ?, ?, ?, ?, ?)`,
 		msg.Id, msg.FromDid, msg.ThreadId, msg.TaskId, data, time.Now().UnixMilli(),
 	)
-	return err
+	if err != nil {
+		return err
+	}
+	b.notify(msg)
+	return nil
+}
+
+// Subscribe registers a channel to receive new messages as they arrive.
+// The caller must call Unsubscribe when done to avoid a goroutine leak.
+func (b *Inbox) Subscribe() chan *pb.Message {
+	ch := make(chan *pb.Message, 64)
+	b.mu.Lock()
+	b.subs = append(b.subs, ch)
+	b.mu.Unlock()
+	return ch
+}
+
+// Unsubscribe removes and closes a previously subscribed channel.
+func (b *Inbox) Unsubscribe(ch chan *pb.Message) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	for i, s := range b.subs {
+		if s == ch {
+			b.subs = append(b.subs[:i], b.subs[i+1:]...)
+			close(ch)
+			return
+		}
+	}
+}
+
+func (b *Inbox) notify(msg *pb.Message) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	for _, ch := range b.subs {
+		select {
+		case ch <- msg:
+		default: // subscriber too slow — drop rather than block
+		}
+	}
 }
 
 // Get retrieves messages matching the query.

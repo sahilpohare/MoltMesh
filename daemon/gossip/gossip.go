@@ -97,6 +97,45 @@ func (m *Manager) SubscribeCapabilities(ctx context.Context, namespace string, h
 	})
 }
 
+// Publish publishes raw bytes to a named topic. The topic name is used as-is.
+func (m *Manager) Publish(ctx context.Context, topic string, data []byte) error {
+	return m.publish(ctx, topic, data)
+}
+
+// SubscribeTopic subscribes to a named topic and returns a channel of raw payloads.
+// The caller must drain or abandon the channel and call the returned cancel func when done.
+func (m *Manager) SubscribeTopic(ctx context.Context, topic string) (<-chan []byte, func(), error) {
+	t, err := m.getTopic(topic)
+	if err != nil {
+		return nil, nil, err
+	}
+	sub, err := t.Subscribe()
+	if err != nil {
+		return nil, nil, fmt.Errorf("subscribe to %q: %w", topic, err)
+	}
+
+	ch := make(chan []byte, 64)
+	ctx, cancel := context.WithCancel(ctx)
+
+	go func() {
+		defer sub.Cancel()
+		defer close(ch)
+		for {
+			msg, err := sub.Next(ctx)
+			if err != nil {
+				return
+			}
+			select {
+			case ch <- msg.Data:
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+
+	return ch, cancel, nil
+}
+
 // ─── internal ────────────────────────────────────────────────────────────────
 
 func (m *Manager) getTopic(name string) (*pubsub.Topic, error) {

@@ -16,10 +16,13 @@ import (
 	"github.com/sahilpohare/p2p-a2a/daemon/gossip"
 	"github.com/sahilpohare/p2p-a2a/daemon/identity"
 	"github.com/sahilpohare/p2p-a2a/daemon/inbox"
+	"github.com/sahilpohare/p2p-a2a/daemon/network"
+	"github.com/sahilpohare/p2p-a2a/daemon/node"
 	"github.com/sahilpohare/p2p-a2a/daemon/outbox"
 	"github.com/sahilpohare/p2p-a2a/daemon/registry"
 	"github.com/sahilpohare/p2p-a2a/daemon/tasks"
 	"github.com/sahilpohare/p2p-a2a/daemon/thread"
+	"github.com/sahilpohare/p2p-a2a/daemon/webhook"
 	"github.com/google/uuid"
 )
 
@@ -48,18 +51,24 @@ func peerAddrInfo(addrs []string) (*peer.AddrInfo, error) {
 // Server implements the A2ANode gRPC service.
 type Server struct {
 	pb.UnimplementedA2ANodeServer
+	pb.UnimplementedDiagServer
+	pb.UnimplementedExtServer
 
-	id       *identity.Identity
-	inbox    *inbox.Inbox
-	outbox   *outbox.Outbox
-	tasks    *tasks.Store
-	registry *registry.Registry
-	gossip   *gossip.Manager
-	blobs    *blob.Store
-	dlv      *deliver.Deliverer
-	threads  *thread.Manager
-	addrs    []string
-	log      *zap.Logger
+	id        *identity.Identity
+	inbox     *inbox.Inbox
+	outbox    *outbox.Outbox
+	tasks     *tasks.Store
+	registry  *registry.Registry
+	gossip    *gossip.Manager
+	blobs     *blob.Store
+	dlv       *deliver.Deliverer
+	threads   *thread.Manager
+	networks  *network.Manager
+	webhooks  *webhook.Dispatcher
+	node      *node.Node
+	addrs     []string
+	startedAt time.Time
+	log       *zap.Logger
 }
 
 // New creates a new gRPC server.
@@ -73,21 +82,28 @@ func New(
 	bs *blob.Store,
 	dlv *deliver.Deliverer,
 	tm *thread.Manager,
+	nm *network.Manager,
+	wh *webhook.Dispatcher,
+	n *node.Node,
 	addrs []string,
 	log *zap.Logger,
 ) *Server {
 	return &Server{
-		id:       id,
-		inbox:    ib,
-		outbox:   ob,
-		tasks:    ts,
-		registry: reg,
-		gossip:   gm,
-		blobs:    bs,
-		dlv:      dlv,
-		threads:  tm,
-		addrs:    addrs,
-		log:      log,
+		id:        id,
+		inbox:     ib,
+		outbox:    ob,
+		tasks:     ts,
+		registry:  reg,
+		gossip:    gm,
+		blobs:     bs,
+		dlv:       dlv,
+		threads:   tm,
+		networks:  nm,
+		webhooks:  wh,
+		node:      n,
+		addrs:     addrs,
+		startedAt: time.Now(),
+		log:       log,
 	}
 }
 
@@ -156,7 +172,7 @@ func (s *Server) SendMessage(ctx context.Context, msg *pb.Message) (*pb.SendResu
 }
 
 func (s *Server) SubscribeInbox(req *pb.SubscribeRequest, stream pb.A2ANode_SubscribeInboxServer) error {
-	// initial flush
+	// Flush existing messages first.
 	msgs, err := s.inbox.Get(req.ThreadId, req.TaskId, false, 100, 0)
 	if err != nil {
 		return err
@@ -166,9 +182,31 @@ func (s *Server) SubscribeInbox(req *pb.SubscribeRequest, stream pb.A2ANode_Subs
 			return err
 		}
 	}
-	// TODO: watch for new inbox arrivals via channel notification
-	<-stream.Context().Done()
-	return nil
+
+	// Stream live arrivals.
+	ch := s.inbox.Subscribe()
+	defer s.inbox.Unsubscribe(ch)
+
+	for {
+		select {
+		case <-stream.Context().Done():
+			return nil
+		case msg, ok := <-ch:
+			if !ok {
+				return nil
+			}
+			// Apply filters from the subscription request.
+			if req.ThreadId != "" && msg.ThreadId != req.ThreadId {
+				continue
+			}
+			if req.TaskId != "" && msg.TaskId != req.TaskId {
+				continue
+			}
+			if err := stream.Send(msg); err != nil {
+				return err
+			}
+		}
+	}
 }
 
 func (s *Server) GetInbox(req *pb.InboxQuery, stream pb.A2ANode_GetInboxServer) error {
@@ -203,6 +241,11 @@ func (s *Server) GetOutbox(req *pb.OutboxQuery, stream pb.A2ANode_GetOutboxServe
 
 func (s *Server) AckMessage(ctx context.Context, req *pb.AckRequest) (*pb.Empty, error) {
 	return &pb.Empty{}, s.inbox.Ack(req.MessageId)
+}
+
+// webhookMessage fires the message webhook. Called by the deliver layer after inbox.Put.
+func (s *Server) WebhookMessage(msg *pb.Message) {
+	s.webhooks.Send(webhook.EventMessage, msg)
 }
 
 // ─── Tasks ───────────────────────────────────────────────────────────────────
