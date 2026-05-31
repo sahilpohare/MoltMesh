@@ -3,10 +3,11 @@ GEN_DIR    := gen/a2a/v1
 GOPATH_BIN := $(shell go env GOPATH)/bin
 VERSION    ?= dev
 LDFLAGS    := -s -w -X main.version=$(VERSION)
+BIN_DIR    := bin
 
 BINARIES   := moltmesh daemon tui
 
-.PHONY: all build build-linux build-darwin proto clean run test install
+.PHONY: all build build-all build-linux build-darwin proto clean run test install
 
 all: proto build
 
@@ -24,23 +25,28 @@ proto:
 	cp $(STRAY_GEN)/a2a_grpc.pb.go $(GEN_DIR)/a2a_grpc.pb.go
 
 build:
-	$(foreach bin,$(BINARIES),go build -ldflags "$(LDFLAGS)" -o $(bin) ./cmd/$(bin);)
+	@mkdir -p $(BIN_DIR)
+	$(foreach bin,$(BINARIES),go build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/$(bin) ./cmd/$(bin);)
+
+build-all: build-linux build-darwin
 
 build-linux:
-	$(foreach bin,$(BINARIES),GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o $(bin)-linux-amd64 ./cmd/$(bin);)
+	@mkdir -p $(BIN_DIR)
+	$(foreach bin,$(BINARIES),GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/$(bin)-linux-amd64 ./cmd/$(bin);)
 
 build-darwin:
-	$(foreach bin,$(BINARIES),GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o $(bin)-darwin-arm64 ./cmd/$(bin);)
+	@mkdir -p $(BIN_DIR)
+	$(foreach bin,$(BINARIES),GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/$(bin)-darwin-arm64 ./cmd/$(bin);)
 
 install:
 	$(foreach bin,$(BINARIES),go install -ldflags "$(LDFLAGS)" ./cmd/$(bin);)
 
 run: build
-	./moltmesh start
+	$(BIN_DIR)/moltmesh start
 
 test:
 	go test ./...
 
 clean:
-	rm -f $(foreach bin,$(BINARIES),$(bin) $(bin)-linux-amd64 $(bin)-darwin-arm64)
+	rm -rf $(BIN_DIR)
 	rm -rf .data
