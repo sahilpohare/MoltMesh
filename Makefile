@@ -1,9 +1,11 @@
-BINARY     := p2p-a2a
+BINARY     := moltmesh
 PROTO_DIR  := proto
 GEN_DIR    := gen/a2a/v1
 GOPATH_BIN := $(shell go env GOPATH)/bin
+VERSION    ?= dev
+LDFLAGS    := -s -w -X main.version=$(VERSION)
 
-.PHONY: all build proto clean run test
+.PHONY: all build build-linux build-darwin proto clean run test install
 
 all: proto build
 
@@ -21,14 +23,23 @@ proto:
 	cp $(STRAY_GEN)/a2a_grpc.pb.go $(GEN_DIR)/a2a_grpc.pb.go
 
 build:
-	go build -o $(BINARY) ./cmd/daemon
+	go build -ldflags "$(LDFLAGS)" -o $(BINARY) ./cmd/moltmesh
+
+build-linux:
+	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o $(BINARY)-linux-amd64 ./cmd/moltmesh
+
+build-darwin:
+	GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o $(BINARY)-darwin-arm64 ./cmd/moltmesh
+
+install:
+	go install -ldflags "$(LDFLAGS)" ./cmd/moltmesh
 
 run: build
-	A2A_DATA_DIR=./.data ./$(BINARY)
+	./$(BINARY) start
 
 test:
 	go test ./...
 
 clean:
-	rm -f $(BINARY)
+	rm -f $(BINARY) $(BINARY)-linux-amd64 $(BINARY)-darwin-arm64
 	rm -rf .data
