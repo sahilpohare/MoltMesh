@@ -257,7 +257,6 @@ func newTUIModel(client pb.A2ANodeClient, conn *grpc.ClientConn) tuiModel {
 	toInput := textinput.New()
 	toInput.Placeholder = "did:key:z6Mk..."
 	toInput.CharLimit = 200
-	toInput.Focus()
 
 	textInput := textinput.New()
 	textInput.Placeholder = "Type your message..."
@@ -447,16 +446,23 @@ func (m tuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.relayout()
 
 	case tea.KeyMsg:
+		// Global keys — always handled first, even when inputs are focused.
 		switch msg.String() {
-		case "ctrl+c", "q":
-			if m.activeTab == tabCompose && (m.composeTo.Focused() || m.composeText.Focused()) {
-				// don't quit while typing
-			} else if m.activeTab == tabFiles && (m.filePath.Focused() || m.fileCID.Focused()) {
-				// don't quit while typing
-			} else {
+		case "ctrl+c":
+			m.cancel()
+			return m, tea.Quit
+		}
+
+		// Tab navigation — skip when an input field is focused.
+		if !m.inputFocused() {
+			switch msg.String() {
+			case "q":
 				m.cancel()
 				return m, tea.Quit
 			}
+		}
+
+		switch msg.String() {
 		case "1":
 			m.activeTab = tabIdentity
 			cmds = append(cmds, m.fetchHealth())
@@ -465,9 +471,9 @@ func (m tuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmds = append(cmds, m.fetchInbox())
 		case "3":
 			m.activeTab = tabCompose
-			m.composeTo.Focus()
+			m.composeTo.Blur()
 			m.composeText.Blur()
-			m.composeFocus = 0
+			m.composeFocus = -1 // nothing focused until user presses enter/tab
 		case "4":
 			m.activeTab = tabTasks
 		case "5":
@@ -624,20 +630,22 @@ func (m *tuiModel) updateCompose(msg tea.KeyMsg) []tea.Cmd {
 	var cmds []tea.Cmd
 	switch msg.String() {
 	case "tab":
-		m.composeFocus = (m.composeFocus + 1) % 3
-		switch m.composeFocus {
-		case 0:
-			m.composeTo.Focus()
-			m.composeText.Blur()
-		case 1:
-			m.composeTo.Blur()
-			m.composeText.Focus()
-		case 2:
-			m.composeTo.Blur()
-			m.composeText.Blur()
+		// Cycle through: -1 (none) → 0 (to) → 1 (text) → 2 (send) → 0 ...
+		if m.composeFocus < 0 {
+			m.composeFocus = 0
+		} else {
+			m.composeFocus = (m.composeFocus + 1) % 3
 		}
+		m.applyComposeFocus()
 	case "enter":
-		if m.composeFocus == 2 || m.composeFocus == 1 {
+		if m.composeFocus < 0 {
+			// Activate first field
+			m.composeFocus = 0
+			m.applyComposeFocus()
+		} else if m.composeFocus == 0 {
+			m.composeFocus = 1
+			m.applyComposeFocus()
+		} else if m.composeFocus == 1 || m.composeFocus == 2 {
 			to := strings.TrimSpace(m.composeTo.Value())
 			text := strings.TrimSpace(m.composeText.Value())
 			if to != "" && text != "" && !m.composeSending {
@@ -645,11 +653,10 @@ func (m *tuiModel) updateCompose(msg tea.KeyMsg) []tea.Cmd {
 				cmds = append(cmds, m.composeSpinner.Tick, m.sendMessage(to, text))
 			}
 		}
-		if m.composeFocus == 0 {
-			m.composeFocus = 1
-			m.composeTo.Blur()
-			m.composeText.Focus()
-		}
+	case "esc":
+		m.composeFocus = -1
+		m.composeTo.Blur()
+		m.composeText.Blur()
 	default:
 		var cmd tea.Cmd
 		switch m.composeFocus {
@@ -661,6 +668,20 @@ func (m *tuiModel) updateCompose(msg tea.KeyMsg) []tea.Cmd {
 		cmds = append(cmds, cmd)
 	}
 	return cmds
+}
+
+func (m *tuiModel) applyComposeFocus() {
+	switch m.composeFocus {
+	case 0:
+		m.composeTo.Focus()
+		m.composeText.Blur()
+	case 1:
+		m.composeTo.Blur()
+		m.composeText.Focus()
+	case 2:
+		m.composeTo.Blur()
+		m.composeText.Blur()
+	}
 }
 
 func (m *tuiModel) updateFiles(msg tea.KeyMsg) []tea.Cmd {
@@ -732,21 +753,23 @@ func (m *tuiModel) setStatus(s string) {
 }
 
 func (m *tuiModel) inputFocused() bool {
-	return (m.activeTab == tabCompose && (m.composeTo.Focused() || m.composeText.Focused())) ||
-		(m.activeTab == tabFiles && (m.filePath.Focused() || m.fileCID.Focused()))
+	return m.composeTo.Focused() || m.composeText.Focused() ||
+		m.filePath.Focused() || m.fileCID.Focused()
 }
 
 func (m *tuiModel) onTabSwitch() tea.Cmd {
+	// Always unfocus inputs on tab switch
+	m.composeTo.Blur()
+	m.composeText.Blur()
+	m.filePath.Blur()
+	m.fileCID.Blur()
+	m.composeFocus = -1
+	m.fileFocus = -1
 	switch m.activeTab {
 	case tabIdentity:
 		return m.fetchHealth()
 	case tabInbox:
 		return m.fetchInbox()
-	case tabCompose:
-		m.composeTo.Focus()
-		m.composeText.Blur()
-		m.composeFocus = 0
-		return nil
 	case tabPeers:
 		return m.fetchPeers()
 	}
