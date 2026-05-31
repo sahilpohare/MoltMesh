@@ -1,0 +1,83 @@
+version: 2
+
+project_name: moltmesh
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: moltmesh
+    main: ./cmd/moltmesh
+    binary: moltmesh
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w -X main.version={{.Version}}
+
+archives:
+  - id: moltmesh
+    formats: [tar.gz]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+
+checksum:
+  name_template: "checksums.txt"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^ci:"
+      - Merge pull request
+      - Merge branch
+
+release:
+  github:
+    owner: sahilpohare
+    name: MoltMesh
+  draft: false
+  prerelease: auto
+  name_template: "{{.ProjectName}} {{.Tag}}"
+
+brews:
+  - name: moltmesh
+    repository:
+      owner: sahilpohare
+      name: homebrew-moltmesh
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    homepage: "https://github.com/sahilpohare/MoltMesh"
+    description: "Decentralized agent-to-agent messaging daemon"
+    license: "MIT"
+    install: |
+      bin.install "moltmesh"
+    test: |
+      system "#{bin}/moltmesh version"
+
+nfpms:
+  - id: moltmesh
+    package_name: moltmesh
+    vendor: Sahil Pohare
+    homepage: https://github.com/sahilpohare/MoltMesh
+    maintainer: Sahil Pohare <sahilpohare@gmail.com>
+    description: Decentralized agent-to-agent messaging daemon
+    license: MIT
+    formats:
+      - deb
+      - rpm
+      - apk
+    bindir: /usr/bin
+    contents:
+      - src: ./LICENSE
+        dst: /usr/share/doc/moltmesh/LICENSE
+        type: doc
