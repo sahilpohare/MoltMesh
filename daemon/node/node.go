@@ -10,18 +10,23 @@ import (
 	"github.com/ipfs/boxo/blockstore"
 	flatfs "github.com/ipfs/go-ds-flatfs"
 	dht "github.com/libp2p/go-libp2p-kad-dht"
+	record "github.com/libp2p/go-libp2p-record"
 	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/routing"
 	"github.com/libp2p/go-libp2p/p2p/net/connmgr"
+	"github.com/libp2p/go-libp2p/p2p/discovery/mdns"
+	drouting "github.com/libp2p/go-libp2p/p2p/discovery/routing"
+	dutil "github.com/libp2p/go-libp2p/p2p/discovery/util"
 	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
 	libp2pquic "github.com/libp2p/go-libp2p/p2p/transport/quic"
 	"github.com/multiformats/go-multiaddr"
 	"go.uber.org/zap"
 
 	"github.com/sahilpohare/p2p-a2a/daemon/identity"
+	"github.com/sahilpohare/p2p-a2a/pkg/a2avalidator"
 )
 
 // Config holds node configuration.
@@ -42,7 +47,21 @@ type Node struct {
 	Identity   *identity.Identity
 	Blockstore blockstore.Blockstore
 	Bitswap    *bitswap.Bitswap
+	mdns       mdns.Service
 	log        *zap.Logger
+}
+
+// mdnsNotifee connects to peers discovered via mDNS.
+type mdnsNotifee struct {
+	h   host.Host
+	log *zap.Logger
+}
+
+func (n *mdnsNotifee) HandlePeerFound(pi peer.AddrInfo) {
+	n.log.Debug("mdns peer found", zap.String("peer", pi.ID.String()))
+	if err := n.h.Connect(context.Background(), pi); err != nil {
+		n.log.Debug("mdns connect failed", zap.String("peer", pi.ID.String()), zap.Error(err))
+	}
 }
 
 // New creates and starts a libp2p node backed by the global IPFS DHT and Bitswap.
@@ -81,9 +100,13 @@ func New(ctx context.Context, id *identity.Identity, cfg Config, log *zap.Logger
 		libp2p.EnableHolePunching(),
 		libp2p.Routing(func(h host.Host) (routing.PeerRouting, error) {
 			var err error
-			// No ProtocolPrefix — joins the global IPFS Kademlia DHT.
 			kadDHT, err = dht.New(ctx, h,
 				dht.Mode(dht.ModeAutoServer),
+				dht.ProtocolPrefix("/a2a"),
+				dht.Validator(record.NamespacedValidator{
+					"agents": a2avalidator.AgentCardValidator{},
+					"names":  a2avalidator.AgentCardValidator{},
+				}),
 			)
 			return kadDHT, err
 		}),
@@ -127,6 +150,38 @@ func New(ctx context.Context, id *identity.Identity, cfg Config, log *zap.Logger
 		log:        log,
 	}
 
+	// ── mDNS discovery ────────────────────────────────────────────────────────
+	mdnsSvc := mdns.NewMdnsService(h, "moltmesh", &mdnsNotifee{h: h, log: log})
+	if err := mdnsSvc.Start(); err != nil {
+		log.Warn("mdns start", zap.Error(err))
+	}
+	n.mdns = mdnsSvc
+
+	// ── routing discovery (DHT advertise/find) ────────────────────────────────
+	go func() {
+		routingDiscovery := drouting.NewRoutingDiscovery(kadDHT)
+		dutil.Advertise(ctx, routingDiscovery, "moltmesh")
+		for {
+			peers, err := routingDiscovery.FindPeers(ctx, "moltmesh")
+			if err != nil {
+				return
+			}
+			for p := range peers {
+				if p.ID == h.ID() || len(p.Addrs) == 0 {
+					continue
+				}
+				if err := h.Connect(ctx, p); err != nil {
+					log.Debug("routing discovery connect failed", zap.String("peer", p.ID.String()), zap.Error(err))
+				}
+			}
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(30 * time.Second):
+			}
+		}
+	}()
+
 	if err := n.bootstrap(ctx, cfg); err != nil {
 		log.Warn("bootstrap incomplete", zap.Error(err))
 	}
@@ -142,6 +197,9 @@ func New(ctx context.Context, id *identity.Identity, cfg Config, log *zap.Logger
 
 // Close shuts down the node.
 func (n *Node) Close() error {
+	if n.mdns != nil {
+		n.mdns.Close()
+	}
 	n.Bitswap.Close()
 	if err := n.DHT.Close(); err != nil {
 		n.log.Warn("dht close error", zap.Error(err))

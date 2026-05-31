@@ -175,7 +175,9 @@ func (o *Outbox) flush(ctx context.Context) {
 				status := "pending"
 				if attempts >= maxAttempts {
 					status = "failed"
-					o.log.Warn("outbox max attempts", zap.String("id", item.id))
+					o.log.Warn("outbox max attempts", zap.String("id", item.id), zap.Error(err))
+				} else {
+					o.log.Warn("outbox delivery failed", zap.String("id", item.id), zap.Int("attempts", attempts), zap.Error(err))
 				}
 				o.db.Exec(`UPDATE outbox SET status = ?, attempts = ?, last_attempt = ? WHERE id = ?`,
 					status, attempts, finishNow, item.id)
