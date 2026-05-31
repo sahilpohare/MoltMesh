@@ -404,6 +404,7 @@ message ConsensusMsg {
     RaftRequestVoteReply  raft_vote_reply       = 5;
     RaftAppendEntries     raft_append_entries   = 6;
     RaftAppendEntriesReply raft_append_reply    = 7;
+    ThreadBlock           committed_block       = 8;
   }
 }
 

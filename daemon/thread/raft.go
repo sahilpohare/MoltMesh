@@ -203,7 +203,7 @@ func (r *RaftBackend) Run(ctx context.Context, broadcast func(*pb.ConsensusMsg))
 			r.proposePending(ctx)
 
 		case rd := <-r.node.Ready():
-			r.handleReady(ctx, rd, broadcast)
+			r.handleReady(rd, broadcast)
 			r.node.Advance()
 
 		case msg := <-r.inboundCh:
@@ -213,7 +213,7 @@ func (r *RaftBackend) Run(ctx context.Context, broadcast func(*pb.ConsensusMsg))
 }
 
 // handleReady processes one Ready batch from etcd raft.
-func (r *RaftBackend) handleReady(ctx context.Context, rd raft.Ready, broadcast func(*pb.ConsensusMsg)) {
+func (r *RaftBackend) handleReady(rd raft.Ready, broadcast func(*pb.ConsensusMsg)) {
 	// 1. Persist HardState if changed.
 	if !raft.IsEmptyHardState(rd.HardState) {
 		r.persistHardState(rd.HardState)
@@ -240,12 +240,19 @@ func (r *RaftBackend) handleReady(ctx context.Context, rd raft.Ready, broadcast 
 			r.log.Error("raft: unmarshal entries", zap.Error(err))
 			continue
 		}
-		r.commitBlock(entry, entries)
+		r.commitBlock(entry, entries, broadcast)
 	}
 }
 
-// handleInbound decodes a ConsensusMsg and feeds the raftpb.Message to the node.
+// handleInbound decodes a ConsensusMsg and feeds the raftpb.Message to the node,
+// or applies a committed block broadcast from the leader.
 func (r *RaftBackend) handleInbound(ctx context.Context, msg *pb.ConsensusMsg) {
+	// Committed block broadcast — applies directly to non-voter replicas.
+	if block := msg.GetCommittedBlock(); block != nil {
+		r.applyCommittedBlock(block)
+		return
+	}
+
 	raw := msg.GetRaftAppendEntries()
 	if raw == nil {
 		return
@@ -262,6 +269,27 @@ func (r *RaftBackend) handleInbound(ctx context.Context, msg *pb.ConsensusMsg) {
 
 	// If we are leader, also propose any pending entries.
 	r.proposePending(ctx)
+}
+
+// applyCommittedBlock saves a block received from the leader to the local store.
+// Used by non-voter replicas (f=0 observers) that are not part of the raft quorum.
+func (r *RaftBackend) applyCommittedBlock(block *pb.ThreadBlock) {
+	// Check if we already have this block (idempotent).
+	existing, err := r.store.GetBlock(r.thread.Id, block.Height)
+	if err == nil && existing != nil {
+		return
+	}
+	if err := r.store.SaveBlock(block); err != nil {
+		r.log.Warn("raft: apply committed block", zap.Int64("height", block.Height), zap.Error(err))
+		return
+	}
+	r.log.Info("raft: applied committed block from leader",
+		zap.String("thread", r.thread.Id),
+		zap.Int64("height", block.Height),
+	)
+	if r.onCommit != nil {
+		r.onCommit(block)
+	}
 }
 
 // proposePending drains the store queue and proposes to raft if we are leader.
@@ -312,8 +340,9 @@ func (r *RaftBackend) sendRaftMsg(m raftpb.Message, broadcast func(*pb.Consensus
 	})
 }
 
-// commitBlock saves a committed block to SQLite and calls onCommit.
-func (r *RaftBackend) commitBlock(entry raftpb.Entry, entries []*pb.ThreadEntry) {
+// commitBlock saves a committed block to SQLite, calls onCommit, and broadcasts
+// the block to all replicas via GossipSub so non-voter nodes can apply it.
+func (r *RaftBackend) commitBlock(entry raftpb.Entry, entries []*pb.ThreadEntry, broadcast func(*pb.ConsensusMsg)) {
 	// Use our own sequential height (committed block count + 1),
 	// not the raft log index (which includes config/no-op entries).
 	height, err := r.store.GetCommittedHeight(r.thread.Id)
@@ -353,6 +382,14 @@ func (r *RaftBackend) commitBlock(entry raftpb.Entry, entries []*pb.ThreadEntry)
 		zap.String("hash", block.BlockHash[:8]+"..."),
 		zap.Int("entries", len(entries)),
 	)
+
+	// Broadcast committed block so non-voter replicas (f=0 observers) can apply it.
+	if broadcast != nil {
+		broadcast(&pb.ConsensusMsg{
+			ThreadId: r.thread.Id,
+			Payload:  &pb.ConsensusMsg_CommittedBlock{CommittedBlock: block},
+		})
+	}
 
 	if r.onCommit != nil {
 		r.onCommit(block)

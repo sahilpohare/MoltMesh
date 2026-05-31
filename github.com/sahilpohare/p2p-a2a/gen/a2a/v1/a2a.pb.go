@@ -2820,6 +2820,7 @@ type ConsensusMsg struct {
 	//	*ConsensusMsg_RaftVoteReply
 	//	*ConsensusMsg_RaftAppendEntries
 	//	*ConsensusMsg_RaftAppendReply
+	//	*ConsensusMsg_CommittedBlock
 	Payload       isConsensusMsg_Payload `protobuf_oneof:"payload"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -2923,6 +2924,15 @@ func (x *ConsensusMsg) GetRaftAppendReply() *RaftAppendEntriesReply {
 	return nil
 }
 
+func (x *ConsensusMsg) GetCommittedBlock() *ThreadBlock {
+	if x != nil {
+		if x, ok := x.Payload.(*ConsensusMsg_CommittedBlock); ok {
+			return x.CommittedBlock
+		}
+	}
+	return nil
+}
+
 type isConsensusMsg_Payload interface {
 	isConsensusMsg_Payload()
 }
@@ -2951,6 +2961,10 @@ type ConsensusMsg_RaftAppendReply struct {
 	RaftAppendReply *RaftAppendEntriesReply `protobuf:"bytes,7,opt,name=raft_append_reply,json=raftAppendReply,proto3,oneof"`
 }
 
+type ConsensusMsg_CommittedBlock struct {
+	CommittedBlock *ThreadBlock `protobuf:"bytes,8,opt,name=committed_block,json=committedBlock,proto3,oneof"`
+}
+
 func (*ConsensusMsg_Proposal) isConsensusMsg_Payload() {}
 
 func (*ConsensusMsg_Vote) isConsensusMsg_Payload() {}
@@ -2962,6 +2976,8 @@ func (*ConsensusMsg_RaftVoteReply) isConsensusMsg_Payload() {}
 func (*ConsensusMsg_RaftAppendEntries) isConsensusMsg_Payload() {}
 
 func (*ConsensusMsg_RaftAppendReply) isConsensusMsg_Payload() {}
+
+func (*ConsensusMsg_CommittedBlock) isConsensusMsg_Payload() {}
 
 type CreateThreadRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -4800,7 +4816,7 @@ const file_a2a_proto_rawDesc = "" +
 	"\bpeer_did\x18\x03 \x01(\tR\apeerDid\x12\x1f\n" +
 	"\vmatch_index\x18\x04 \x01(\x03R\n" +
 	"matchIndex\x12\x1c\n" +
-	"\tsignature\x18\x05 \x01(\tR\tsignature\"\xb4\x03\n" +
+	"\tsignature\x18\x05 \x01(\tR\tsignature\"\xf4\x03\n" +
 	"\fConsensusMsg\x12\x1b\n" +
 	"\tthread_id\x18\x01 \x01(\tR\bthreadId\x12.\n" +
 	"\bproposal\x18\x02 \x01(\v2\x10.a2a.v1.ProposalH\x00R\bproposal\x12\"\n" +
@@ -4808,7 +4824,8 @@ const file_a2a_proto_rawDesc = "" +
 	"\x11raft_request_vote\x18\x04 \x01(\v2\x17.a2a.v1.RaftRequestVoteH\x00R\x0fraftRequestVote\x12F\n" +
 	"\x0fraft_vote_reply\x18\x05 \x01(\v2\x1c.a2a.v1.RaftRequestVoteReplyH\x00R\rraftVoteReply\x12K\n" +
 	"\x13raft_append_entries\x18\x06 \x01(\v2\x19.a2a.v1.RaftAppendEntriesH\x00R\x11raftAppendEntries\x12L\n" +
-	"\x11raft_append_reply\x18\a \x01(\v2\x1e.a2a.v1.RaftAppendEntriesReplyH\x00R\x0fraftAppendReplyB\t\n" +
+	"\x11raft_append_reply\x18\a \x01(\v2\x1e.a2a.v1.RaftAppendEntriesReplyH\x00R\x0fraftAppendReply\x12>\n" +
+	"\x0fcommitted_block\x18\b \x01(\v2\x13.a2a.v1.ThreadBlockH\x00R\x0ecommittedBlockB\t\n" +
 	"\apayload\"\xe5\x01\n" +
 	"\x13CreateThreadRequest\x12!\n" +
 	"\freplica_dids\x18\x01 \x03(\tR\vreplicaDids\x12\f\n" +
@@ -5120,97 +5137,98 @@ var file_a2a_proto_depIdxs = []int32{
 	37, // 25: a2a.v1.ConsensusMsg.raft_vote_reply:type_name -> a2a.v1.RaftRequestVoteReply
 	38, // 26: a2a.v1.ConsensusMsg.raft_append_entries:type_name -> a2a.v1.RaftAppendEntries
 	39, // 27: a2a.v1.ConsensusMsg.raft_append_reply:type_name -> a2a.v1.RaftAppendEntriesReply
-	75, // 28: a2a.v1.CreateThreadRequest.metadata:type_name -> a2a.v1.CreateThreadRequest.MetadataEntry
-	32, // 29: a2a.v1.ThreadEntryWithPos.entry:type_name -> a2a.v1.ThreadEntry
-	57, // 30: a2a.v1.ListNetworksResponse.networks:type_name -> a2a.v1.NetworkInfo
-	58, // 31: a2a.v1.NetworkMembersResponse.members:type_name -> a2a.v1.NetworkMember
-	21, // 32: a2a.v1.A2ANode.GetIdentity:input_type -> a2a.v1.Empty
-	5,  // 33: a2a.v1.A2ANode.PublishAgentCard:input_type -> a2a.v1.AgentCard
-	28, // 34: a2a.v1.A2ANode.GetAgentCard:input_type -> a2a.v1.AgentIdentityRequest
-	14, // 35: a2a.v1.A2ANode.FindAgents:input_type -> a2a.v1.CapabilityQuery
-	8,  // 36: a2a.v1.A2ANode.SendMessage:input_type -> a2a.v1.Message
-	17, // 37: a2a.v1.A2ANode.SubscribeInbox:input_type -> a2a.v1.SubscribeRequest
-	15, // 38: a2a.v1.A2ANode.GetInbox:input_type -> a2a.v1.InboxQuery
-	16, // 39: a2a.v1.A2ANode.GetOutbox:input_type -> a2a.v1.OutboxQuery
-	29, // 40: a2a.v1.A2ANode.AckMessage:input_type -> a2a.v1.AckRequest
-	30, // 41: a2a.v1.A2ANode.CreateTask:input_type -> a2a.v1.CreateTaskRequest
-	20, // 42: a2a.v1.A2ANode.GetTask:input_type -> a2a.v1.TaskID
-	13, // 43: a2a.v1.A2ANode.UpdateTask:input_type -> a2a.v1.TaskStatusUpdate
-	20, // 44: a2a.v1.A2ANode.CancelTask:input_type -> a2a.v1.TaskID
-	12, // 45: a2a.v1.A2ANode.PublishTaskEvent:input_type -> a2a.v1.TaskEvent
-	20, // 46: a2a.v1.A2ANode.SubscribeTaskEvents:input_type -> a2a.v1.TaskID
-	48, // 47: a2a.v1.A2ANode.SendFile:input_type -> a2a.v1.SendFileRequest
-	49, // 48: a2a.v1.A2ANode.FetchFile:input_type -> a2a.v1.FetchFileRequest
-	41, // 49: a2a.v1.A2ANode.CreateThread:input_type -> a2a.v1.CreateThreadRequest
-	47, // 50: a2a.v1.A2ANode.GetThread:input_type -> a2a.v1.ThreadID
-	42, // 51: a2a.v1.A2ANode.AppendEntry:input_type -> a2a.v1.AppendEntryRequest
-	44, // 52: a2a.v1.A2ANode.GetThreadEntries:input_type -> a2a.v1.GetThreadEntriesRequest
-	46, // 53: a2a.v1.A2ANode.SubscribeThread:input_type -> a2a.v1.SubscribeThreadRequest
-	22, // 54: a2a.v1.A2ANode.Ping:input_type -> a2a.v1.PingRequest
-	21, // 55: a2a.v1.A2ANode.Health:input_type -> a2a.v1.Empty
-	21, // 56: a2a.v1.A2ANode.ListPeers:input_type -> a2a.v1.Empty
-	51, // 57: a2a.v1.A2ANode.Publish:input_type -> a2a.v1.PublishRequest
-	53, // 58: a2a.v1.A2ANode.SubscribeTopic:input_type -> a2a.v1.SubscribeTopicRequest
-	55, // 59: a2a.v1.A2ANode.SetWebhook:input_type -> a2a.v1.SetWebhookRequest
-	21, // 60: a2a.v1.A2ANode.ClearWebhook:input_type -> a2a.v1.Empty
-	21, // 61: a2a.v1.A2ANode.GetWebhook:input_type -> a2a.v1.Empty
-	59, // 62: a2a.v1.A2ANode.CreateNetwork:input_type -> a2a.v1.CreateNetworkRequest
-	61, // 63: a2a.v1.A2ANode.JoinNetwork:input_type -> a2a.v1.JoinNetworkRequest
-	60, // 64: a2a.v1.A2ANode.LeaveNetwork:input_type -> a2a.v1.NetworkIDRequest
-	21, // 65: a2a.v1.A2ANode.ListNetworks:input_type -> a2a.v1.Empty
-	60, // 66: a2a.v1.A2ANode.NetworkMembers:input_type -> a2a.v1.NetworkIDRequest
-	62, // 67: a2a.v1.A2ANode.BroadcastNetwork:input_type -> a2a.v1.BroadcastRequest
-	60, // 68: a2a.v1.A2ANode.SubscribeNetwork:input_type -> a2a.v1.NetworkIDRequest
-	66, // 69: a2a.v1.A2ANode.ClaimName:input_type -> a2a.v1.ClaimNameRequest
-	67, // 70: a2a.v1.A2ANode.ResolveName:input_type -> a2a.v1.ResolveNameRequest
-	69, // 71: a2a.v1.A2ANode.ConnectPeer:input_type -> a2a.v1.ConnectPeerRequest
-	69, // 72: a2a.v1.A2ANode.DisconnectPeer:input_type -> a2a.v1.ConnectPeerRequest
-	4,  // 73: a2a.v1.A2ANode.GetIdentity:output_type -> a2a.v1.AgentIdentity
-	19, // 74: a2a.v1.A2ANode.PublishAgentCard:output_type -> a2a.v1.PublishResult
-	5,  // 75: a2a.v1.A2ANode.GetAgentCard:output_type -> a2a.v1.AgentCard
-	5,  // 76: a2a.v1.A2ANode.FindAgents:output_type -> a2a.v1.AgentCard
-	18, // 77: a2a.v1.A2ANode.SendMessage:output_type -> a2a.v1.SendResult
-	8,  // 78: a2a.v1.A2ANode.SubscribeInbox:output_type -> a2a.v1.Message
-	8,  // 79: a2a.v1.A2ANode.GetInbox:output_type -> a2a.v1.Message
-	8,  // 80: a2a.v1.A2ANode.GetOutbox:output_type -> a2a.v1.Message
-	21, // 81: a2a.v1.A2ANode.AckMessage:output_type -> a2a.v1.Empty
-	10, // 82: a2a.v1.A2ANode.CreateTask:output_type -> a2a.v1.Task
-	10, // 83: a2a.v1.A2ANode.GetTask:output_type -> a2a.v1.Task
-	10, // 84: a2a.v1.A2ANode.UpdateTask:output_type -> a2a.v1.Task
-	10, // 85: a2a.v1.A2ANode.CancelTask:output_type -> a2a.v1.Task
-	21, // 86: a2a.v1.A2ANode.PublishTaskEvent:output_type -> a2a.v1.Empty
-	12, // 87: a2a.v1.A2ANode.SubscribeTaskEvents:output_type -> a2a.v1.TaskEvent
-	7,  // 88: a2a.v1.A2ANode.SendFile:output_type -> a2a.v1.Artifact
-	50, // 89: a2a.v1.A2ANode.FetchFile:output_type -> a2a.v1.FileChunk
-	31, // 90: a2a.v1.A2ANode.CreateThread:output_type -> a2a.v1.Thread
-	31, // 91: a2a.v1.A2ANode.GetThread:output_type -> a2a.v1.Thread
-	43, // 92: a2a.v1.A2ANode.AppendEntry:output_type -> a2a.v1.AppendEntryResult
-	45, // 93: a2a.v1.A2ANode.GetThreadEntries:output_type -> a2a.v1.ThreadEntryWithPos
-	45, // 94: a2a.v1.A2ANode.SubscribeThread:output_type -> a2a.v1.ThreadEntryWithPos
-	24, // 95: a2a.v1.A2ANode.Ping:output_type -> a2a.v1.PingResponse
-	27, // 96: a2a.v1.A2ANode.Health:output_type -> a2a.v1.HealthResponse
-	26, // 97: a2a.v1.A2ANode.ListPeers:output_type -> a2a.v1.PeersResponse
-	52, // 98: a2a.v1.A2ANode.Publish:output_type -> a2a.v1.PublishResponse
-	54, // 99: a2a.v1.A2ANode.SubscribeTopic:output_type -> a2a.v1.TopicMessage
-	56, // 100: a2a.v1.A2ANode.SetWebhook:output_type -> a2a.v1.WebhookResponse
-	21, // 101: a2a.v1.A2ANode.ClearWebhook:output_type -> a2a.v1.Empty
-	56, // 102: a2a.v1.A2ANode.GetWebhook:output_type -> a2a.v1.WebhookResponse
-	57, // 103: a2a.v1.A2ANode.CreateNetwork:output_type -> a2a.v1.NetworkInfo
-	57, // 104: a2a.v1.A2ANode.JoinNetwork:output_type -> a2a.v1.NetworkInfo
-	21, // 105: a2a.v1.A2ANode.LeaveNetwork:output_type -> a2a.v1.Empty
-	63, // 106: a2a.v1.A2ANode.ListNetworks:output_type -> a2a.v1.ListNetworksResponse
-	64, // 107: a2a.v1.A2ANode.NetworkMembers:output_type -> a2a.v1.NetworkMembersResponse
-	21, // 108: a2a.v1.A2ANode.BroadcastNetwork:output_type -> a2a.v1.Empty
-	65, // 109: a2a.v1.A2ANode.SubscribeNetwork:output_type -> a2a.v1.BroadcastMessage
-	68, // 110: a2a.v1.A2ANode.ClaimName:output_type -> a2a.v1.NameClaimResponse
-	68, // 111: a2a.v1.A2ANode.ResolveName:output_type -> a2a.v1.NameClaimResponse
-	70, // 112: a2a.v1.A2ANode.ConnectPeer:output_type -> a2a.v1.ConnectPeerResponse
-	21, // 113: a2a.v1.A2ANode.DisconnectPeer:output_type -> a2a.v1.Empty
-	73, // [73:114] is the sub-list for method output_type
-	32, // [32:73] is the sub-list for method input_type
-	32, // [32:32] is the sub-list for extension type_name
-	32, // [32:32] is the sub-list for extension extendee
-	0,  // [0:32] is the sub-list for field type_name
+	33, // 28: a2a.v1.ConsensusMsg.committed_block:type_name -> a2a.v1.ThreadBlock
+	75, // 29: a2a.v1.CreateThreadRequest.metadata:type_name -> a2a.v1.CreateThreadRequest.MetadataEntry
+	32, // 30: a2a.v1.ThreadEntryWithPos.entry:type_name -> a2a.v1.ThreadEntry
+	57, // 31: a2a.v1.ListNetworksResponse.networks:type_name -> a2a.v1.NetworkInfo
+	58, // 32: a2a.v1.NetworkMembersResponse.members:type_name -> a2a.v1.NetworkMember
+	21, // 33: a2a.v1.A2ANode.GetIdentity:input_type -> a2a.v1.Empty
+	5,  // 34: a2a.v1.A2ANode.PublishAgentCard:input_type -> a2a.v1.AgentCard
+	28, // 35: a2a.v1.A2ANode.GetAgentCard:input_type -> a2a.v1.AgentIdentityRequest
+	14, // 36: a2a.v1.A2ANode.FindAgents:input_type -> a2a.v1.CapabilityQuery
+	8,  // 37: a2a.v1.A2ANode.SendMessage:input_type -> a2a.v1.Message
+	17, // 38: a2a.v1.A2ANode.SubscribeInbox:input_type -> a2a.v1.SubscribeRequest
+	15, // 39: a2a.v1.A2ANode.GetInbox:input_type -> a2a.v1.InboxQuery
+	16, // 40: a2a.v1.A2ANode.GetOutbox:input_type -> a2a.v1.OutboxQuery
+	29, // 41: a2a.v1.A2ANode.AckMessage:input_type -> a2a.v1.AckRequest
+	30, // 42: a2a.v1.A2ANode.CreateTask:input_type -> a2a.v1.CreateTaskRequest
+	20, // 43: a2a.v1.A2ANode.GetTask:input_type -> a2a.v1.TaskID
+	13, // 44: a2a.v1.A2ANode.UpdateTask:input_type -> a2a.v1.TaskStatusUpdate
+	20, // 45: a2a.v1.A2ANode.CancelTask:input_type -> a2a.v1.TaskID
+	12, // 46: a2a.v1.A2ANode.PublishTaskEvent:input_type -> a2a.v1.TaskEvent
+	20, // 47: a2a.v1.A2ANode.SubscribeTaskEvents:input_type -> a2a.v1.TaskID
+	48, // 48: a2a.v1.A2ANode.SendFile:input_type -> a2a.v1.SendFileRequest
+	49, // 49: a2a.v1.A2ANode.FetchFile:input_type -> a2a.v1.FetchFileRequest
+	41, // 50: a2a.v1.A2ANode.CreateThread:input_type -> a2a.v1.CreateThreadRequest
+	47, // 51: a2a.v1.A2ANode.GetThread:input_type -> a2a.v1.ThreadID
+	42, // 52: a2a.v1.A2ANode.AppendEntry:input_type -> a2a.v1.AppendEntryRequest
+	44, // 53: a2a.v1.A2ANode.GetThreadEntries:input_type -> a2a.v1.GetThreadEntriesRequest
+	46, // 54: a2a.v1.A2ANode.SubscribeThread:input_type -> a2a.v1.SubscribeThreadRequest
+	22, // 55: a2a.v1.A2ANode.Ping:input_type -> a2a.v1.PingRequest
+	21, // 56: a2a.v1.A2ANode.Health:input_type -> a2a.v1.Empty
+	21, // 57: a2a.v1.A2ANode.ListPeers:input_type -> a2a.v1.Empty
+	51, // 58: a2a.v1.A2ANode.Publish:input_type -> a2a.v1.PublishRequest
+	53, // 59: a2a.v1.A2ANode.SubscribeTopic:input_type -> a2a.v1.SubscribeTopicRequest
+	55, // 60: a2a.v1.A2ANode.SetWebhook:input_type -> a2a.v1.SetWebhookRequest
+	21, // 61: a2a.v1.A2ANode.ClearWebhook:input_type -> a2a.v1.Empty
+	21, // 62: a2a.v1.A2ANode.GetWebhook:input_type -> a2a.v1.Empty
+	59, // 63: a2a.v1.A2ANode.CreateNetwork:input_type -> a2a.v1.CreateNetworkRequest
+	61, // 64: a2a.v1.A2ANode.JoinNetwork:input_type -> a2a.v1.JoinNetworkRequest
+	60, // 65: a2a.v1.A2ANode.LeaveNetwork:input_type -> a2a.v1.NetworkIDRequest
+	21, // 66: a2a.v1.A2ANode.ListNetworks:input_type -> a2a.v1.Empty
+	60, // 67: a2a.v1.A2ANode.NetworkMembers:input_type -> a2a.v1.NetworkIDRequest
+	62, // 68: a2a.v1.A2ANode.BroadcastNetwork:input_type -> a2a.v1.BroadcastRequest
+	60, // 69: a2a.v1.A2ANode.SubscribeNetwork:input_type -> a2a.v1.NetworkIDRequest
+	66, // 70: a2a.v1.A2ANode.ClaimName:input_type -> a2a.v1.ClaimNameRequest
+	67, // 71: a2a.v1.A2ANode.ResolveName:input_type -> a2a.v1.ResolveNameRequest
+	69, // 72: a2a.v1.A2ANode.ConnectPeer:input_type -> a2a.v1.ConnectPeerRequest
+	69, // 73: a2a.v1.A2ANode.DisconnectPeer:input_type -> a2a.v1.ConnectPeerRequest
+	4,  // 74: a2a.v1.A2ANode.GetIdentity:output_type -> a2a.v1.AgentIdentity
+	19, // 75: a2a.v1.A2ANode.PublishAgentCard:output_type -> a2a.v1.PublishResult
+	5,  // 76: a2a.v1.A2ANode.GetAgentCard:output_type -> a2a.v1.AgentCard
+	5,  // 77: a2a.v1.A2ANode.FindAgents:output_type -> a2a.v1.AgentCard
+	18, // 78: a2a.v1.A2ANode.SendMessage:output_type -> a2a.v1.SendResult
+	8,  // 79: a2a.v1.A2ANode.SubscribeInbox:output_type -> a2a.v1.Message
+	8,  // 80: a2a.v1.A2ANode.GetInbox:output_type -> a2a.v1.Message
+	8,  // 81: a2a.v1.A2ANode.GetOutbox:output_type -> a2a.v1.Message
+	21, // 82: a2a.v1.A2ANode.AckMessage:output_type -> a2a.v1.Empty
+	10, // 83: a2a.v1.A2ANode.CreateTask:output_type -> a2a.v1.Task
+	10, // 84: a2a.v1.A2ANode.GetTask:output_type -> a2a.v1.Task
+	10, // 85: a2a.v1.A2ANode.UpdateTask:output_type -> a2a.v1.Task
+	10, // 86: a2a.v1.A2ANode.CancelTask:output_type -> a2a.v1.Task
+	21, // 87: a2a.v1.A2ANode.PublishTaskEvent:output_type -> a2a.v1.Empty
+	12, // 88: a2a.v1.A2ANode.SubscribeTaskEvents:output_type -> a2a.v1.TaskEvent
+	7,  // 89: a2a.v1.A2ANode.SendFile:output_type -> a2a.v1.Artifact
+	50, // 90: a2a.v1.A2ANode.FetchFile:output_type -> a2a.v1.FileChunk
+	31, // 91: a2a.v1.A2ANode.CreateThread:output_type -> a2a.v1.Thread
+	31, // 92: a2a.v1.A2ANode.GetThread:output_type -> a2a.v1.Thread
+	43, // 93: a2a.v1.A2ANode.AppendEntry:output_type -> a2a.v1.AppendEntryResult
+	45, // 94: a2a.v1.A2ANode.GetThreadEntries:output_type -> a2a.v1.ThreadEntryWithPos
+	45, // 95: a2a.v1.A2ANode.SubscribeThread:output_type -> a2a.v1.ThreadEntryWithPos
+	24, // 96: a2a.v1.A2ANode.Ping:output_type -> a2a.v1.PingResponse
+	27, // 97: a2a.v1.A2ANode.Health:output_type -> a2a.v1.HealthResponse
+	26, // 98: a2a.v1.A2ANode.ListPeers:output_type -> a2a.v1.PeersResponse
+	52, // 99: a2a.v1.A2ANode.Publish:output_type -> a2a.v1.PublishResponse
+	54, // 100: a2a.v1.A2ANode.SubscribeTopic:output_type -> a2a.v1.TopicMessage
+	56, // 101: a2a.v1.A2ANode.SetWebhook:output_type -> a2a.v1.WebhookResponse
+	21, // 102: a2a.v1.A2ANode.ClearWebhook:output_type -> a2a.v1.Empty
+	56, // 103: a2a.v1.A2ANode.GetWebhook:output_type -> a2a.v1.WebhookResponse
+	57, // 104: a2a.v1.A2ANode.CreateNetwork:output_type -> a2a.v1.NetworkInfo
+	57, // 105: a2a.v1.A2ANode.JoinNetwork:output_type -> a2a.v1.NetworkInfo
+	21, // 106: a2a.v1.A2ANode.LeaveNetwork:output_type -> a2a.v1.Empty
+	63, // 107: a2a.v1.A2ANode.ListNetworks:output_type -> a2a.v1.ListNetworksResponse
+	64, // 108: a2a.v1.A2ANode.NetworkMembers:output_type -> a2a.v1.NetworkMembersResponse
+	21, // 109: a2a.v1.A2ANode.BroadcastNetwork:output_type -> a2a.v1.Empty
+	65, // 110: a2a.v1.A2ANode.SubscribeNetwork:output_type -> a2a.v1.BroadcastMessage
+	68, // 111: a2a.v1.A2ANode.ClaimName:output_type -> a2a.v1.NameClaimResponse
+	68, // 112: a2a.v1.A2ANode.ResolveName:output_type -> a2a.v1.NameClaimResponse
+	70, // 113: a2a.v1.A2ANode.ConnectPeer:output_type -> a2a.v1.ConnectPeerResponse
+	21, // 114: a2a.v1.A2ANode.DisconnectPeer:output_type -> a2a.v1.Empty
+	74, // [74:115] is the sub-list for method output_type
+	33, // [33:74] is the sub-list for method input_type
+	33, // [33:33] is the sub-list for extension type_name
+	33, // [33:33] is the sub-list for extension extendee
+	0,  // [0:33] is the sub-list for field type_name
 }
 
 func init() { file_a2a_proto_init() }
@@ -5225,6 +5243,7 @@ func file_a2a_proto_init() {
 		(*ConsensusMsg_RaftVoteReply)(nil),
 		(*ConsensusMsg_RaftAppendEntries)(nil),
 		(*ConsensusMsg_RaftAppendReply)(nil),
+		(*ConsensusMsg_CommittedBlock)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
