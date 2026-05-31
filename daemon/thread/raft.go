@@ -128,9 +128,16 @@ func newRaftBackend(
 	}
 
 	// Build peer list for initial cluster.
-	peers := make([]raft.Peer, len(thread.ReplicaDids))
-	for i, did := range thread.ReplicaDids {
-		peers[i] = raft.Peer{ID: peerIDs[did]}
+	// Use thread.N (the BFT-derived cluster size) rather than the full replica
+	// list, so that f=0 (n=1) creates a single-node raft with quorum=1.
+	// The first N replicas form the voting set; extras are non-voting observers.
+	n := int(thread.N)
+	if n <= 0 || n > len(thread.ReplicaDids) {
+		n = len(thread.ReplicaDids)
+	}
+	peers := make([]raft.Peer, n)
+	for i := 0; i < n; i++ {
+		peers[i] = raft.Peer{ID: peerIDs[thread.ReplicaDids[i]]}
 	}
 
 	cfg := &raft.Config{
