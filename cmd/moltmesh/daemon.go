@@ -270,8 +270,17 @@ func run(cfg *config.Config, log *zap.Logger) error {
 	// ── gossip ───────────────────────────────────────────────────────────────
 	gm := gossip.New(n.PubSub, log)
 
+	// ── thread manager ────────────────────────────────────────────────────────
+	threadStore, err := thread.NewStore(filepath.Join(dataDir, "threads.db"))
+	if err != nil {
+		return fmt.Errorf("thread store: %w", err)
+	}
+	defer threadStore.Close()
+
+	tm := thread.NewManager(ctx, threadStore, id, n.PubSub, log)
+
 	// ── delivery ─────────────────────────────────────────────────────────────
-	dlv := deliver.New(n.Host, reg, ib, log)
+	dlv := deliver.New(n.Host, reg, ib, tm, log)
 
 	// ── outbox ───────────────────────────────────────────────────────────────
 	ob, err := outbox.New(
@@ -284,15 +293,6 @@ func run(cfg *config.Config, log *zap.Logger) error {
 	}
 	defer ob.Close()
 	go ob.Run(ctx)
-
-	// ── thread manager ────────────────────────────────────────────────────────
-	threadStore, err := thread.NewStore(filepath.Join(dataDir, "threads.db"))
-	if err != nil {
-		return fmt.Errorf("thread store: %w", err)
-	}
-	defer threadStore.Close()
-
-	tm := thread.NewManager(ctx, threadStore, id, n.PubSub, log)
 
 	// ── network manager ───────────────────────────────────────────────────────
 	netStore, err := network.New(filepath.Join(dataDir, "networks.db"))

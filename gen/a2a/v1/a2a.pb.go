@@ -24,13 +24,14 @@ const (
 type MessageKind int32
 
 const (
-	MessageKind_MESSAGE_KIND_UNSPECIFIED  MessageKind = 0
-	MessageKind_MESSAGE_KIND_TEXT         MessageKind = 1
-	MessageKind_MESSAGE_KIND_TASK_REQUEST MessageKind = 2
-	MessageKind_MESSAGE_KIND_TASK_EVENT   MessageKind = 3
-	MessageKind_MESSAGE_KIND_TASK_RESULT  MessageKind = 4
-	MessageKind_MESSAGE_KIND_TASK_CANCEL  MessageKind = 5
-	MessageKind_MESSAGE_KIND_ACK          MessageKind = 6
+	MessageKind_MESSAGE_KIND_UNSPECIFIED   MessageKind = 0
+	MessageKind_MESSAGE_KIND_TEXT          MessageKind = 1
+	MessageKind_MESSAGE_KIND_TASK_REQUEST  MessageKind = 2
+	MessageKind_MESSAGE_KIND_TASK_EVENT    MessageKind = 3
+	MessageKind_MESSAGE_KIND_TASK_RESULT   MessageKind = 4
+	MessageKind_MESSAGE_KIND_TASK_CANCEL   MessageKind = 5
+	MessageKind_MESSAGE_KIND_ACK           MessageKind = 6
+	MessageKind_MESSAGE_KIND_THREAD_INVITE MessageKind = 7
 )
 
 // Enum value maps for MessageKind.
@@ -43,15 +44,17 @@ var (
 		4: "MESSAGE_KIND_TASK_RESULT",
 		5: "MESSAGE_KIND_TASK_CANCEL",
 		6: "MESSAGE_KIND_ACK",
+		7: "MESSAGE_KIND_THREAD_INVITE",
 	}
 	MessageKind_value = map[string]int32{
-		"MESSAGE_KIND_UNSPECIFIED":  0,
-		"MESSAGE_KIND_TEXT":         1,
-		"MESSAGE_KIND_TASK_REQUEST": 2,
-		"MESSAGE_KIND_TASK_EVENT":   3,
-		"MESSAGE_KIND_TASK_RESULT":  4,
-		"MESSAGE_KIND_TASK_CANCEL":  5,
-		"MESSAGE_KIND_ACK":          6,
+		"MESSAGE_KIND_UNSPECIFIED":   0,
+		"MESSAGE_KIND_TEXT":          1,
+		"MESSAGE_KIND_TASK_REQUEST":  2,
+		"MESSAGE_KIND_TASK_EVENT":    3,
+		"MESSAGE_KIND_TASK_RESULT":   4,
+		"MESSAGE_KIND_TASK_CANCEL":   5,
+		"MESSAGE_KIND_ACK":           6,
+		"MESSAGE_KIND_THREAD_INVITE": 7,
 	}
 )
 
@@ -515,11 +518,11 @@ func (x *Skill) GetTags() []string {
 
 type Artifact struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Cid           string                 `protobuf:"bytes,1,opt,name=cid,proto3" json:"cid,omitempty"` // SHA256 multihash (IPLD-compatible)
+	Cid           string                 `protobuf:"bytes,1,opt,name=cid,proto3" json:"cid,omitempty"` // CIDv1 (bafy... base32 multihash, sha2-256)
 	MimeType      string                 `protobuf:"bytes,2,opt,name=mime_type,json=mimeType,proto3" json:"mime_type,omitempty"`
 	Size          int64                  `protobuf:"varint,3,opt,name=size,proto3" json:"size,omitempty"`
 	Inline        []byte                 `protobuf:"bytes,4,opt,name=inline,proto3" json:"inline,omitempty"` // populated for small artifacts (<64KB)
-	Uri           string                 `protobuf:"bytes,5,opt,name=uri,proto3" json:"uri,omitempty"`       // populated for large artifacts (fetch separately)
+	Uri           string                 `protobuf:"bytes,5,opt,name=uri,proto3" json:"uri,omitempty"`       // ipfs://<cid> for large artifacts (fetch via Bitswap)
 	Name          string                 `protobuf:"bytes,6,opt,name=name,proto3" json:"name,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -3434,8 +3437,8 @@ func (x *SendFileRequest) GetMimeType() string {
 
 type FetchFileRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Cid           string                 `protobuf:"bytes,1,opt,name=cid,proto3" json:"cid,omitempty"`                        // CID to fetch
-	FromDid       string                 `protobuf:"bytes,2,opt,name=from_did,json=fromDid,proto3" json:"from_did,omitempty"` // peer to fetch from (must have published an AgentCard with multiaddrs)
+	Cid           string                 `protobuf:"bytes,1,opt,name=cid,proto3" json:"cid,omitempty"`                        // CIDv1 (bafy...) to fetch via Bitswap
+	FromDid       string                 `protobuf:"bytes,2,opt,name=from_did,json=fromDid,proto3" json:"from_did,omitempty"` // hint: DID of peer that has the block (optional, for faster connect)
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -4915,7 +4918,7 @@ const file_a2a_proto_rawDesc = "" +
 	"\n" +
 	"multiaddrs\x18\x02 \x03(\tR\n" +
 	"multiaddrs\x12+\n" +
-	"\x11already_connected\x18\x03 \x01(\bR\x10alreadyConnected*\xd0\x01\n" +
+	"\x11already_connected\x18\x03 \x01(\bR\x10alreadyConnected*\xf0\x01\n" +
 	"\vMessageKind\x12\x1c\n" +
 	"\x18MESSAGE_KIND_UNSPECIFIED\x10\x00\x12\x15\n" +
 	"\x11MESSAGE_KIND_TEXT\x10\x01\x12\x1d\n" +
@@ -4923,7 +4926,8 @@ const file_a2a_proto_rawDesc = "" +
 	"\x17MESSAGE_KIND_TASK_EVENT\x10\x03\x12\x1c\n" +
 	"\x18MESSAGE_KIND_TASK_RESULT\x10\x04\x12\x1c\n" +
 	"\x18MESSAGE_KIND_TASK_CANCEL\x10\x05\x12\x14\n" +
-	"\x10MESSAGE_KIND_ACK\x10\x06*\xab\x01\n" +
+	"\x10MESSAGE_KIND_ACK\x10\x06\x12\x1e\n" +
+	"\x1aMESSAGE_KIND_THREAD_INVITE\x10\a*\xab\x01\n" +
 	"\n" +
 	"TaskStatus\x12\x1b\n" +
 	"\x17TASK_STATUS_UNSPECIFIED\x10\x00\x12\x19\n" +

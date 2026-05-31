@@ -528,7 +528,7 @@ func run(cfg *config.Config, log *zap.Logger) error {
 
 	// ── delivery layer (libp2p stream protocol) ──────────────────────────────
 	// Blob transport is now handled by Bitswap (mounted on n.Host).
-	dlv := deliver.New(n.Host, reg, ib, log)
+	dlv := deliver.New(n.Host, reg, ib, nil, log)
 
 	// ── outbox (with real delivery function) ─────────────────────────────────
 	ob, err := outbox.New(

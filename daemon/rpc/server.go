@@ -9,6 +9,7 @@ import (
 	"crypto/sha256"
 
 	"go.uber.org/zap"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/sahilpohare/p2p-a2a/pkg/p2putil"
 	pb "github.com/sahilpohare/p2p-a2a/gen/a2a/v1"
@@ -394,7 +395,33 @@ func (s *Server) CreateThread(ctx context.Context, req *pb.CreateThreadRequest) 
 	if s.threads == nil {
 		return nil, fmt.Errorf("thread manager not available")
 	}
-	return s.threads.CreateThread(ctx, req)
+	thread, err := s.threads.CreateThread(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	// Send THREAD_INVITE to all non-self replicas so they join the consensus.
+	payload, err := proto.Marshal(thread)
+	if err != nil {
+		s.log.Warn("marshal thread invite", zap.Error(err))
+		return thread, nil
+	}
+	for _, did := range thread.ReplicaDids {
+		if did == s.id.DID {
+			continue
+		}
+		msg := &pb.Message{
+			Id:       uuid.New().String(),
+			FromDid:  s.id.DID,
+			ToDid:    did,
+			Kind:     pb.MessageKind_MESSAGE_KIND_THREAD_INVITE,
+			Payload:  payload,
+		}
+		if err := s.outbox.Enqueue(msg); err != nil {
+			s.log.Warn("enqueue thread invite", zap.String("to", did), zap.Error(err))
+		}
+	}
+	return thread, nil
 }
 
 func (s *Server) GetThread(_ context.Context, req *pb.ThreadID) (*pb.Thread, error) {

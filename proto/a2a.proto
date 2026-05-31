@@ -68,7 +68,8 @@ enum MessageKind {
   MESSAGE_KIND_TASK_EVENT   = 3;
   MESSAGE_KIND_TASK_RESULT  = 4;
   MESSAGE_KIND_TASK_CANCEL  = 5;
-  MESSAGE_KIND_ACK          = 6;
+  MESSAGE_KIND_ACK           = 6;
+  MESSAGE_KIND_THREAD_INVITE = 7;
 }
 
 message TextMessage {

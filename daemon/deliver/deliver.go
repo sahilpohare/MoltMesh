@@ -56,15 +56,21 @@ const (
 const ackOK = byte(0x01)
 
 // Deliverer sends messages to remote peers.
+// ThreadInviter is implemented by thread.Manager.
+type ThreadInviter interface {
+	InviteReceived(thread *pb.Thread) error
+}
+
 type Deliverer struct {
 	host     host.Host
 	registry *registry.Registry
+	threads  ThreadInviter
 	log      *zap.Logger
 }
 
 // New creates a Deliverer and registers the receive handler on the host.
-func New(h host.Host, reg *registry.Registry, ib *inbox.Inbox, log *zap.Logger) *Deliverer {
-	d := &Deliverer{host: h, registry: reg, log: log}
+func New(h host.Host, reg *registry.Registry, ib *inbox.Inbox, tm ThreadInviter, log *zap.Logger) *Deliverer {
+	d := &Deliverer{host: h, registry: reg, threads: tm, log: log}
 	h.SetStreamHandler(Protocol, d.receiveHandler(ib))
 	return d
 }
@@ -201,6 +207,25 @@ func (d *Deliverer) receiveHandler(ib *inbox.Inbox) network.StreamHandler {
 				zap.String("peer", remotePeer.String()),
 			)
 			s.Write([]byte{0x00}) //nolint:errcheck
+			return
+		}
+
+		// Handle thread invites before hitting the inbox.
+		if msg.Kind == pb.MessageKind_MESSAGE_KIND_THREAD_INVITE {
+			var thread pb.Thread
+			if err := proto.Unmarshal(msg.Payload, &thread); err != nil {
+				d.log.Warn("unmarshal thread invite", zap.Error(err))
+				s.Write([]byte{0x00}) //nolint:errcheck
+				return
+			}
+			if d.threads != nil {
+				if err := d.threads.InviteReceived(&thread); err != nil {
+					d.log.Warn("thread invite", zap.String("thread", thread.Id), zap.Error(err))
+				} else {
+					d.log.Info("thread invite accepted", zap.String("thread", thread.Id))
+				}
+			}
+			s.Write([]byte{ackOK}) //nolint:errcheck
 			return
 		}
 

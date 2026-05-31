@@ -41,6 +41,25 @@ const (
 	A2ANode_AppendEntry_FullMethodName         = "/a2a.v1.A2ANode/AppendEntry"
 	A2ANode_GetThreadEntries_FullMethodName    = "/a2a.v1.A2ANode/GetThreadEntries"
 	A2ANode_SubscribeThread_FullMethodName     = "/a2a.v1.A2ANode/SubscribeThread"
+	A2ANode_Ping_FullMethodName                = "/a2a.v1.A2ANode/Ping"
+	A2ANode_Health_FullMethodName              = "/a2a.v1.A2ANode/Health"
+	A2ANode_ListPeers_FullMethodName           = "/a2a.v1.A2ANode/ListPeers"
+	A2ANode_Publish_FullMethodName             = "/a2a.v1.A2ANode/Publish"
+	A2ANode_SubscribeTopic_FullMethodName      = "/a2a.v1.A2ANode/SubscribeTopic"
+	A2ANode_SetWebhook_FullMethodName          = "/a2a.v1.A2ANode/SetWebhook"
+	A2ANode_ClearWebhook_FullMethodName        = "/a2a.v1.A2ANode/ClearWebhook"
+	A2ANode_GetWebhook_FullMethodName          = "/a2a.v1.A2ANode/GetWebhook"
+	A2ANode_CreateNetwork_FullMethodName       = "/a2a.v1.A2ANode/CreateNetwork"
+	A2ANode_JoinNetwork_FullMethodName         = "/a2a.v1.A2ANode/JoinNetwork"
+	A2ANode_LeaveNetwork_FullMethodName        = "/a2a.v1.A2ANode/LeaveNetwork"
+	A2ANode_ListNetworks_FullMethodName        = "/a2a.v1.A2ANode/ListNetworks"
+	A2ANode_NetworkMembers_FullMethodName      = "/a2a.v1.A2ANode/NetworkMembers"
+	A2ANode_BroadcastNetwork_FullMethodName    = "/a2a.v1.A2ANode/BroadcastNetwork"
+	A2ANode_SubscribeNetwork_FullMethodName    = "/a2a.v1.A2ANode/SubscribeNetwork"
+	A2ANode_ClaimName_FullMethodName           = "/a2a.v1.A2ANode/ClaimName"
+	A2ANode_ResolveName_FullMethodName         = "/a2a.v1.A2ANode/ResolveName"
+	A2ANode_ConnectPeer_FullMethodName         = "/a2a.v1.A2ANode/ConnectPeer"
+	A2ANode_DisconnectPeer_FullMethodName      = "/a2a.v1.A2ANode/DisconnectPeer"
 )
 
 // A2ANodeClient is the client API for A2ANode service.
@@ -75,6 +94,31 @@ type A2ANodeClient interface {
 	AppendEntry(ctx context.Context, in *AppendEntryRequest, opts ...grpc.CallOption) (*AppendEntryResult, error)
 	GetThreadEntries(ctx context.Context, in *GetThreadEntriesRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ThreadEntryWithPos], error)
 	SubscribeThread(ctx context.Context, in *SubscribeThreadRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ThreadEntryWithPos], error)
+	// Diagnostics
+	Ping(ctx context.Context, in *PingRequest, opts ...grpc.CallOption) (*PingResponse, error)
+	Health(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*HealthResponse, error)
+	ListPeers(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*PeersResponse, error)
+	// PubSub
+	Publish(ctx context.Context, in *PublishRequest, opts ...grpc.CallOption) (*PublishResponse, error)
+	SubscribeTopic(ctx context.Context, in *SubscribeTopicRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[TopicMessage], error)
+	// Webhooks
+	SetWebhook(ctx context.Context, in *SetWebhookRequest, opts ...grpc.CallOption) (*WebhookResponse, error)
+	ClearWebhook(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*Empty, error)
+	GetWebhook(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*WebhookResponse, error)
+	// Networks
+	CreateNetwork(ctx context.Context, in *CreateNetworkRequest, opts ...grpc.CallOption) (*NetworkInfo, error)
+	JoinNetwork(ctx context.Context, in *JoinNetworkRequest, opts ...grpc.CallOption) (*NetworkInfo, error)
+	LeaveNetwork(ctx context.Context, in *NetworkIDRequest, opts ...grpc.CallOption) (*Empty, error)
+	ListNetworks(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*ListNetworksResponse, error)
+	NetworkMembers(ctx context.Context, in *NetworkIDRequest, opts ...grpc.CallOption) (*NetworkMembersResponse, error)
+	BroadcastNetwork(ctx context.Context, in *BroadcastRequest, opts ...grpc.CallOption) (*Empty, error)
+	SubscribeNetwork(ctx context.Context, in *NetworkIDRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[BroadcastMessage], error)
+	// Names
+	ClaimName(ctx context.Context, in *ClaimNameRequest, opts ...grpc.CallOption) (*NameClaimResponse, error)
+	ResolveName(ctx context.Context, in *ResolveNameRequest, opts ...grpc.CallOption) (*NameClaimResponse, error)
+	// Peer connections
+	ConnectPeer(ctx context.Context, in *ConnectPeerRequest, opts ...grpc.CallOption) (*ConnectPeerResponse, error)
+	DisconnectPeer(ctx context.Context, in *ConnectPeerRequest, opts ...grpc.CallOption) (*Empty, error)
 }
 
 type a2ANodeClient struct {
@@ -377,6 +421,214 @@ func (c *a2ANodeClient) SubscribeThread(ctx context.Context, in *SubscribeThread
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type A2ANode_SubscribeThreadClient = grpc.ServerStreamingClient[ThreadEntryWithPos]
 
+func (c *a2ANodeClient) Ping(ctx context.Context, in *PingRequest, opts ...grpc.CallOption) (*PingResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(PingResponse)
+	err := c.cc.Invoke(ctx, A2ANode_Ping_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *a2ANodeClient) Health(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*HealthResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(HealthResponse)
+	err := c.cc.Invoke(ctx, A2ANode_Health_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *a2ANodeClient) ListPeers(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*PeersResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(PeersResponse)
+	err := c.cc.Invoke(ctx, A2ANode_ListPeers_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *a2ANodeClient) Publish(ctx context.Context, in *PublishRequest, opts ...grpc.CallOption) (*PublishResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(PublishResponse)
+	err := c.cc.Invoke(ctx, A2ANode_Publish_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *a2ANodeClient) SubscribeTopic(ctx context.Context, in *SubscribeTopicRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[TopicMessage], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &A2ANode_ServiceDesc.Streams[8], A2ANode_SubscribeTopic_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[SubscribeTopicRequest, TopicMessage]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type A2ANode_SubscribeTopicClient = grpc.ServerStreamingClient[TopicMessage]
+
+func (c *a2ANodeClient) SetWebhook(ctx context.Context, in *SetWebhookRequest, opts ...grpc.CallOption) (*WebhookResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(WebhookResponse)
+	err := c.cc.Invoke(ctx, A2ANode_SetWebhook_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *a2ANodeClient) ClearWebhook(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(Empty)
+	err := c.cc.Invoke(ctx, A2ANode_ClearWebhook_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *a2ANodeClient) GetWebhook(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*WebhookResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(WebhookResponse)
+	err := c.cc.Invoke(ctx, A2ANode_GetWebhook_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *a2ANodeClient) CreateNetwork(ctx context.Context, in *CreateNetworkRequest, opts ...grpc.CallOption) (*NetworkInfo, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(NetworkInfo)
+	err := c.cc.Invoke(ctx, A2ANode_CreateNetwork_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *a2ANodeClient) JoinNetwork(ctx context.Context, in *JoinNetworkRequest, opts ...grpc.CallOption) (*NetworkInfo, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(NetworkInfo)
+	err := c.cc.Invoke(ctx, A2ANode_JoinNetwork_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *a2ANodeClient) LeaveNetwork(ctx context.Context, in *NetworkIDRequest, opts ...grpc.CallOption) (*Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(Empty)
+	err := c.cc.Invoke(ctx, A2ANode_LeaveNetwork_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *a2ANodeClient) ListNetworks(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*ListNetworksResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListNetworksResponse)
+	err := c.cc.Invoke(ctx, A2ANode_ListNetworks_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *a2ANodeClient) NetworkMembers(ctx context.Context, in *NetworkIDRequest, opts ...grpc.CallOption) (*NetworkMembersResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(NetworkMembersResponse)
+	err := c.cc.Invoke(ctx, A2ANode_NetworkMembers_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *a2ANodeClient) BroadcastNetwork(ctx context.Context, in *BroadcastRequest, opts ...grpc.CallOption) (*Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(Empty)
+	err := c.cc.Invoke(ctx, A2ANode_BroadcastNetwork_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *a2ANodeClient) SubscribeNetwork(ctx context.Context, in *NetworkIDRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[BroadcastMessage], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &A2ANode_ServiceDesc.Streams[9], A2ANode_SubscribeNetwork_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[NetworkIDRequest, BroadcastMessage]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type A2ANode_SubscribeNetworkClient = grpc.ServerStreamingClient[BroadcastMessage]
+
+func (c *a2ANodeClient) ClaimName(ctx context.Context, in *ClaimNameRequest, opts ...grpc.CallOption) (*NameClaimResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(NameClaimResponse)
+	err := c.cc.Invoke(ctx, A2ANode_ClaimName_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *a2ANodeClient) ResolveName(ctx context.Context, in *ResolveNameRequest, opts ...grpc.CallOption) (*NameClaimResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(NameClaimResponse)
+	err := c.cc.Invoke(ctx, A2ANode_ResolveName_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *a2ANodeClient) ConnectPeer(ctx context.Context, in *ConnectPeerRequest, opts ...grpc.CallOption) (*ConnectPeerResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ConnectPeerResponse)
+	err := c.cc.Invoke(ctx, A2ANode_ConnectPeer_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *a2ANodeClient) DisconnectPeer(ctx context.Context, in *ConnectPeerRequest, opts ...grpc.CallOption) (*Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(Empty)
+	err := c.cc.Invoke(ctx, A2ANode_DisconnectPeer_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // A2ANodeServer is the server API for A2ANode service.
 // All implementations must embed UnimplementedA2ANodeServer
 // for forward compatibility.
@@ -409,6 +661,31 @@ type A2ANodeServer interface {
 	AppendEntry(context.Context, *AppendEntryRequest) (*AppendEntryResult, error)
 	GetThreadEntries(*GetThreadEntriesRequest, grpc.ServerStreamingServer[ThreadEntryWithPos]) error
 	SubscribeThread(*SubscribeThreadRequest, grpc.ServerStreamingServer[ThreadEntryWithPos]) error
+	// Diagnostics
+	Ping(context.Context, *PingRequest) (*PingResponse, error)
+	Health(context.Context, *Empty) (*HealthResponse, error)
+	ListPeers(context.Context, *Empty) (*PeersResponse, error)
+	// PubSub
+	Publish(context.Context, *PublishRequest) (*PublishResponse, error)
+	SubscribeTopic(*SubscribeTopicRequest, grpc.ServerStreamingServer[TopicMessage]) error
+	// Webhooks
+	SetWebhook(context.Context, *SetWebhookRequest) (*WebhookResponse, error)
+	ClearWebhook(context.Context, *Empty) (*Empty, error)
+	GetWebhook(context.Context, *Empty) (*WebhookResponse, error)
+	// Networks
+	CreateNetwork(context.Context, *CreateNetworkRequest) (*NetworkInfo, error)
+	JoinNetwork(context.Context, *JoinNetworkRequest) (*NetworkInfo, error)
+	LeaveNetwork(context.Context, *NetworkIDRequest) (*Empty, error)
+	ListNetworks(context.Context, *Empty) (*ListNetworksResponse, error)
+	NetworkMembers(context.Context, *NetworkIDRequest) (*NetworkMembersResponse, error)
+	BroadcastNetwork(context.Context, *BroadcastRequest) (*Empty, error)
+	SubscribeNetwork(*NetworkIDRequest, grpc.ServerStreamingServer[BroadcastMessage]) error
+	// Names
+	ClaimName(context.Context, *ClaimNameRequest) (*NameClaimResponse, error)
+	ResolveName(context.Context, *ResolveNameRequest) (*NameClaimResponse, error)
+	// Peer connections
+	ConnectPeer(context.Context, *ConnectPeerRequest) (*ConnectPeerResponse, error)
+	DisconnectPeer(context.Context, *ConnectPeerRequest) (*Empty, error)
 	mustEmbedUnimplementedA2ANodeServer()
 }
 
@@ -484,6 +761,63 @@ func (UnimplementedA2ANodeServer) GetThreadEntries(*GetThreadEntriesRequest, grp
 }
 func (UnimplementedA2ANodeServer) SubscribeThread(*SubscribeThreadRequest, grpc.ServerStreamingServer[ThreadEntryWithPos]) error {
 	return status.Error(codes.Unimplemented, "method SubscribeThread not implemented")
+}
+func (UnimplementedA2ANodeServer) Ping(context.Context, *PingRequest) (*PingResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method Ping not implemented")
+}
+func (UnimplementedA2ANodeServer) Health(context.Context, *Empty) (*HealthResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method Health not implemented")
+}
+func (UnimplementedA2ANodeServer) ListPeers(context.Context, *Empty) (*PeersResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListPeers not implemented")
+}
+func (UnimplementedA2ANodeServer) Publish(context.Context, *PublishRequest) (*PublishResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method Publish not implemented")
+}
+func (UnimplementedA2ANodeServer) SubscribeTopic(*SubscribeTopicRequest, grpc.ServerStreamingServer[TopicMessage]) error {
+	return status.Error(codes.Unimplemented, "method SubscribeTopic not implemented")
+}
+func (UnimplementedA2ANodeServer) SetWebhook(context.Context, *SetWebhookRequest) (*WebhookResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method SetWebhook not implemented")
+}
+func (UnimplementedA2ANodeServer) ClearWebhook(context.Context, *Empty) (*Empty, error) {
+	return nil, status.Error(codes.Unimplemented, "method ClearWebhook not implemented")
+}
+func (UnimplementedA2ANodeServer) GetWebhook(context.Context, *Empty) (*WebhookResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetWebhook not implemented")
+}
+func (UnimplementedA2ANodeServer) CreateNetwork(context.Context, *CreateNetworkRequest) (*NetworkInfo, error) {
+	return nil, status.Error(codes.Unimplemented, "method CreateNetwork not implemented")
+}
+func (UnimplementedA2ANodeServer) JoinNetwork(context.Context, *JoinNetworkRequest) (*NetworkInfo, error) {
+	return nil, status.Error(codes.Unimplemented, "method JoinNetwork not implemented")
+}
+func (UnimplementedA2ANodeServer) LeaveNetwork(context.Context, *NetworkIDRequest) (*Empty, error) {
+	return nil, status.Error(codes.Unimplemented, "method LeaveNetwork not implemented")
+}
+func (UnimplementedA2ANodeServer) ListNetworks(context.Context, *Empty) (*ListNetworksResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListNetworks not implemented")
+}
+func (UnimplementedA2ANodeServer) NetworkMembers(context.Context, *NetworkIDRequest) (*NetworkMembersResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method NetworkMembers not implemented")
+}
+func (UnimplementedA2ANodeServer) BroadcastNetwork(context.Context, *BroadcastRequest) (*Empty, error) {
+	return nil, status.Error(codes.Unimplemented, "method BroadcastNetwork not implemented")
+}
+func (UnimplementedA2ANodeServer) SubscribeNetwork(*NetworkIDRequest, grpc.ServerStreamingServer[BroadcastMessage]) error {
+	return status.Error(codes.Unimplemented, "method SubscribeNetwork not implemented")
+}
+func (UnimplementedA2ANodeServer) ClaimName(context.Context, *ClaimNameRequest) (*NameClaimResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ClaimName not implemented")
+}
+func (UnimplementedA2ANodeServer) ResolveName(context.Context, *ResolveNameRequest) (*NameClaimResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ResolveName not implemented")
+}
+func (UnimplementedA2ANodeServer) ConnectPeer(context.Context, *ConnectPeerRequest) (*ConnectPeerResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ConnectPeer not implemented")
+}
+func (UnimplementedA2ANodeServer) DisconnectPeer(context.Context, *ConnectPeerRequest) (*Empty, error) {
+	return nil, status.Error(codes.Unimplemented, "method DisconnectPeer not implemented")
 }
 func (UnimplementedA2ANodeServer) mustEmbedUnimplementedA2ANodeServer() {}
 func (UnimplementedA2ANodeServer) testEmbeddedByValue()                 {}
@@ -846,6 +1180,334 @@ func _A2ANode_SubscribeThread_Handler(srv interface{}, stream grpc.ServerStream)
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type A2ANode_SubscribeThreadServer = grpc.ServerStreamingServer[ThreadEntryWithPos]
 
+func _A2ANode_Ping_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PingRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(A2ANodeServer).Ping(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: A2ANode_Ping_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(A2ANodeServer).Ping(ctx, req.(*PingRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _A2ANode_Health_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(Empty)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(A2ANodeServer).Health(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: A2ANode_Health_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(A2ANodeServer).Health(ctx, req.(*Empty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _A2ANode_ListPeers_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(Empty)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(A2ANodeServer).ListPeers(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: A2ANode_ListPeers_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(A2ANodeServer).ListPeers(ctx, req.(*Empty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _A2ANode_Publish_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PublishRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(A2ANodeServer).Publish(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: A2ANode_Publish_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(A2ANodeServer).Publish(ctx, req.(*PublishRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _A2ANode_SubscribeTopic_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(SubscribeTopicRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(A2ANodeServer).SubscribeTopic(m, &grpc.GenericServerStream[SubscribeTopicRequest, TopicMessage]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type A2ANode_SubscribeTopicServer = grpc.ServerStreamingServer[TopicMessage]
+
+func _A2ANode_SetWebhook_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SetWebhookRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(A2ANodeServer).SetWebhook(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: A2ANode_SetWebhook_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(A2ANodeServer).SetWebhook(ctx, req.(*SetWebhookRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _A2ANode_ClearWebhook_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(Empty)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(A2ANodeServer).ClearWebhook(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: A2ANode_ClearWebhook_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(A2ANodeServer).ClearWebhook(ctx, req.(*Empty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _A2ANode_GetWebhook_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(Empty)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(A2ANodeServer).GetWebhook(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: A2ANode_GetWebhook_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(A2ANodeServer).GetWebhook(ctx, req.(*Empty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _A2ANode_CreateNetwork_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateNetworkRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(A2ANodeServer).CreateNetwork(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: A2ANode_CreateNetwork_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(A2ANodeServer).CreateNetwork(ctx, req.(*CreateNetworkRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _A2ANode_JoinNetwork_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(JoinNetworkRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(A2ANodeServer).JoinNetwork(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: A2ANode_JoinNetwork_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(A2ANodeServer).JoinNetwork(ctx, req.(*JoinNetworkRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _A2ANode_LeaveNetwork_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(NetworkIDRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(A2ANodeServer).LeaveNetwork(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: A2ANode_LeaveNetwork_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(A2ANodeServer).LeaveNetwork(ctx, req.(*NetworkIDRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _A2ANode_ListNetworks_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(Empty)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(A2ANodeServer).ListNetworks(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: A2ANode_ListNetworks_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(A2ANodeServer).ListNetworks(ctx, req.(*Empty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _A2ANode_NetworkMembers_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(NetworkIDRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(A2ANodeServer).NetworkMembers(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: A2ANode_NetworkMembers_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(A2ANodeServer).NetworkMembers(ctx, req.(*NetworkIDRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _A2ANode_BroadcastNetwork_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(BroadcastRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(A2ANodeServer).BroadcastNetwork(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: A2ANode_BroadcastNetwork_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(A2ANodeServer).BroadcastNetwork(ctx, req.(*BroadcastRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _A2ANode_SubscribeNetwork_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(NetworkIDRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(A2ANodeServer).SubscribeNetwork(m, &grpc.GenericServerStream[NetworkIDRequest, BroadcastMessage]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type A2ANode_SubscribeNetworkServer = grpc.ServerStreamingServer[BroadcastMessage]
+
+func _A2ANode_ClaimName_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ClaimNameRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(A2ANodeServer).ClaimName(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: A2ANode_ClaimName_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(A2ANodeServer).ClaimName(ctx, req.(*ClaimNameRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _A2ANode_ResolveName_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ResolveNameRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(A2ANodeServer).ResolveName(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: A2ANode_ResolveName_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(A2ANodeServer).ResolveName(ctx, req.(*ResolveNameRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _A2ANode_ConnectPeer_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ConnectPeerRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(A2ANodeServer).ConnectPeer(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: A2ANode_ConnectPeer_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(A2ANodeServer).ConnectPeer(ctx, req.(*ConnectPeerRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _A2ANode_DisconnectPeer_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ConnectPeerRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(A2ANodeServer).DisconnectPeer(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: A2ANode_DisconnectPeer_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(A2ANodeServer).DisconnectPeer(ctx, req.(*ConnectPeerRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // A2ANode_ServiceDesc is the grpc.ServiceDesc for A2ANode service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -909,6 +1571,74 @@ var A2ANode_ServiceDesc = grpc.ServiceDesc{
 			MethodName: "AppendEntry",
 			Handler:    _A2ANode_AppendEntry_Handler,
 		},
+		{
+			MethodName: "Ping",
+			Handler:    _A2ANode_Ping_Handler,
+		},
+		{
+			MethodName: "Health",
+			Handler:    _A2ANode_Health_Handler,
+		},
+		{
+			MethodName: "ListPeers",
+			Handler:    _A2ANode_ListPeers_Handler,
+		},
+		{
+			MethodName: "Publish",
+			Handler:    _A2ANode_Publish_Handler,
+		},
+		{
+			MethodName: "SetWebhook",
+			Handler:    _A2ANode_SetWebhook_Handler,
+		},
+		{
+			MethodName: "ClearWebhook",
+			Handler:    _A2ANode_ClearWebhook_Handler,
+		},
+		{
+			MethodName: "GetWebhook",
+			Handler:    _A2ANode_GetWebhook_Handler,
+		},
+		{
+			MethodName: "CreateNetwork",
+			Handler:    _A2ANode_CreateNetwork_Handler,
+		},
+		{
+			MethodName: "JoinNetwork",
+			Handler:    _A2ANode_JoinNetwork_Handler,
+		},
+		{
+			MethodName: "LeaveNetwork",
+			Handler:    _A2ANode_LeaveNetwork_Handler,
+		},
+		{
+			MethodName: "ListNetworks",
+			Handler:    _A2ANode_ListNetworks_Handler,
+		},
+		{
+			MethodName: "NetworkMembers",
+			Handler:    _A2ANode_NetworkMembers_Handler,
+		},
+		{
+			MethodName: "BroadcastNetwork",
+			Handler:    _A2ANode_BroadcastNetwork_Handler,
+		},
+		{
+			MethodName: "ClaimName",
+			Handler:    _A2ANode_ClaimName_Handler,
+		},
+		{
+			MethodName: "ResolveName",
+			Handler:    _A2ANode_ResolveName_Handler,
+		},
+		{
+			MethodName: "ConnectPeer",
+			Handler:    _A2ANode_ConnectPeer_Handler,
+		},
+		{
+			MethodName: "DisconnectPeer",
+			Handler:    _A2ANode_DisconnectPeer_Handler,
+		},
 	},
 	Streams: []grpc.StreamDesc{
 		{
@@ -949,6 +1679,16 @@ var A2ANode_ServiceDesc = grpc.ServiceDesc{
 		{
 			StreamName:    "SubscribeThread",
 			Handler:       _A2ANode_SubscribeThread_Handler,
+			ServerStreams: true,
+		},
+		{
+			StreamName:    "SubscribeTopic",
+			Handler:       _A2ANode_SubscribeTopic_Handler,
+			ServerStreams: true,
+		},
+		{
+			StreamName:    "SubscribeNetwork",
+			Handler:       _A2ANode_SubscribeNetwork_Handler,
 			ServerStreams: true,
 		},
 	},

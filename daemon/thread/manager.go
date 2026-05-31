@@ -109,6 +109,15 @@ func (m *Manager) CreateThread(_ context.Context, req *pb.CreateThreadRequest) (
 	return thread, nil
 }
 
+// InviteReceived is called when a THREAD_INVITE message arrives from a peer.
+// It saves the thread and starts its engine if not already running.
+func (m *Manager) InviteReceived(thread *pb.Thread) error {
+	if err := m.store.SaveThread(thread); err != nil {
+		return fmt.Errorf("save thread: %w", err)
+	}
+	return m.Start(thread)
+}
+
 // Start starts the consensus engine for an existing thread.
 // Safe to call multiple times — if already started, returns nil.
 func (m *Manager) Start(thread *pb.Thread) error {
