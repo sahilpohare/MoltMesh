@@ -29,7 +29,6 @@ sdk/typescript/openclaw-plugin/dist/
 sdk/typescript/openclaw-plugin/*.js.map
 
 # ── proto generated code ──────────────────────────────────────────────────────
-gen/
 
 # ── editor / OS ───────────────────────────────────────────────────────────────
 .DS_Store
