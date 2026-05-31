@@ -2,11 +2,15 @@ package rpc
 
 import (
 	"context"
+	"fmt"
 	"time"
 
+	"go.uber.org/zap"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/sahilpohare/p2p-a2a/pkg/p2putil"
 	pb "github.com/sahilpohare/p2p-a2a/gen/a2a/v1"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 // Ping measures round-trip latency to one or more peers.
@@ -116,4 +120,74 @@ func (s *Server) ListPeers(ctx context.Context, _ *pb.Empty) (*pb.PeersResponse,
 		Peers: infos,
 		Count: int32(len(infos)),
 	}, nil
+}
+
+// ConnectPeer resolves the agent DID via DHT and connects the local libp2p host
+// to the peer's multiaddrs. Idempotent — safe to call if already connected.
+func (s *Server) ConnectPeer(ctx context.Context, req *pb.ConnectPeerRequest) (*pb.ConnectPeerResponse, error) {
+	if req.Did == "" {
+		return nil, status.Error(codes.InvalidArgument, "did is required")
+	}
+
+	card, err := s.registry.Resolve(ctx, req.Did)
+	if err != nil {
+		return nil, status.Errorf(codes.NotFound, "resolve DID %q: %v", req.Did, err)
+	}
+	if len(card.Multiaddrs) == 0 {
+		return nil, status.Errorf(codes.FailedPrecondition, "agent %q has no multiaddrs in card", req.Did)
+	}
+
+	addrInfo, err := p2putil.AddrsToAddrInfo(card.Multiaddrs)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "parse multiaddrs: %v", err)
+	}
+
+	alreadyConnected := s.node.Host.Network().Connectedness(addrInfo.ID) == network.Connected
+
+	if !alreadyConnected {
+		connectCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+		defer cancel()
+		if err := s.node.Host.Connect(connectCtx, *addrInfo); err != nil {
+			return nil, status.Errorf(codes.Unavailable, "connect to %q: %v", req.Did, err)
+		}
+	}
+
+	addrs := make([]string, len(card.Multiaddrs))
+	copy(addrs, card.Multiaddrs)
+
+	s.log.Info("peer connected",
+		zap.String("did", req.Did),
+		zap.String("peer_id", addrInfo.ID.String()),
+		zap.Bool("already_connected", alreadyConnected),
+	)
+
+	return &pb.ConnectPeerResponse{
+		PeerId:           addrInfo.ID.String(),
+		Multiaddrs:       addrs,
+		AlreadyConnected: alreadyConnected,
+	}, nil
+}
+
+// DisconnectPeer resolves the DID and closes all connections to that peer.
+func (s *Server) DisconnectPeer(ctx context.Context, req *pb.ConnectPeerRequest) (*pb.Empty, error) {
+	if req.Did == "" {
+		return nil, status.Error(codes.InvalidArgument, "did is required")
+	}
+
+	card, err := s.registry.Resolve(ctx, req.Did)
+	if err != nil {
+		return nil, status.Errorf(codes.NotFound, "resolve DID %q: %v", req.Did, err)
+	}
+
+	addrInfo, err := p2putil.AddrsToAddrInfo(card.Multiaddrs)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "parse multiaddrs: %v", err)
+	}
+
+	if err := s.node.Host.Network().ClosePeer(addrInfo.ID); err != nil {
+		return nil, status.Errorf(codes.Internal, "disconnect %q: %v", req.Did, fmt.Errorf("%w", err))
+	}
+
+	s.log.Info("peer disconnected", zap.String("did", req.Did), zap.String("peer_id", addrInfo.ID.String()))
+	return &pb.Empty{}, nil
 }

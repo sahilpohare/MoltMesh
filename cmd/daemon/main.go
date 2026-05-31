@@ -19,7 +19,6 @@ import (
 	pb "github.com/sahilpohare/p2p-a2a/gen/a2a/v1"
 	"github.com/sahilpohare/p2p-a2a/pkg/config"
 	"github.com/sahilpohare/p2p-a2a/pkg/format"
-	"github.com/sahilpohare/p2p-a2a/daemon/blob"
 	"github.com/sahilpohare/p2p-a2a/daemon/names"
 	"github.com/sahilpohare/p2p-a2a/daemon/deliver"
 	"github.com/sahilpohare/p2p-a2a/daemon/gossip"
@@ -527,15 +526,9 @@ func run(cfg *config.Config, log *zap.Logger) error {
 	// ── gossip ──────────────────────────────────────────────────────────────
 	gm := gossip.New(n.PubSub, log)
 
-	// ── blob store ───────────────────────────────────────────────────────────
-	bs, err := blob.New(filepath.Join(dataDir, "blobs"))
-	if err != nil {
-		return fmt.Errorf("blob store: %w", err)
-	}
-
 	// ── delivery layer (libp2p stream protocol) ──────────────────────────────
+	// Blob transport is now handled by Bitswap (mounted on n.Host).
 	dlv := deliver.New(n.Host, reg, ib, log)
-	dlv.RegisterBlobHandler(bs)
 
 	// ── outbox (with real delivery function) ─────────────────────────────────
 	ob, err := outbox.New(
@@ -575,7 +568,7 @@ func run(cfg *config.Config, log *zap.Logger) error {
 	}
 
 	rpc.SetVersion(version)
-	srv := rpc.New(id, ib, ob, ts, reg, gm, bs, dlv, tm, nm, wh, nameReg, n, n.Addrs(), log)
+	srv := rpc.New(id, ib, ob, ts, reg, gm, dlv, tm, nm, wh, nameReg, n, n.Addrs(), log)
 	grpcServer := grpc.NewServer()
 	pb.RegisterA2ANodeServer(grpcServer, srv)
 

@@ -1,7 +1,6 @@
 package deliver_test
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"testing"
@@ -14,7 +13,6 @@ import (
 	"go.uber.org/zap"
 
 	pb "github.com/sahilpohare/p2p-a2a/gen/a2a/v1"
-	"github.com/sahilpohare/p2p-a2a/daemon/blob"
 	"github.com/sahilpohare/p2p-a2a/daemon/deliver"
 	"github.com/sahilpohare/p2p-a2a/daemon/identity"
 	"github.com/sahilpohare/p2p-a2a/daemon/inbox"
@@ -157,64 +155,6 @@ func TestSendDirect_UnknownPeer(t *testing.T) {
 
 	if err := dlv.SendDirect(ctx, unknownID, msg); err == nil {
 		t.Fatal("expected error delivering to unknown peer, got nil")
-	}
-}
-
-func TestFetchBlob_RoundTrip(t *testing.T) {
-	log, _ := zap.NewDevelopment()
-
-	h1 := newHost(t)
-	h2 := newHost(t)
-	connectHosts(t, h1, h2)
-
-	// h2 serves blobs
-	bs, err := blob.New(t.TempDir())
-	if err != nil {
-		t.Fatalf("blob.New: %v", err)
-	}
-	data := bytes.Repeat([]byte("blobdata"), 10000) // >64KB, on disk
-	artifact, err := bs.Put(data, "test.bin", "application/octet-stream")
-	if err != nil {
-		t.Fatalf("blob.Put: %v", err)
-	}
-
-	dlv2 := deliver.New(h2, nil, newInbox(t), log)
-	dlv2.RegisterBlobHandler(bs)
-
-	// h1 fetches from h2
-	dlv1 := deliver.New(h1, nil, newInbox(t), log)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	got, err := dlv1.FetchBlob(ctx, h2.ID(), artifact.Cid)
-	if err != nil {
-		t.Fatalf("FetchBlob: %v", err)
-	}
-	if !bytes.Equal(got, data) {
-		t.Error("fetched blob data mismatch")
-	}
-}
-
-func TestFetchBlob_NotFound(t *testing.T) {
-	log, _ := zap.NewDevelopment()
-
-	h1 := newHost(t)
-	h2 := newHost(t)
-	connectHosts(t, h1, h2)
-
-	emptyStore, _ := blob.New(t.TempDir())
-	dlv2 := deliver.New(h2, nil, newInbox(t), log)
-	dlv2.RegisterBlobHandler(emptyStore)
-
-	dlv1 := deliver.New(h1, nil, newInbox(t), log)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-
-	_, err := dlv1.FetchBlob(ctx, h2.ID(), "sha256:doesnotexist")
-	if err == nil {
-		t.Fatal("expected error for missing blob, got nil")
 	}
 }
 

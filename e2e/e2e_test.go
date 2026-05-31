@@ -119,7 +119,7 @@ func newDaemon(t *testing.T, ctx context.Context, log *zap.Logger) *daemon {
 	tm := thread.NewManager(ctx, threadStore, id, ps, log)
 
 	// gRPC server
-	srv := rpc.New(id, ib, ob, ts, nil, gm, bs, dlv, tm, addrs, log)
+	srv := rpc.New(id, ib, ob, ts, nil, gm, bs, dlv, tm, nil, nil, nil, nil, addrs, log)
 	lis, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("net.Listen: %v", err)
@@ -627,44 +627,49 @@ func TestE2E_Thread_TwoNodes(t *testing.T) {
 		t.Fatalf("start thread on bob: %v", err)
 	}
 
-	// Append from alice.
-	_, err = alice.client.AppendEntry(ctx, &pb.AppendEntryRequest{
+	// Append to both daemons — whichever wins the Raft election is leader and
+	// will commit. f=0 means quorum=1, so the leader commits alone.
+	alice.client.AppendEntry(ctx, &pb.AppendEntryRequest{ //nolint:errcheck
 		ThreadId: th.Id,
 		Payload:  []byte("two-node entry"),
 		Kind:     "message",
 	})
-	if err != nil {
-		t.Fatalf("AppendEntry: %v", err)
-	}
+	bob.client.AppendEntry(ctx, &pb.AppendEntryRequest{ //nolint:errcheck
+		ThreadId: th.Id,
+		Payload:  []byte("two-node entry"),
+		Kind:     "message",
+	})
 
-	// Wait for commit on alice.
+	// Wait for commit on either daemon.
 	deadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) {
-		stream, err := alice.client.GetThreadEntries(ctx, &pb.GetThreadEntriesRequest{
-			ThreadId:    th.Id,
-			SinceHeight: 0,
-		})
-		if err != nil {
-			t.Fatalf("GetThreadEntries: %v", err)
-		}
-		var entries []*pb.ThreadEntryWithPos
-		for {
-			ep, err := stream.Recv()
-			if err == io.EOF {
-				break
-			}
+		for _, d := range []*daemon{alice, bob} {
+			stream, err := d.client.GetThreadEntries(ctx, &pb.GetThreadEntriesRequest{
+				ThreadId:    th.Id,
+				SinceHeight: 0,
+			})
 			if err != nil {
-				break
+				continue
 			}
-			entries = append(entries, ep)
-		}
-		if len(entries) > 0 {
-			if string(entries[0].Entry.Payload) != "two-node entry" {
-				t.Errorf("payload mismatch: %q", entries[0].Entry.Payload)
+			var entries []*pb.ThreadEntryWithPos
+			for {
+				ep, err := stream.Recv()
+				if err == io.EOF {
+					break
+				}
+				if err != nil {
+					break
+				}
+				entries = append(entries, ep)
 			}
-			return
+			if len(entries) > 0 {
+				if string(entries[0].Entry.Payload) != "two-node entry" {
+					t.Errorf("payload mismatch: %q", entries[0].Entry.Payload)
+				}
+				return
+			}
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
-	t.Fatal("timeout: entry never committed on alice")
+	t.Fatal("timeout: entry never committed on either node")
 }

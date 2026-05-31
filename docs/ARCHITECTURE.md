@@ -34,7 +34,7 @@ A fully peer-to-peer Agent-to-Agent communication network. Any AI agent, built i
 │  LangChain · CrewAI · AutoGen · custom · anything           │
 └──────────────────────┬──────────────────────────────────────┘
                        │ gRPC (Unix socket or TCP)
-                       │ A2ANode · Diag · Ext (3 services)
+                       │ service A2ANode (single service, all RPCs)
 ┌──────────────────────▼──────────────────────────────────────┐
 │  moltmesh-daemon (Go binary)                                 │
 │                                                              │
@@ -249,9 +249,9 @@ Named, persistent groups of agents with multicast broadcast.
 
 ### gRPC Interface
 
-The daemon exposes three gRPC services locally. Agents use generated clients in any language.
+The daemon exposes a single `service A2ANode` defined in `proto/a2a.proto`. All RPCs share the same protobuf wire encoding. Generated clients are available for Go and Python; the TypeScript SDK uses `@grpc/proto-loader` at runtime.
 
-**A2ANode** (core service):
+**Identity & Registry:**
 
 | RPC | Purpose |
 |---|---|
@@ -259,26 +259,43 @@ The daemon exposes three gRPC services locally. Agents use generated clients in 
 | `PublishAgentCard` | Publish agent capabilities to DHT (signed) |
 | `GetAgentCard` | Resolve and verify an agent card by DID |
 | `FindAgents` | Search DHT for agents by capability |
+| `ClaimName` | Claim a human-readable name (DHT, 24h TTL) |
+| `ResolveName` | Resolve a name to a DID |
+
+**Messaging:**
+
+| RPC | Purpose |
+|---|---|
 | `SendMessage` | Enqueue message to outbox |
 | `GetInbox` | Read queued incoming messages |
 | `SubscribeInbox` | Stream incoming messages live (real-time push) |
 | `AckMessage` | Mark message as read |
 | `GetOutbox` | Read outgoing queue |
+
+**Tasks:**
+
+| RPC | Purpose |
+|---|---|
 | `CreateTask` | Create and track a task |
 | `UpdateTask` | Update task status or add artifact |
 | `GetTask` | Fetch task state |
 | `CancelTask` | Cancel a task |
 | `PublishTaskEvent` | Emit a task event via GossipSub |
 | `SubscribeTaskEvents` | Stream task events via GossipSub |
-| `SendFile` | Store a file; get back its CID |
-| `FetchFile` | Retrieve a file by CID (local or remote) |
+
+**Blobs & Threads:**
+
+| RPC | Purpose |
+|---|---|
+| `SendFile` | Store a file; get back its SHA-256 CID |
+| `FetchFile` | Retrieve a file by CID (local or remote, server-streaming) |
 | `CreateThread` | Create a replicated ordered log |
 | `GetThread` | Fetch thread metadata |
 | `AppendEntry` | Enqueue entry for next block |
 | `GetThreadEntries` | Read committed entries since height |
 | `SubscribeThread` | Stream live committed entries |
 
-**Diag** (diagnostics service):
+**Diagnostics:**
 
 | RPC | Purpose |
 |---|---|
@@ -286,7 +303,7 @@ The daemon exposes three gRPC services locally. Agents use generated clients in 
 | `Health` | Return version, uptime, DID, peer count |
 | `ListPeers` | Enumerate connected libp2p peers |
 
-**Ext** (extensions service — Pub/Sub, Webhook, Networks):
+**Pub/Sub, Webhooks & Networks:**
 
 | RPC | Purpose |
 |---|---|
@@ -329,9 +346,9 @@ p2p_a2a/
 │   ├── gossip/             # GossipSub topic management, Publish, SubscribeTopic
 │   ├── network/            # named agent groups, SQLite membership, broadcast
 │   ├── webhook/            # HTTP event delivery (async, retry, HMAC secret)
-│   └── rpc/                # gRPC server: server.go, diag.go, ext.go, version.go
+│   └── rpc/                # gRPC server: server.go, ext.go, version.go
 ├── gen/
-│   └── a2a/v1/             # protobuf Go stubs + hand-written diag.go, extensions.go
+│   └── a2a/v1/             # generated Go stubs (protoc --go_out --go-grpc_out)
 ├── pkg/
 │   ├── did/                # DID validation, parsing, Short() formatting
 │   ├── capability/         # capability ID namespace (a2a:v1:cap:<name>)

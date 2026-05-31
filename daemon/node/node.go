@@ -5,7 +5,12 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/ipfs/boxo/bitswap"
+	bsnet "github.com/ipfs/boxo/bitswap/network/bsnet"
+	"github.com/ipfs/boxo/blockstore"
+	flatfs "github.com/ipfs/go-ds-flatfs"
 	dht "github.com/libp2p/go-libp2p-kad-dht"
+	record "github.com/libp2p/go-libp2p-record"
 	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/core/host"
@@ -18,6 +23,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/sahilpohare/p2p-a2a/daemon/identity"
+	"github.com/sahilpohare/p2p-a2a/pkg/a2avalidator"
 )
 
 // Config holds node configuration.
@@ -26,20 +32,22 @@ type Config struct {
 	BootstrapPeers []string // explicit bootstrap peers (multiaddr strings)
 	IPFSBootstrap  bool     // if true, also use IPFS public bootstrap peers (default true)
 	DataDir        string
-	ConnLowWater   int      // min connections before pruning (default 50)
-	ConnHighWater  int      // max connections before pruning (default 200)
+	ConnLowWater   int // min connections before pruning (default 50)
+	ConnHighWater  int // max connections before pruning (default 200)
 }
 
-// Node wraps a libp2p host with DHT and GossipSub.
+// Node wraps a libp2p host with DHT, GossipSub, and IPFS Bitswap.
 type Node struct {
-	Host     host.Host
-	DHT      *dht.IpfsDHT
-	PubSub   *pubsub.PubSub
-	Identity *identity.Identity
-	log      *zap.Logger
+	Host       host.Host
+	DHT        *dht.IpfsDHT
+	PubSub     *pubsub.PubSub
+	Identity   *identity.Identity
+	Blockstore blockstore.Blockstore
+	Bitswap    *bitswap.Bitswap
+	log        *zap.Logger
 }
 
-// New creates and starts a libp2p node.
+// New creates and starts a libp2p node backed by the global IPFS DHT and Bitswap.
 func New(ctx context.Context, id *identity.Identity, cfg Config, log *zap.Logger) (*Node, error) {
 	listenAddrs := make([]multiaddr.Multiaddr, 0, len(cfg.ListenAddrs))
 	for _, addr := range cfg.ListenAddrs {
@@ -75,9 +83,13 @@ func New(ctx context.Context, id *identity.Identity, cfg Config, log *zap.Logger
 		libp2p.EnableHolePunching(),
 		libp2p.Routing(func(h host.Host) (routing.PeerRouting, error) {
 			var err error
+			// No ProtocolPrefix — joins the global IPFS Kademlia DHT.
 			kadDHT, err = dht.New(ctx, h,
 				dht.Mode(dht.ModeAutoServer),
-				dht.ProtocolPrefix("/a2a"),
+				dht.Validator(record.NamespacedValidator{
+					"a2a": a2avalidator.AgentCardValidator{},
+					"pk":  record.PublicKeyValidator{},
+				}),
 			)
 			return kadDHT, err
 		}),
@@ -86,7 +98,7 @@ func New(ctx context.Context, id *identity.Identity, cfg Config, log *zap.Logger
 		return nil, fmt.Errorf("create libp2p host: %w", err)
 	}
 
-	// GossipSub
+	// ── GossipSub ─────────────────────────────────────────────────────────────
 	ps, err := pubsub.NewGossipSub(ctx, h,
 		pubsub.WithMessageSignaturePolicy(pubsub.StrictSign),
 	)
@@ -95,15 +107,32 @@ func New(ctx context.Context, id *identity.Identity, cfg Config, log *zap.Logger
 		return nil, fmt.Errorf("create gossipsub: %w", err)
 	}
 
+	// ── Flatfs blockstore ─────────────────────────────────────────────────────
+	// CreateOrOpen handles first-run (creates dir + shard config) and reopens on restart.
+	// IPFS_DEF_SHARD = NextToLast(2) — same sharding as Kubo.
+	blocksDir := cfg.DataDir + "/blocks"
+	fds, err := flatfs.CreateOrOpen(blocksDir, flatfs.IPFS_DEF_SHARD, false)
+	if err != nil {
+		h.Close()
+		return nil, fmt.Errorf("open flatfs blockstore at %q: %w", blocksDir, err)
+	}
+	bs := blockstore.NewBlockstore(fds)
+
+	// ── Bitswap ───────────────────────────────────────────────────────────────
+	// kadDHT implements routing.ContentDiscovery — used for provider routing.
+	bswapNet := bsnet.NewFromIpfsHost(h)
+	bswap := bitswap.New(ctx, bswapNet, kadDHT, bs)
+
 	n := &Node{
-		Host:     h,
-		DHT:      kadDHT,
-		PubSub:   ps,
-		Identity: id,
-		log:      log,
+		Host:       h,
+		DHT:        kadDHT,
+		PubSub:     ps,
+		Identity:   id,
+		Blockstore: bs,
+		Bitswap:    bswap,
+		log:        log,
 	}
 
-	// bootstrap
 	if err := n.bootstrap(ctx, cfg); err != nil {
 		log.Warn("bootstrap incomplete", zap.Error(err))
 	}
@@ -119,6 +148,7 @@ func New(ctx context.Context, id *identity.Identity, cfg Config, log *zap.Logger
 
 // Close shuts down the node.
 func (n *Node) Close() error {
+	n.Bitswap.Close()
 	if err := n.DHT.Close(); err != nil {
 		n.log.Warn("dht close error", zap.Error(err))
 	}
@@ -126,21 +156,16 @@ func (n *Node) Close() error {
 }
 
 // PeerID returns the libp2p peer ID as a string.
-func (n *Node) PeerID() string {
-	return n.Host.ID().String()
-}
+func (n *Node) PeerID() string { return n.Host.ID().String() }
 
 // Addrs returns the node's listen multiaddrs.
-func (n *Node) Addrs() []string {
-	return addrsToStrings(n.Host.Addrs())
-}
+func (n *Node) Addrs() []string { return addrsToStrings(n.Host.Addrs()) }
 
-// ─── internal ────────────────────────────────────────────────────────────────
+// ─── internal ─────────────────────────────────────────────────────────────────
 
 func (n *Node) bootstrap(ctx context.Context, cfg Config) error {
 	var bootstrapPeers []peer.AddrInfo
 
-	// Always include IPFS public bootstrap peers unless explicitly disabled.
 	if cfg.IPFSBootstrap {
 		for _, ma := range dht.DefaultBootstrapPeers {
 			ai, err := peer.AddrInfoFromP2pAddr(ma)
@@ -152,7 +177,6 @@ func (n *Node) bootstrap(ctx context.Context, cfg Config) error {
 		}
 	}
 
-	// Add any explicit peers from config / CLI.
 	for _, p := range cfg.BootstrapPeers {
 		ma, err := multiaddr.NewMultiaddr(p)
 		if err != nil {

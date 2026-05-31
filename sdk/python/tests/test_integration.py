@@ -139,7 +139,7 @@ class TestBlobs:
     def test_store_and_fetch_roundtrip(self, client: A2AClient):
         data = b"hello integration test"
         cid = client.store_blob(data, mime_type="text/plain")
-        assert cid.startswith("sha256:")
+        assert cid.startswith("bafy")
         fetched = client.fetch_blob(cid)
         assert fetched == data
 
@@ -170,7 +170,7 @@ class TestBlobs:
     def test_make_artifact_large_uses_cid(self, client: A2AClient):
         data = b"y" * (128 * 1024)
         artifact = client.make_artifact(data)
-        assert artifact.cid.startswith("sha256:")
+        assert artifact.cid.startswith("bafy")
 
 
 # ── threads ───────────────────────────────────────────────────────────────────

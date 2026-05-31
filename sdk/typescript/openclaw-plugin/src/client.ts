@@ -279,6 +279,19 @@ export class A2AClient {
     return (r["peers"] as PeerInfo[]) ?? [];
   }
 
+  async connectPeer(did: string): Promise<{ peerId: string; multiaddrs: string[]; alreadyConnected: boolean }> {
+    const r: Obj = await unary(this.stub, "connectPeer", { did });
+    return {
+      peerId: r["peerId"] as string,
+      multiaddrs: (r["multiaddrs"] as string[]) ?? [],
+      alreadyConnected: r["alreadyConnected"] as boolean,
+    };
+  }
+
+  async disconnectPeer(did: string): Promise<void> {
+    await unary(this.stub, "disconnectPeer", { did });
+  }
+
   // ── pub/sub ───────────────────────────────────────────────────────────────
 
   async publish(topic: string, payload: string | Uint8Array): Promise<void> {

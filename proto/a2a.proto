@@ -39,11 +39,11 @@ message Skill {
 // ─── Artifacts ───────────────────────────────────────────────────────────────
 
 message Artifact {
-  string cid       = 1; // SHA256 multihash (IPLD-compatible)
+  string cid       = 1; // CIDv1 (bafy... base32 multihash, sha2-256)
   string mime_type = 2;
   int64  size      = 3;
   bytes  inline    = 4; // populated for small artifacts (<64KB)
-  string uri       = 5; // populated for large artifacts (fetch separately)
+  string uri       = 5; // ipfs://<cid> for large artifacts (fetch via Bitswap)
   string name      = 6;
 }
 
@@ -280,6 +280,10 @@ service A2ANode {
   // Names
   rpc ClaimName(ClaimNameRequest) returns (NameClaimResponse);
   rpc ResolveName(ResolveNameRequest) returns (NameClaimResponse);
+
+  // Peer connections
+  rpc ConnectPeer(ConnectPeerRequest) returns (ConnectPeerResponse);
+  rpc DisconnectPeer(ConnectPeerRequest) returns (Empty);
 }
 
 message AgentIdentityRequest {
@@ -454,8 +458,8 @@ message SendFileRequest {
 }
 
 message FetchFileRequest {
-  string cid    = 1; // CID to fetch
-  string from_did = 2; // peer to fetch from (must have published an AgentCard with multiaddrs)
+  string cid      = 1; // CIDv1 (bafy...) to fetch via Bitswap
+  string from_did = 2; // hint: DID of peer that has the block (optional, for faster connect)
 }
 
 message FileChunk {
@@ -556,4 +560,16 @@ message NameClaimResponse {
   string did          = 2;
   int64  expires_at   = 3;
   int64  published_at = 4;
+}
+
+// ─── Peer Connections ─────────────────────────────────────────────────────────
+
+message ConnectPeerRequest {
+  string did = 1; // DID of the agent to connect to
+}
+
+message ConnectPeerResponse {
+  string peer_id              = 1; // libp2p peer ID
+  repeated string multiaddrs  = 2; // multiaddrs used
+  bool   already_connected    = 3; // true if connection already existed
 }

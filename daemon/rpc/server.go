@@ -10,7 +10,8 @@ import (
 
 	"github.com/sahilpohare/p2p-a2a/pkg/p2putil"
 	pb "github.com/sahilpohare/p2p-a2a/gen/a2a/v1"
-	"github.com/sahilpohare/p2p-a2a/daemon/blob"
+	blocks "github.com/ipfs/go-block-format"
+	"github.com/ipfs/go-cid"
 	"github.com/sahilpohare/p2p-a2a/daemon/deliver"
 	"github.com/sahilpohare/p2p-a2a/daemon/gossip"
 	"github.com/sahilpohare/p2p-a2a/daemon/identity"
@@ -38,7 +39,7 @@ type Server struct {
 	tasks     *tasks.Store
 	registry  *registry.Registry
 	gossip    *gossip.Manager
-	blobs     *blob.Store
+	// blobs field removed — Bitswap + blockstore accessed via s.node.Bitswap / s.node.Blockstore
 	dlv       *deliver.Deliverer
 	threads   *thread.Manager
 	networks  *network.Manager
@@ -58,7 +59,6 @@ func New(
 	ts *tasks.Store,
 	reg *registry.Registry,
 	gm *gossip.Manager,
-	bs *blob.Store,
 	dlv *deliver.Deliverer,
 	tm *thread.Manager,
 	nm *network.Manager,
@@ -75,7 +75,6 @@ func New(
 		tasks:     ts,
 		registry:  reg,
 		gossip:    gm,
-		blobs:     bs,
 		dlv:       dlv,
 		threads:   tm,
 		networks:  nm,
@@ -325,23 +324,41 @@ func (s *Server) SubscribeTaskEvents(req *pb.TaskID, stream pb.A2ANode_Subscribe
 // ─── Files ────────────────────────────────────────────────────────────────────
 
 const (
-	fileChunkSize = 32 * 1024  // 32 KB per streaming chunk (HTTP/2 flow-control friendly)
-	maxBlobSize   = 256 << 20   // 256 MB — max blob we'll cache from a remote peer
+	fileChunkSize = 32 * 1024 // 32 KB per streaming chunk (HTTP/2 flow-control friendly)
+	inlineMax     = 64 * 1024 // blobs ≤ 64 KB are returned inline in the Artifact
 )
 
-// SendFile stores a file in the local blob store and returns an Artifact.
-// Files ≤ 64 KB are returned with Artifact.Inline populated (no disk write).
-// Larger files are written to disk; Artifact.Uri = "blob://<cid>".
-func (s *Server) SendFile(_ context.Context, req *pb.SendFileRequest) (*pb.Artifact, error) {
+// SendFile stores a file in the IPFS blockstore via Bitswap and returns an Artifact.
+// The CID is CIDv1 (bafy...). Blobs ≤ 64 KB are returned with Artifact.Inline populated.
+func (s *Server) SendFile(ctx context.Context, req *pb.SendFileRequest) (*pb.Artifact, error) {
 	if len(req.Data) == 0 {
 		return nil, fmt.Errorf("file data is empty")
 	}
-	artifact, err := s.blobs.Put(req.Data, req.Name, req.MimeType)
-	if err != nil {
-		return nil, fmt.Errorf("store file: %w", err)
+
+	blk := blocks.NewBlock(req.Data)
+	if err := s.node.Blockstore.Put(ctx, blk); err != nil {
+		return nil, fmt.Errorf("store block: %w", err)
 	}
+	// Notify Bitswap so connected peers can pull it by CID.
+	if err := s.node.Bitswap.NotifyNewBlocks(ctx, blk); err != nil {
+		s.log.Warn("notify bitswap", zap.Error(err))
+	}
+
+	cidStr := blk.Cid().String()
+	artifact := &pb.Artifact{
+		Cid:      cidStr,
+		Name:     req.Name,
+		MimeType: req.MimeType,
+		Size:     int64(len(req.Data)),
+	}
+	if len(req.Data) <= inlineMax {
+		artifact.Inline = req.Data
+	} else {
+		artifact.Uri = "ipfs://" + cidStr
+	}
+
 	s.log.Info("file stored",
-		zap.String("cid", artifact.Cid),
+		zap.String("cid", cidStr),
 		zap.Int64("size", artifact.Size),
 		zap.String("name", artifact.Name),
 	)
@@ -447,43 +464,35 @@ func (s *Server) SubscribeThread(req *pb.SubscribeThreadRequest, stream pb.A2ANo
 	}
 }
 
-// FetchFile fetches a blob by CID from a remote peer and streams it back
-// to the caller in 256 KB chunks.
+// FetchFile fetches a block by CIDv1 via Bitswap and streams it back in chunks.
+// If from_did is provided and the peer is already connected, Bitswap will prefer
+// fetching from that peer directly (fast path). Otherwise it uses content routing.
 func (s *Server) FetchFile(req *pb.FetchFileRequest, stream pb.A2ANode_FetchFileServer) error {
 	if req.Cid == "" {
 		return fmt.Errorf("cid is required")
 	}
 
-	// Check local store first
-	data, err := s.blobs.Get(req.Cid)
-	if err != nil && req.FromDid == "" {
-		return fmt.Errorf("blob %s not found locally and no from_did specified", req.Cid)
-	}
-
-	// Fetch from remote peer if not local
+	c, err := cid.Decode(req.Cid)
 	if err != nil {
-		card, resolveErr := s.registry.Resolve(stream.Context(), req.FromDid)
-		if resolveErr != nil {
-			return fmt.Errorf("resolve %q: %w", req.FromDid, resolveErr)
-		}
-		addrInfo, parseErr := p2putil.AddrsToAddrInfo(card.Multiaddrs)
-		if parseErr != nil {
-			return fmt.Errorf("parse multiaddrs: %w", parseErr)
-		}
-		data, err = s.dlv.FetchBlob(stream.Context(), addrInfo.ID, req.Cid)
-		if err != nil {
-			return fmt.Errorf("fetch blob from peer: %w", err)
-		}
-		if len(data) > maxBlobSize {
-			return fmt.Errorf("fetched blob exceeds max size (%d > %d)", len(data), maxBlobSize)
-		}
-		// Cache locally
-		if saveErr := s.blobs.Save(req.Cid, data); saveErr != nil {
-			s.log.Warn("cache fetched blob", zap.Error(saveErr))
+		return fmt.Errorf("invalid CID %q: %w", req.Cid, err)
+	}
+
+	// If caller knows which peer has it, connect first so Bitswap finds it immediately.
+	if req.FromDid != "" {
+		if card, err := s.registry.Resolve(stream.Context(), req.FromDid); err == nil {
+			if ai, err := p2putil.AddrsToAddrInfo(card.Multiaddrs); err == nil {
+				s.node.Host.Connect(stream.Context(), *ai) //nolint:errcheck — best effort
+			}
 		}
 	}
 
-	// Stream back in chunks
+	blk, err := s.node.Bitswap.GetBlock(stream.Context(), c)
+	if err != nil {
+		return fmt.Errorf("fetch block %s: %w", req.Cid, err)
+	}
+	data := blk.RawData()
+
+	// Stream back in 32 KB chunks.
 	total := int64(len(data))
 	for offset := int64(0); offset < total; offset += fileChunkSize {
 		end := offset + fileChunkSize

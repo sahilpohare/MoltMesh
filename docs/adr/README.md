@@ -13,12 +13,14 @@
 | [0009](./0009-capability-schema-two-tier.md) | Two-Tier Capability Schema | Accepted |
 | [0010](./0010-thread-consensus-switchable-backends.md) | Switchable Thread Consensus Backends (Raft + Tendermint) | Accepted |
 | [0011](./0011-store-and-forward-offline-delivery.md) | Store-and-Forward Offline Delivery via Persistent Outbox | Accepted |
+| [0012](./0012-proto-as-canonical-standard.md) | proto/a2a.proto as the Single Canonical Standard | Accepted |
+| [0013](./0013-content-addressed-blob-store.md) | Content-Addressed Blob Store with Always-Persist Semantics | Accepted |
 
 ## Open Questions (Future ADRs)
 
-- ADR-0012: Thread encryption model (per-thread key derivation, Signal ratchet vs ECIES)
-- ADR-0013: Trust and delegation model (capability attenuation, confused deputy)
-- ADR-0014: DID key rotation under active sessions
-- ADR-0015: IPFS/Ceramic integration for thread persistence (v2)
-- ADR-0016: Economic primitives (cost expression, quota, receipts)
-- ADR-0017: Sybil resistance and reputation model
+- ADR-0014: Thread encryption model (per-thread key derivation, Signal ratchet vs ECIES)
+- ADR-0015: Trust and delegation model (capability attenuation, confused deputy)
+- ADR-0016: DID key rotation under active sessions
+- ADR-0017: IPFS/Ceramic integration for thread persistence (v2)
+- ADR-0018: Economic primitives (cost expression, quota, receipts)
+- ADR-0019: Sybil resistance and reputation model

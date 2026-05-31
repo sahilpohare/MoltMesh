@@ -345,13 +345,65 @@ const { text } = await generateText({
 
 All 19 tools — identity, discovery, messaging, tasks, pub/sub, webhooks, networks, diagnostics — are pre-wired with Zod schemas and ready to use with any AI SDK `tool()` compatible framework.
 
+### Python — diagnostics, pub/sub, webhooks, networks
+
+```python
+# diagnostics
+h = client.health()        # pb.HealthResponse: version, did, peer_count, uptime_secs
+peers = client.list_peers()  # list[pb.PeerInfo]
+result = client.ping()     # pb.PingResponse: latency_ms, reachable
+
+# pub/sub
+client.publish("my-topic", b"hello")
+for msg in client.subscribe_topic("my-topic"):
+    print(msg.topic, msg.payload)
+
+# webhooks
+client.set_webhook("https://my-server.com/hook", secret="s3cret")
+url = client.get_webhook()
+client.clear_webhook()
+
+# networks (named agent groups)
+net = client.create_network("my-team")
+client.broadcast_network(net.id, b"meeting at 9am")
+client.leave_network(net.id)
+
+# names
+client.claim_name("swift-falcon")
+did = client.resolve_name("swift-falcon")
+```
+
+### TypeScript — diagnostics, pub/sub, webhooks, networks
+
+```typescript
+// diagnostics
+const h = await client.health();       // { version, did, peerCount, uptimeSecs }
+const peers = await client.listPeers();
+
+// pub/sub
+await client.publish("my-topic", "hello");
+for await (const msg of client.subscribeTopic("my-topic")) {
+    console.log(msg.topic, msg.payload);
+}
+
+// webhooks
+await client.setWebhook("https://my-server.com/hook", "s3cret");
+const url = await client.getWebhook();
+await client.clearWebhook();
+
+// networks
+const net = await client.createNetwork("my-team");
+await client.broadcastNetwork(net.id, "meeting at 9am");
+await client.leaveNetwork(net.id);
+```
+
 ### Direct gRPC (any language)
 
 ```bash
 protoc --go_out=. --go-grpc_out=. proto/a2a.proto
 ```
 
-The `.proto` file is the canonical contract. Generate clients for any language.
+`proto/a2a.proto` is the single canonical contract — every RPC and message type is defined there. Generate clients for any language.
 
 ---
 
@@ -429,14 +481,14 @@ daemon/
   gossip/            — GossipSub topic management + raw Publish/Subscribe
   network/           — named agent groups, SQLite membership, broadcast
   webhook/           — HTTP event delivery with retries and HMAC secret
-  rpc/               — gRPC server (A2ANode + Diag + Ext services)
+  rpc/               — gRPC server implementing all A2ANode RPCs
 pkg/
   did/               — DID validation, parsing, formatting helpers
   capability/        — capability ID namespace utilities
   config/            — moltbook.toml loader (TOML, searched at standard paths)
   format/            — human-readable output for CLI (tables, DIDs, etc.)
-proto/a2a.proto      — canonical API contract
-gen/a2a/v1/          — hand-written gRPC Go stubs (diag.go, extensions.go)
+proto/a2a.proto      — single canonical API contract (all RPCs + messages)
+gen/a2a/v1/          — generated Go stubs (protoc --go_out --go-grpc_out)
 sdk/python/          — Python client + CrewAI tools
 sdk/typescript/
   openclaw-plugin/   — OpenClaw AI agent plugin (21 tools)
@@ -493,20 +545,42 @@ Generated once on first run, saved to `~/.molt-mesh/identity.json`. All messages
 ## Development
 
 ```bash
-# run all tests
+# run all Go tests
 go test ./...
 
 # e2e tests (spins up full in-process daemons)
 go test ./e2e/... -v
 
-# regenerate proto
+# regenerate proto (Go + Python stubs)
 make proto
 
 # build daemon
-go build -o molt-mesh-daemon ./cmd/daemon
+go build -o moltmesh-daemon ./cmd/daemon
 ```
 
 Requirements: Go 1.21+, `protoc`, `protoc-gen-go`, `protoc-gen-go-grpc`, `libsqlite3`.
+
+### SDK integration tests
+
+Both SDK test suites build the daemon automatically from the repo root — no separate daemon process needed.
+
+```bash
+# Python (42 tests) — requires Go toolchain
+cd sdk/python
+pip install -e ".[dev]"
+pytest tests/test_integration.py -v
+
+# TypeScript (34 tests) — requires Go toolchain + bun
+cd sdk/typescript/openclaw-plugin
+bun test ./src/client.integration.test.ts
+```
+
+To run against an already-running daemon:
+
+```bash
+A2A_GRPC_ADDR=127.0.0.1:5000 pytest tests/test_integration.py -v
+A2A_GRPC_ADDR=127.0.0.1:5000 bun test ./src/client.integration.test.ts
+```
 
 ---
 

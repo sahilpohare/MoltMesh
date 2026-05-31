@@ -448,6 +448,14 @@ class A2AClient:
         """Return all currently connected libp2p peers."""
         return list(self.stub.ListPeers(pb.Empty()).peers)
 
+    def connect_peer(self, did: str) -> pb.ConnectPeerResponse:
+        """Resolve a DID via DHT and connect the local daemon to that peer."""
+        return self.stub.ConnectPeer(pb.ConnectPeerRequest(did=did))
+
+    def disconnect_peer(self, did: str) -> None:
+        """Disconnect from the peer identified by DID."""
+        self.stub.DisconnectPeer(pb.ConnectPeerRequest(did=did))
+
     # ── pub/sub ───────────────────────────────────────────────────────────────
 
     def publish(self, topic: str, payload: bytes | str) -> None:

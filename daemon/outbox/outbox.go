@@ -28,6 +28,7 @@ type Outbox struct {
 	db      *sql.DB
 	deliver DeliverFunc
 	log     *zap.Logger
+	flushCh chan struct{} // signals an immediate flush on new message enqueue
 }
 
 // New opens (or creates) the outbox database at the given path.
@@ -39,7 +40,7 @@ func New(path string, deliver DeliverFunc, log *zap.Logger) (*Outbox, error) {
 	if err := migrate(db); err != nil {
 		return nil, fmt.Errorf("migrate outbox: %w", err)
 	}
-	return &Outbox{db: db, deliver: deliver, log: log}, nil
+	return &Outbox{db: db, deliver: deliver, log: log, flushCh: make(chan struct{}, 1)}, nil
 }
 
 // Enqueue adds a message to the outbox for delivery.
@@ -55,7 +56,14 @@ func (o *Outbox) Enqueue(msg *pb.Message) error {
 		msg.Id, msg.ToDid, msg.ThreadId, msg.TaskId, data,
 		time.Now().UnixMilli(), expiresAt,
 	)
-	return err
+	if err != nil {
+		return err
+	}
+	select {
+	case o.flushCh <- struct{}{}:
+	default: // flush already queued, nothing to do
+	}
+	return nil
 }
 
 // MarkDelivered marks a message as delivered.
@@ -79,7 +87,9 @@ func (o *Outbox) List(status string, limit int) ([]*pb.Message, error) {
 	return sqlite.ScanProtos(rows, func() *pb.Message { return &pb.Message{} })
 }
 
-// Run starts the retry loop. Blocks until ctx is cancelled.
+// Run starts the delivery loop. Blocks until ctx is cancelled.
+// First delivery attempt fires immediately on Enqueue via flushCh.
+// The ticker handles retries for failed messages.
 func (o *Outbox) Run(ctx context.Context) {
 	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()
@@ -87,6 +97,8 @@ func (o *Outbox) Run(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			return
+		case <-o.flushCh:
+			o.flush(ctx)
 		case <-ticker.C:
 			o.flush(ctx)
 		}
