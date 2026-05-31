@@ -311,7 +311,7 @@ func run(cfg *config.Config, log *zap.Logger) error {
 	}
 
 	rpc.SetVersion(version)
-	srv := rpc.New(id, ib, ob, ts, reg, gm, dlv, tm, nm, wh, nameReg, n, n.Addrs(), log)
+	srv := rpc.New(id, ib, ob, ts, reg, gm, dlv, tm, nm, wh, nameReg, n, n.P2PAddrs(), log)
 	grpcServer := grpc.NewServer()
 	pb.RegisterA2ANodeServer(grpcServer, srv)
 

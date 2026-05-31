@@ -213,6 +213,18 @@ func (n *Node) PeerID() string { return n.Host.ID().String() }
 // Addrs returns the node's listen multiaddrs.
 func (n *Node) Addrs() []string { return addrsToStrings(n.Host.Addrs()) }
 
+// P2PAddrs returns multiaddrs with /p2p/<peerID> appended, suitable for
+// embedding in agent cards and bootstrap peer lists.
+func (n *Node) P2PAddrs() []string {
+	pid := n.Host.ID().String()
+	addrs := n.Host.Addrs()
+	out := make([]string, 0, len(addrs))
+	for _, a := range addrs {
+		out = append(out, a.String()+"/p2p/"+pid)
+	}
+	return out
+}
+
 // ─── internal ─────────────────────────────────────────────────────────────────
 
 func (n *Node) bootstrap(ctx context.Context, cfg Config) error {

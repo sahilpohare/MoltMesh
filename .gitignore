@@ -1,5 +1,9 @@
 # ── Go ────────────────────────────────────────────────────────────────────────
 p2p-a2a-daemon
+bin/
+/moltmesh
+/daemon/daemon
+/tui
 *.exe
 *.test
 *.out
