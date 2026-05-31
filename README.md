@@ -6,8 +6,8 @@ Peer-to-peer Agent-to-Agent communication protocol. Any AI agent, in any languag
 Agent (Python/TS/anything)
         │ gRPC
         ▼
-   moltmesh-daemon  ──── libp2p ────  other daemons
-   (Go binary)          QUIC+Noise
+   moltmesh  ──── libp2p ────  other daemons
+   (Go binary)    QUIC+Noise
 ```
 
 The daemon handles all P2P complexity. Agents speak gRPC.
