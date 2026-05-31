@@ -209,9 +209,7 @@ func cmdStartBackground(args []string) error {
 	cmd.Stdin = nil
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile
-	cmd.SysProcAttr = &syscall.SysProcAttr{
-		Setsid: true, // new session — detach from terminal
-	}
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 
 	if err := cmd.Start(); err != nil {
 		logFile.Close()
