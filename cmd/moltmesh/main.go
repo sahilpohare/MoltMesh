@@ -139,6 +139,10 @@ func main() {
 	case "format":
 		err = cmdFormat(args[1:])
 
+	// ── shell completion ─────────────────────────────────────────────────────
+	case "completion":
+		err = cmdCompletion(args[1:])
+
 	// ── pubsub ──────────────────────────────────────────────────────────────
 	case "publish":
 		err = cmdPublish(args[1:])
@@ -310,6 +314,7 @@ Primary commands:
   status       Check daemon status
   version      Show version
   help         Show this help
+  completion   Generate shell completion (bash|zsh|fish)
 
 Identity & Registry:
   get-identity            Get this node's identity
