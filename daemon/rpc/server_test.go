@@ -80,7 +80,7 @@ func newTestEnv(t *testing.T) *testEnv {
 	gm := gossip.New(ps, log)
 
 	// Stub registry — nil; methods under test don't call registry.
-	srv := rpc.New(id, ib, ob, ts, nil, gm, nil, nil, nil, nil, nil, nil, nil, []string{"/ip4/127.0.0.1/tcp/0"}, log)
+	srv := rpc.New(id, ib, ob, ts, nil, gm, nil, nil, nil, nil, nil, nil, []string{"/ip4/127.0.0.1/tcp/0"}, log)
 
 	// Start gRPC server on an in-process listener.
 	lis, err := net.Listen("tcp", "127.0.0.1:0")

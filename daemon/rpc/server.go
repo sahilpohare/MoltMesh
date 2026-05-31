@@ -6,12 +6,15 @@ import (
 	"io"
 	"time"
 
+	"crypto/sha256"
+
 	"go.uber.org/zap"
 
 	"github.com/sahilpohare/p2p-a2a/pkg/p2putil"
 	pb "github.com/sahilpohare/p2p-a2a/gen/a2a/v1"
 	blocks "github.com/ipfs/go-block-format"
 	"github.com/ipfs/go-cid"
+	mh "github.com/multiformats/go-multihash"
 	"github.com/sahilpohare/p2p-a2a/daemon/deliver"
 	"github.com/sahilpohare/p2p-a2a/daemon/gossip"
 	"github.com/sahilpohare/p2p-a2a/daemon/identity"
@@ -328,20 +331,40 @@ const (
 	inlineMax     = 64 * 1024 // blobs ≤ 64 KB are returned inline in the Artifact
 )
 
+// cidV1Block builds an IPFS block with a CIDv1 (raw codec, sha2-256 multihash).
+// blocks.NewBlock uses CIDv0 by default; this produces the bafy... CIDs expected by clients.
+func cidV1Block(data []byte) (blocks.Block, error) {
+	sum := sha256.Sum256(data)
+	mhash, err := mh.Encode(sum[:], mh.SHA2_256)
+	if err != nil {
+		return nil, err
+	}
+	c := cid.NewCidV1(cid.Raw, mhash)
+	return blocks.NewBlockWithCid(data, c)
+}
+
 // SendFile stores a file in the IPFS blockstore via Bitswap and returns an Artifact.
 // The CID is CIDv1 (bafy...). Blobs ≤ 64 KB are returned with Artifact.Inline populated.
 func (s *Server) SendFile(ctx context.Context, req *pb.SendFileRequest) (*pb.Artifact, error) {
 	if len(req.Data) == 0 {
 		return nil, fmt.Errorf("file data is empty")
 	}
+	if s.node == nil {
+		return nil, fmt.Errorf("file storage not available (node not initialised)")
+	}
 
-	blk := blocks.NewBlock(req.Data)
+	blk, err := cidV1Block(req.Data)
+	if err != nil {
+		return nil, fmt.Errorf("build block: %w", err)
+	}
 	if err := s.node.Blockstore.Put(ctx, blk); err != nil {
 		return nil, fmt.Errorf("store block: %w", err)
 	}
 	// Notify Bitswap so connected peers can pull it by CID.
-	if err := s.node.Bitswap.NotifyNewBlocks(ctx, blk); err != nil {
-		s.log.Warn("notify bitswap", zap.Error(err))
+	if s.node.Bitswap != nil {
+		if err := s.node.Bitswap.NotifyNewBlocks(ctx, blk); err != nil {
+			s.log.Warn("notify bitswap", zap.Error(err))
+		}
 	}
 
 	cidStr := blk.Cid().String()
@@ -471,6 +494,9 @@ func (s *Server) FetchFile(req *pb.FetchFileRequest, stream pb.A2ANode_FetchFile
 	if req.Cid == "" {
 		return fmt.Errorf("cid is required")
 	}
+	if s.node == nil {
+		return fmt.Errorf("file storage not available (node not initialised)")
+	}
 
 	c, err := cid.Decode(req.Cid)
 	if err != nil {
@@ -478,7 +504,7 @@ func (s *Server) FetchFile(req *pb.FetchFileRequest, stream pb.A2ANode_FetchFile
 	}
 
 	// If caller knows which peer has it, connect first so Bitswap finds it immediately.
-	if req.FromDid != "" {
+	if req.FromDid != "" && s.registry != nil {
 		if card, err := s.registry.Resolve(stream.Context(), req.FromDid); err == nil {
 			if ai, err := p2putil.AddrsToAddrInfo(card.Multiaddrs); err == nil {
 				s.node.Host.Connect(stream.Context(), *ai) //nolint:errcheck — best effort

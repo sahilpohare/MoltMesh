@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"strings"
 	"testing"
 	"time"
 
@@ -17,12 +18,15 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
+	"github.com/ipfs/boxo/blockstore"
+	datastore "github.com/ipfs/go-datastore"
+	dssync "github.com/ipfs/go-datastore/sync"
 	pb "github.com/sahilpohare/p2p-a2a/gen/a2a/v1"
-	"github.com/sahilpohare/p2p-a2a/daemon/blob"
 	"github.com/sahilpohare/p2p-a2a/daemon/deliver"
 	"github.com/sahilpohare/p2p-a2a/daemon/gossip"
 	"github.com/sahilpohare/p2p-a2a/daemon/identity"
 	"github.com/sahilpohare/p2p-a2a/daemon/inbox"
+	"github.com/sahilpohare/p2p-a2a/daemon/node"
 	"github.com/sahilpohare/p2p-a2a/daemon/outbox"
 	"github.com/sahilpohare/p2p-a2a/daemon/rpc"
 	"github.com/sahilpohare/p2p-a2a/daemon/tasks"
@@ -41,8 +45,8 @@ type daemon struct {
 	ob     *outbox.Outbox
 	ts     *tasks.Store
 	dlv    *deliver.Deliverer
-	bs     *blob.Store
 	tm     *thread.Manager
+	n      *node.Node
 	peerID peer.ID
 	addrs  []string
 }
@@ -94,14 +98,15 @@ func newDaemon(t *testing.T, ctx context.Context, log *zap.Logger) *daemon {
 
 	gm := gossip.New(ps, log)
 
-	bs, err := blob.New(t.TempDir())
-	if err != nil {
-		t.Fatalf("blob.New: %v", err)
-	}
-
 	// Delivery layer (nil registry — we use SendDirect in tests)
 	dlv := deliver.New(h, nil, ib, log)
-	dlv.RegisterBlobHandler(bs)
+
+	// Minimal node with in-memory blockstore (no DHT/Bitswap for tests).
+	bs := blockstore.NewBlockstore(dssync.MutexWrap(datastore.NewMapDatastore()))
+	n := &node.Node{
+		Host:       h,
+		Blockstore: bs,
+	}
 
 	ob, err := outbox.New(":memory:", dlv.DeliverFunc(), log)
 	if err != nil {
@@ -119,7 +124,7 @@ func newDaemon(t *testing.T, ctx context.Context, log *zap.Logger) *daemon {
 	tm := thread.NewManager(ctx, threadStore, id, ps, log)
 
 	// gRPC server
-	srv := rpc.New(id, ib, ob, ts, nil, gm, bs, dlv, tm, nil, nil, nil, nil, addrs, log)
+	srv := rpc.New(id, ib, ob, ts, nil, gm, dlv, tm, nil, nil, nil, n, addrs, log)
 	lis, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("net.Listen: %v", err)
@@ -144,8 +149,8 @@ func newDaemon(t *testing.T, ctx context.Context, log *zap.Logger) *daemon {
 		ob:     ob,
 		ts:     ts,
 		dlv:    dlv,
-		bs:     bs,
 		tm:     tm,
+		n:      n,
 		peerID: h.ID(),
 		addrs:  addrs,
 	}
@@ -259,16 +264,21 @@ func TestE2E_SendMessageViaGRPC(t *testing.T) {
 		t.Error("expected Queued=true")
 	}
 
-	// Verify it's in alice's outbox
-	pending, err := alice.ob.List("pending", 0)
-	if err != nil {
-		t.Fatalf("List outbox: %v", err)
+	// Verify message is tracked in alice's outbox (pending, processing, or failed — all valid
+	// since the outbox flushes immediately on enqueue and the registry is nil in tests).
+	var tracked []*pb.Message
+	for _, status := range []string{"pending", "processing", "failed"} {
+		msgs, err := alice.ob.List(status, 0)
+		if err != nil {
+			t.Fatalf("List outbox %s: %v", status, err)
+		}
+		tracked = append(tracked, msgs...)
 	}
-	if len(pending) == 0 {
+	if len(tracked) == 0 {
 		t.Fatal("message not in outbox")
 	}
-	if pending[0].ToDid != bob.id.DID {
-		t.Errorf("ToDid mismatch: %q", pending[0].ToDid)
+	if tracked[0].ToDid != bob.id.DID {
+		t.Errorf("ToDid mismatch: %q", tracked[0].ToDid)
 	}
 }
 
@@ -302,38 +312,35 @@ func TestE2E_FileTransfer_SmallFile(t *testing.T) {
 	}
 }
 
-func TestE2E_FileTransfer_BlobFetch(t *testing.T) {
+func TestE2E_FileTransfer_LargeFile(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	log, _ := zap.NewDevelopment()
 
 	alice := newDaemon(t, ctx, log)
-	bob := newDaemon(t, ctx, log)
-	connect(t, alice, bob)
 
-	// Store a large blob on alice (> 64KB so it goes on disk).
+	// Store a large file via SendFile — should return a CIDv1.
 	bigData := make([]byte, 128*1024)
 	for i := range bigData {
 		bigData[i] = byte(i % 256)
 	}
 
-	artifact, err := alice.bs.Put(bigData, "big.bin", "application/octet-stream")
+	artifact, err := alice.client.SendFile(ctx, &pb.SendFileRequest{
+		Data:     bigData,
+		Name:     "big.bin",
+		MimeType: "application/octet-stream",
+	})
 	if err != nil {
-		t.Fatalf("blob.Put: %v", err)
+		t.Fatalf("SendFile: %v", err)
 	}
-
-	// Bob fetches blob from alice via libp2p blob protocol.
-	fetched, err := bob.dlv.FetchBlob(ctx, alice.peerID, artifact.Cid)
-	if err != nil {
-		t.Fatalf("FetchBlob: %v", err)
+	if !strings.HasPrefix(artifact.Cid, "baf") {
+		t.Errorf("expected CIDv1 (baf...), got %q", artifact.Cid)
 	}
-	if len(fetched) != len(bigData) {
-		t.Errorf("size mismatch: got %d want %d", len(fetched), len(bigData))
+	if artifact.Uri == "" {
+		t.Error("expected uri for large file")
 	}
-	for i, b := range fetched {
-		if b != bigData[i] {
-			t.Fatalf("data mismatch at byte %d", i)
-		}
+	if len(artifact.Inline) != 0 {
+		t.Error("large file should not be inline")
 	}
 }
 

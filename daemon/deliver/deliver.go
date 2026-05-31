@@ -87,6 +87,9 @@ func (d *Deliverer) SendDirect(ctx context.Context, peerID peer.ID, msg *pb.Mess
 
 // Send delivers a message to the remote peer identified by msg.ToDid.
 func (d *Deliverer) Send(ctx context.Context, msg *pb.Message) error {
+	if d.registry == nil {
+		return fmt.Errorf("no registry configured: cannot resolve %q", msg.ToDid)
+	}
 	// 1. Resolve AgentCard from DHT
 	card, err := d.registry.Resolve(ctx, msg.ToDid)
 	if err != nil {

@@ -1,6 +1,7 @@
 package webhook
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -267,7 +268,7 @@ func TestDeliver_RetryOn5xx(t *testing.T) {
 	}
 
 	event := Event{Kind: EventMessage, Timestamp: time.Now().UnixMilli(), Data: "x"}
-	d.deliver(nil, ts.URL+"/hook", "", event) //nolint:staticcheck (ctx nil is OK for test)
+	d.deliver(context.Background(), ts.URL+"/hook", "", event)
 
 	if got := atomic.LoadInt32(&attempts); got != int32(maxRetries) {
 		t.Errorf("expected %d attempts, got %d", maxRetries, got)
@@ -289,7 +290,7 @@ func TestDeliver_ExhaustsRetries(t *testing.T) {
 	}
 
 	event := Event{Kind: EventMessage, Timestamp: time.Now().UnixMilli(), Data: "fail"}
-	d.deliver(nil, ts.URL+"/hook", "", event) //nolint:staticcheck
+	d.deliver(context.Background(), ts.URL+"/hook", "", event)
 
 	if got := atomic.LoadInt32(&attempts); got != int32(maxRetries) {
 		t.Errorf("expected %d attempts on exhaustion, got %d", maxRetries, got)
@@ -307,7 +308,7 @@ func TestDeliver_ContentTypeJSON(t *testing.T) {
 	log, _ := zap.NewDevelopment()
 	d := &Dispatcher{client: &http.Client{Timeout: httpTimeout}, log: log}
 	event := Event{Kind: EventPubSub, Timestamp: 1}
-	d.deliver(nil, ts.URL+"/hook", "", event) //nolint:staticcheck
+	d.deliver(context.Background(), ts.URL+"/hook", "", event)
 
 	if !strings.HasPrefix(contentType, "application/json") {
 		t.Errorf("Content-Type: got %q, want application/json", contentType)

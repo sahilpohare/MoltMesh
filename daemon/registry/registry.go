@@ -175,9 +175,25 @@ func capabilityCID(capability string) (cid.Cid, error) {
 }
 
 func cardCanonical(card *pb.AgentCard) ([]byte, error) {
-	tmp := *card
-	tmp.Signature = ""
-	return json.Marshal(tmp)
+	// Marshal with Signature cleared — use a map to avoid copying the mutex-containing proto struct.
+	type cardJSON struct {
+		Did         string            `json:"did"`
+		Name        string            `json:"name"`
+		Description string            `json:"description"`
+		PublicKey   string            `json:"public_key"`
+		PublishedAt int64             `json:"published_at"`
+		ExpiresAt   int64             `json:"expires_at"`
+		Metadata    map[string]string `json:"metadata,omitempty"`
+	}
+	return json.Marshal(cardJSON{
+		Did:         card.Did,
+		Name:        card.Name,
+		Description: card.Description,
+		PublicKey:   card.PublicKey,
+		PublishedAt: card.PublishedAt,
+		ExpiresAt:   card.ExpiresAt,
+		Metadata:    card.Metadata,
+	})
 }
 
 // verifyCard verifies the Ed25519 signature on a resolved agent card.

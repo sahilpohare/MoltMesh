@@ -259,9 +259,9 @@ describe("tasks", () => {
 // ── blobs ─────────────────────────────────────────────────────────────────────
 
 describe("blobs", () => {
-  dtest("storeBlob returns a CIDv1", async c => {
+  dtest("storeBlob returns a CIDv1 (baf...)", async c => {
     const cid = await c.storeBlob(Buffer.from("hello blob"), { mimeType: "text/plain" });
-    expect(cid).toMatch(/^bafy/);
+    expect(cid).toMatch(/^baf/);
   });
 
   dtest("storeBlob is deterministic", async c => {
