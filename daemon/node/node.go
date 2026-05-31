@@ -10,7 +10,6 @@ import (
 	"github.com/ipfs/boxo/blockstore"
 	flatfs "github.com/ipfs/go-ds-flatfs"
 	dht "github.com/libp2p/go-libp2p-kad-dht"
-	record "github.com/libp2p/go-libp2p-record"
 	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/core/host"
@@ -23,7 +22,6 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/sahilpohare/p2p-a2a/daemon/identity"
-	"github.com/sahilpohare/p2p-a2a/pkg/a2avalidator"
 )
 
 // Config holds node configuration.
@@ -86,10 +84,6 @@ func New(ctx context.Context, id *identity.Identity, cfg Config, log *zap.Logger
 			// No ProtocolPrefix — joins the global IPFS Kademlia DHT.
 			kadDHT, err = dht.New(ctx, h,
 				dht.Mode(dht.ModeAutoServer),
-				dht.Validator(record.NamespacedValidator{
-					"a2a": a2avalidator.AgentCardValidator{},
-					"pk":  record.PublicKeyValidator{},
-				}),
 			)
 			return kadDHT, err
 		}),
