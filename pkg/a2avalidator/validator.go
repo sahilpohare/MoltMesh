@@ -3,7 +3,6 @@ package a2avalidator
 import (
 	"encoding/json"
 	"fmt"
-	"strings"
 
 	record "github.com/libp2p/go-libp2p-record"
 )
@@ -18,12 +17,10 @@ type AgentCardValidator struct{}
 // Validate checks that the key is a valid /a2a/agents/<did> path and the
 // value is parseable JSON with a non-empty DID field.
 func (v AgentCardValidator) Validate(key string, value []byte) error {
-	if !strings.HasPrefix(key, "/a2a/agents/") {
-		return fmt.Errorf("a2avalidator: unexpected key %q (want /a2a/agents/<did>)", key)
-	}
-	did := strings.TrimPrefix(key, "/a2a/agents/")
-	if did == "" {
-		return fmt.Errorf("a2avalidator: empty DID in key %q", key)
+	// NamespacedValidator strips the namespace prefix before calling Validate,
+	// so key is just the bare value (DID or name string).
+	if key == "" {
+		return fmt.Errorf("a2avalidator: empty key")
 	}
 	var card struct {
 		DID string `json:"did"`

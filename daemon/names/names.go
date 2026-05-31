@@ -216,7 +216,7 @@ func (r *Registry) searchBest(ctx context.Context, name string) *Claim {
 }
 
 func dhtKey(name string) string {
-	return "/a2a/names/" + name
+	return "/names/" + name
 }
 
 // canonical returns the bytes to sign/verify: JSON of all fields except Signature.

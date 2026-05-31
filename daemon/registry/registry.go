@@ -161,7 +161,7 @@ func (r *Registry) RunRepublish(ctx context.Context) {
 // ─── internal ────────────────────────────────────────────────────────────────
 
 func dhtKey(did string) string {
-	return "/a2a/agents/" + did
+	return "/agents/" + did
 }
 
 // capabilityCID derives a deterministic CID from a capability name for use
