@@ -44,6 +44,29 @@ func (s *Store) SaveThread(t *pb.Thread) error {
 	return err
 }
 
+func (s *Store) ListThreads() ([]*pb.Thread, error) {
+	rows, err := s.db.Query(`
+		SELECT id, creator_did, replica_dids, n, f, epoch_ms, created_at, metadata
+		FROM threads`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []*pb.Thread
+	for rows.Next() {
+		var t pb.Thread
+		var replicasJSON, metaJSON string
+		if err := rows.Scan(&t.Id, &t.CreatorDid, &replicasJSON,
+			&t.N, &t.F, &t.EpochMs, &t.CreatedAt, &metaJSON); err != nil {
+			return nil, err
+		}
+		json.Unmarshal([]byte(replicasJSON), &t.ReplicaDids) //nolint:errcheck
+		json.Unmarshal([]byte(metaJSON), &t.Metadata)        //nolint:errcheck
+		out = append(out, &t)
+	}
+	return out, rows.Err()
+}
+
 func (s *Store) GetThread(id string) (*pb.Thread, error) {
 	row := s.db.QueryRow(`
 		SELECT id, creator_did, replica_dids, n, f, epoch_ms, created_at, metadata

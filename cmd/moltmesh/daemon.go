@@ -278,6 +278,9 @@ func run(cfg *config.Config, log *zap.Logger) error {
 	defer threadStore.Close()
 
 	tm := thread.NewManager(ctx, threadStore, id, n.PubSub, log)
+	if err := tm.StartAll(); err != nil {
+		log.Warn("thread: start all on boot", zap.Error(err))
+	}
 
 	// ── delivery ─────────────────────────────────────────────────────────────
 	dlv := deliver.New(n.Host, reg, ib, tm, log)

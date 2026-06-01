@@ -109,6 +109,21 @@ func (m *Manager) CreateThread(_ context.Context, req *pb.CreateThreadRequest) (
 	return thread, nil
 }
 
+// StartAll loads all persisted threads and starts their engines.
+// Call once on daemon startup after the Manager is created.
+func (m *Manager) StartAll() error {
+	threads, err := m.store.ListThreads()
+	if err != nil {
+		return fmt.Errorf("list threads: %w", err)
+	}
+	for _, t := range threads {
+		if err := m.Start(t); err != nil {
+			m.log.Warn("thread: start on boot", zap.String("thread", t.Id), zap.Error(err))
+		}
+	}
+	return nil
+}
+
 // InviteReceived is called when a THREAD_INVITE message arrives from a peer.
 // It saves the thread and starts its engine if not already running.
 func (m *Manager) InviteReceived(thread *pb.Thread) error {
