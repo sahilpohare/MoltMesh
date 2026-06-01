@@ -79,32 +79,12 @@ func newRaftBackend(
 
 	storage := raft.NewMemoryStorage()
 
-	// Load persisted HardState if any.
-	cs, err := store.LoadConsensusState(thread.Id)
-	if err != nil {
-		return nil, err
-	}
-	if cs.Height > 1 || cs.Round > 0 {
-		// cs.Height = Term, cs.Round = Commit, cs.Step = Vote encoded as string
-		var vote uint64
-		if cs.Step != "" {
-			vote, _ = strconv.ParseUint(cs.Step, 10, 64)
-		}
-		hs := raftpb.HardState{
-			Term:   uint64(cs.Height),
-			Vote:   vote,
-			Commit: uint64(cs.Round), // int32 → uint64 safe for block heights
-		}
-		if err := storage.SetHardState(hs); err != nil {
-			return nil, fmt.Errorf("raft: set hard state: %w", err)
-		}
-	}
-
-	// Reload committed log entries into MemoryStorage so the node can catch up.
+	// Reload committed log entries into MemoryStorage first.
 	commitIndex, err := store.GetCommittedHeight(thread.Id)
 	if err != nil {
 		return nil, err
 	}
+	var lastLogIndex uint64
 	if commitIndex > 0 {
 		var raftEntries []raftpb.Entry
 		blocks, err := store.GetBlocksSince(thread.Id, 0, int(commitIndex))
@@ -124,6 +104,31 @@ func newRaftBackend(
 			if err := storage.Append(raftEntries); err != nil {
 				return nil, fmt.Errorf("raft: reload log: %w", err)
 			}
+			lastLogIndex = raftEntries[len(raftEntries)-1].Index
+		}
+	}
+
+	// Restore HardState after log is loaded so Commit never exceeds last log index.
+	cs, err := store.LoadConsensusState(thread.Id)
+	if err != nil {
+		return nil, err
+	}
+	if cs.Height > 1 || cs.Round > 0 {
+		var vote uint64
+		if cs.Step != "" {
+			vote, _ = strconv.ParseUint(cs.Step, 10, 64)
+		}
+		commit := uint64(cs.Round)
+		if commit > lastLogIndex {
+			commit = lastLogIndex // clamp to avoid raft panic
+		}
+		hs := raftpb.HardState{
+			Term:   uint64(cs.Height),
+			Vote:   vote,
+			Commit: commit,
+		}
+		if err := storage.SetHardState(hs); err != nil {
+			return nil, fmt.Errorf("raft: set hard state: %w", err)
 		}
 	}
 
