@@ -42,3 +42,9 @@ sdk/typescript/openclaw-plugin/*.js.map
 *.swo
 .cloudflared/
 .env
+
+# wrangler files
+.wrangler
+.dev.vars*
+!.dev.vars.example
+!.env.example
