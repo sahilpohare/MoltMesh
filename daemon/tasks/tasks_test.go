@@ -1,6 +1,7 @@
 package tasks
 
 import (
+	"errors"
 	"testing"
 
 	pb "github.com/sahilpohare/p2p-a2a/gen/a2a/v1"
@@ -205,5 +206,123 @@ func TestUpdatedAt_Changes(t *testing.T) {
 	updated, _ := s.UpdateStatus(task.Id, pb.TaskStatus_TASK_STATUS_WORKING, "", nil)
 	if updated.UpdatedAt < original {
 		t.Error("UpdatedAt did not advance after status update")
+	}
+}
+
+// ─── invariants ────────────────────────────────────────────────────────────────
+
+func TestCreate_RejectsEmptySkill(t *testing.T) {
+	s := newTestStore(t)
+	_, err := s.Create(initiator, assignee, "", "", nil, nil)
+	if !errors.Is(err, ErrInvalidTask) {
+		t.Fatalf("expected ErrInvalidTask, got %v", err)
+	}
+}
+
+func TestCreate_RejectsSelfDelegation(t *testing.T) {
+	s := newTestStore(t)
+	_, err := s.Create(initiator, initiator, "", skill, nil, nil)
+	if !errors.Is(err, ErrInvalidTask) {
+		t.Fatalf("expected ErrInvalidTask, got %v", err)
+	}
+}
+
+// ─── transition guards ──────────────────────────────────────────────────────────
+
+func TestUpdateStatus_RejectsSkippingWorking(t *testing.T) {
+	s := newTestStore(t)
+	task, _ := s.Create(initiator, assignee, "", skill, nil, nil)
+
+	// SUBMITTED -> COMPLETED directly is not a valid transition; work must
+	// start first.
+	_, err := s.UpdateStatus(task.Id, pb.TaskStatus_TASK_STATUS_COMPLETED, "", nil)
+	if !errors.Is(err, ErrInvalidTransition) {
+		t.Fatalf("expected ErrInvalidTransition, got %v", err)
+	}
+
+	// The task must be unaffected by the rejected transition.
+	got, _ := s.Get(task.Id)
+	if got.Status != pb.TaskStatus_TASK_STATUS_SUBMITTED {
+		t.Errorf("task status changed despite rejected transition: %v", got.Status)
+	}
+}
+
+func TestUpdateStatus_RejectsTransitionOutOfTerminalState(t *testing.T) {
+	s := newTestStore(t)
+	task, _ := s.Create(initiator, assignee, "", skill, nil, nil)
+	if _, err := s.Cancel(task.Id); err != nil {
+		t.Fatalf("Cancel: %v", err)
+	}
+
+	// A cancelled task can never move again — not even back to WORKING.
+	_, err := s.UpdateStatus(task.Id, pb.TaskStatus_TASK_STATUS_WORKING, "", nil)
+	if !errors.Is(err, ErrInvalidTransition) {
+		t.Fatalf("expected ErrInvalidTransition, got %v", err)
+	}
+}
+
+func TestUpdateStatus_RejectsDoubleCompletion(t *testing.T) {
+	s := newTestStore(t)
+	task, _ := s.Create(initiator, assignee, "", skill, nil, nil)
+	if _, err := s.StartWork(task.Id); err != nil {
+		t.Fatalf("StartWork: %v", err)
+	}
+	if _, err := s.Complete(task.Id, nil); err != nil {
+		t.Fatalf("Complete: %v", err)
+	}
+
+	// Completing an already-completed task must be rejected, not silently
+	// re-applied — this is the concrete race a worker and a coordinator
+	// could hit if both try to settle the same task.
+	_, err := s.Complete(task.Id, nil)
+	if !errors.Is(err, ErrInvalidTransition) {
+		t.Fatalf("expected ErrInvalidTransition, got %v", err)
+	}
+}
+
+func TestUpdateStatus_UnknownTaskID(t *testing.T) {
+	s := newTestStore(t)
+	_, err := s.UpdateStatus("does-not-exist", pb.TaskStatus_TASK_STATUS_WORKING, "", nil)
+	if err == nil {
+		t.Fatal("expected error for unknown task ID")
+	}
+}
+
+func TestNamedTransitions_FullLifecycle(t *testing.T) {
+	s := newTestStore(t)
+	task, _ := s.Create(initiator, assignee, "", skill, nil, nil)
+
+	if _, err := s.StartWork(task.Id); err != nil {
+		t.Fatalf("StartWork: %v", err)
+	}
+	artifacts := []*pb.Artifact{{Cid: "sha256:abc", MimeType: "text/plain", Size: 3}}
+	completed, err := s.Complete(task.Id, artifacts)
+	if err != nil {
+		t.Fatalf("Complete: %v", err)
+	}
+	if completed.Status != pb.TaskStatus_TASK_STATUS_COMPLETED {
+		t.Errorf("expected COMPLETED, got %v", completed.Status)
+	}
+	if len(completed.OutputArtifacts) != 1 {
+		t.Errorf("expected 1 output artifact, got %d", len(completed.OutputArtifacts))
+	}
+}
+
+func TestNamedTransitions_Fail(t *testing.T) {
+	s := newTestStore(t)
+	task, _ := s.Create(initiator, assignee, "", skill, nil, nil)
+	if _, err := s.StartWork(task.Id); err != nil {
+		t.Fatalf("StartWork: %v", err)
+	}
+
+	failed, err := s.Fail(task.Id, "boom")
+	if err != nil {
+		t.Fatalf("Fail: %v", err)
+	}
+	if failed.Status != pb.TaskStatus_TASK_STATUS_FAILED {
+		t.Errorf("expected FAILED, got %v", failed.Status)
+	}
+	if failed.Error != "boom" {
+		t.Errorf("error mismatch: %q", failed.Error)
 	}
 }

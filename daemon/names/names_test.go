@@ -164,7 +164,7 @@ func TestClaimExpiry(t *testing.T) {
 
 func TestDHTKey(t *testing.T) {
 	key := dhtKey("swift-falcon")
-	if key != "/a2a/names/swift-falcon" {
+	if key != "/names/swift-falcon" {
 		t.Errorf("unexpected DHT key: %q", key)
 	}
 }

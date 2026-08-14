@@ -71,10 +71,10 @@ func TestSendDirect_DeliveredToInbox(t *testing.T) {
 	receiverInbox := newInbox(t)
 
 	// Register receive handler on receiver (nil registry — receiver never calls it)
-	deliver.New(receiverHost, nil, receiverInbox, log)
+	deliver.New(receiverHost, nil, receiverInbox, nil, log)
 
 	// Sender Deliverer (nil registry — using SendDirect)
-	senderDlv := deliver.New(senderHost, nil, newInbox(t), log)
+	senderDlv := deliver.New(senderHost, nil, newInbox(t), nil, log)
 
 	// Derive DID from the sender's libp2p host key so it matches the peer identity.
 	senderDID := didFromHost(t, senderHost)
@@ -116,8 +116,8 @@ func TestSendDirect_MultipleMessages(t *testing.T) {
 	connectHosts(t, h1, h2)
 
 	ib := newInbox(t)
-	deliver.New(h2, nil, ib, log)
-	dlv := deliver.New(h1, nil, newInbox(t), log)
+	deliver.New(h2, nil, ib, nil, log)
+	dlv := deliver.New(h1, nil, newInbox(t), nil, log)
 
 	senderDID := didFromHost(t, h1)
 
@@ -144,7 +144,7 @@ func TestSendDirect_MultipleMessages(t *testing.T) {
 func TestSendDirect_UnknownPeer(t *testing.T) {
 	log, _ := zap.NewDevelopment()
 	h := newHost(t)
-	dlv := deliver.New(h, nil, newInbox(t), log)
+	dlv := deliver.New(h, nil, newInbox(t), nil, log)
 
 	// Random peer ID that we've never connected to
 	unknownID, _ := peer.Decode("12D3KooWGHpBMeZbestVEWkfdnC9VX5XUZ8jKEAqoTVAsy3WP3DL")
@@ -165,7 +165,7 @@ func TestReceive_MalformedData(t *testing.T) {
 	connectHosts(t, senderHost, receiverHost)
 
 	receiverInbox := newInbox(t)
-	deliver.New(receiverHost, nil, receiverInbox, log)
+	deliver.New(receiverHost, nil, receiverInbox, nil, log)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()

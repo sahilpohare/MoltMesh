@@ -526,9 +526,21 @@ func run(cfg *config.Config, log *zap.Logger) error {
 	// ── gossip ──────────────────────────────────────────────────────────────
 	gm := gossip.New(n.PubSub, log)
 
+	// ── thread manager ───────────────────────────────────────────────────────
+	threadStore, err := thread.NewStore(filepath.Join(dataDir, "threads.db"))
+	if err != nil {
+		return fmt.Errorf("thread store: %w", err)
+	}
+	defer threadStore.Close()
+
+	tm := thread.NewManager(ctx, threadStore, id, n.PubSub, log)
+	if err := tm.StartAll(); err != nil {
+		log.Warn("thread: start all on boot", zap.Error(err))
+	}
+
 	// ── delivery layer (libp2p stream protocol) ──────────────────────────────
 	// Blob transport is now handled by Bitswap (mounted on n.Host).
-	dlv := deliver.New(n.Host, reg, ib, nil, log)
+	dlv := deliver.New(n.Host, reg, ib, tm, log)
 
 	// ── outbox (with real delivery function) ─────────────────────────────────
 	ob, err := outbox.New(
@@ -541,15 +553,6 @@ func run(cfg *config.Config, log *zap.Logger) error {
 	}
 	defer ob.Close()
 	go ob.Run(ctx)
-
-	// ── thread manager ───────────────────────────────────────────────────────
-	threadStore, err := thread.NewStore(filepath.Join(dataDir, "threads.db"))
-	if err != nil {
-		return fmt.Errorf("thread store: %w", err)
-	}
-	defer threadStore.Close()
-
-	tm := thread.NewManager(ctx, threadStore, id, n.PubSub, log)
 
 	// ── network store + manager ───────────────────────────────────────────────
 	netStore, err := network.New(filepath.Join(dataDir, "networks.db"))

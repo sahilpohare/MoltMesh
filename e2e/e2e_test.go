@@ -99,7 +99,7 @@ func newDaemon(t *testing.T, ctx context.Context, log *zap.Logger) *daemon {
 	gm := gossip.New(ps, log)
 
 	// Delivery layer (nil registry — we use SendDirect in tests)
-	dlv := deliver.New(h, nil, ib, log)
+	dlv := deliver.New(h, nil, ib, nil, log)
 
 	// Minimal node with in-memory blockstore (no DHT/Bitswap for tests).
 	bs := blockstore.NewBlockstore(dssync.MutexWrap(datastore.NewMapDatastore()))

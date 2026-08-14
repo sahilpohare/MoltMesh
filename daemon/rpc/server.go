@@ -243,7 +243,10 @@ func (s *Server) CreateTask(ctx context.Context, req *pb.CreateTaskRequest) (*pb
 		return nil, fmt.Errorf("create task: %w", err)
 	}
 
-	// notify assignee via outbox
+	// Notify assignee via outbox. If this fails, the task would otherwise sit
+	// in SUBMITTED forever with no notification ever sent and no way for the
+	// initiator to learn that — so fail the task instead of swallowing the
+	// error, and surface it to the caller.
 	msg := &pb.Message{
 		Id:      uuid.New().String(),
 		FromDid: s.id.DID,
@@ -252,7 +255,13 @@ func (s *Server) CreateTask(ctx context.Context, req *pb.CreateTaskRequest) (*pb
 		Kind:    pb.MessageKind_MESSAGE_KIND_TASK_REQUEST,
 	}
 	if err := s.outbox.Enqueue(msg); err != nil {
-		s.log.Warn("enqueue task request", zap.Error(err))
+		s.log.Warn("enqueue task request", zap.String("task_id", task.Id), zap.Error(err))
+		if failed, failErr := s.tasks.Fail(task.Id, fmt.Sprintf("failed to notify assignee: %v", err)); failErr != nil {
+			s.log.Error("mark task failed after enqueue failure", zap.String("task_id", task.Id), zap.Error(failErr))
+		} else {
+			task = failed
+		}
+		return task, fmt.Errorf("create task: notify assignee: %w", err)
 	}
 
 	return task, nil
@@ -290,7 +299,7 @@ func (s *Server) UpdateTask(ctx context.Context, req *pb.TaskStatusUpdate) (*pb.
 }
 
 func (s *Server) CancelTask(ctx context.Context, req *pb.TaskID) (*pb.Task, error) {
-	return s.tasks.UpdateStatus(req.Id, pb.TaskStatus_TASK_STATUS_CANCELLED, "", nil)
+	return s.tasks.Cancel(req.Id)
 }
 
 func (s *Server) PublishTaskEvent(ctx context.Context, event *pb.TaskEvent) (*pb.Empty, error) {
