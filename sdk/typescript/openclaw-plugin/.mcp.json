@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "moltmesh": {
+      "command": "node",
+      "args": [
+        "${CLAUDE_PLUGIN_ROOT}/bin/moltmesh-mcp.mjs"
+      ]
+    }
+  }
+}

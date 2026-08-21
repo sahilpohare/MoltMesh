@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "github-p2p_a2a": {
+      "type": "http",
+      "url": "https://api.githubcopilot.com/mcp/",
+      "headersHelper": "printf '{\"Authorization\":\"Bearer %s\"}' \"$(gh auth token -u 'sahilpohare' 2>/dev/null)\""
+    }
+  }
+}
