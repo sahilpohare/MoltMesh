@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestDefaults(t *testing.T) {
@@ -40,6 +41,7 @@ bootstrap_peers = ["/ip4/1.2.3.4/tcp/9000/p2p/12D3KooWTest"]
 [daemon]
 grpc_addr = "localhost:50051"
 verbose   = true
+thread_passivation_seconds = 42
 `
 	path := filepath.Join(dir, "moltbook.toml")
 	if err := os.WriteFile(path, []byte(content), 0600); err != nil {
@@ -74,6 +76,9 @@ verbose   = true
 	}
 	if !cfg.Daemon.Verbose {
 		t.Error("daemon.verbose should be true")
+	}
+	if got := cfg.ThreadPassivationAfter(); got != 42*time.Second {
+		t.Errorf("ThreadPassivationAfter = %v", got)
 	}
 }
 

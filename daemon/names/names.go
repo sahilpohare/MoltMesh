@@ -43,6 +43,7 @@ import (
 	dht "github.com/libp2p/go-libp2p-kad-dht"
 	"go.uber.org/zap"
 
+	appactors "github.com/sahilpohare/p2p-a2a/daemon/actors"
 	"github.com/sahilpohare/p2p-a2a/daemon/identity"
 )
 
@@ -68,6 +69,23 @@ type Registry struct {
 	id     *identity.Identity
 	claims []string // names this node has claimed
 	log    *zap.Logger
+	exec   *appactors.Executor
+}
+
+func (r *Registry) EnableActor(ctx context.Context, h *appactors.Hierarchy) error {
+	exec, err := appactors.NewExecutor(ctx, h, "names")
+	if err != nil {
+		return err
+	}
+	r.exec = exec
+	return exec.Schedule(ctx, "names-republish", republishEvery, func() (any, error) {
+		for _, name := range r.claims {
+			if _, err := r.claim(ctx, name); err != nil {
+				r.log.Warn("republish name claim", zap.String("name", name), zap.Error(err))
+			}
+		}
+		return nil, nil
+	})
 }
 
 // New creates a name registry.
@@ -112,6 +130,16 @@ func Validate(name string) error {
 // DID the write is refused. This requires the current holder's claim to expire
 // before another agent may take the name.
 func (r *Registry) Claim(ctx context.Context, name string) (*Claim, error) {
+	if r.exec != nil {
+		value, err := r.exec.Call(ctx, func() (any, error) { return r.claim(ctx, name) })
+		if err != nil {
+			return nil, err
+		}
+		return value.(*Claim), nil
+	}
+	return r.claim(ctx, name)
+}
+func (r *Registry) claim(ctx context.Context, name string) (*Claim, error) {
 	name = Normalize(name)
 	if err := Validate(name); err != nil {
 		return nil, err
@@ -159,6 +187,16 @@ func (r *Registry) Claim(ctx context.Context, name string) (*Claim, error) {
 // Resolve looks up a name in the DHT using a quorum search and returns the
 // most-recent valid claim. Invalid or unsigned records are silently skipped.
 func (r *Registry) Resolve(ctx context.Context, name string) (*Claim, error) {
+	if r.exec != nil {
+		value, err := r.exec.Call(ctx, func() (any, error) { return r.resolve(ctx, name) })
+		if err != nil {
+			return nil, err
+		}
+		return value.(*Claim), nil
+	}
+	return r.resolve(ctx, name)
+}
+func (r *Registry) resolve(ctx context.Context, name string) (*Claim, error) {
 	name = Normalize(name)
 	if err := Validate(name); err != nil {
 		return nil, err
@@ -173,6 +211,10 @@ func (r *Registry) Resolve(ctx context.Context, name string) (*Claim, error) {
 
 // RunRepublish periodically renews all claims held by this node.
 func (r *Registry) RunRepublish(ctx context.Context) {
+	if r.exec != nil {
+		<-ctx.Done()
+		return
+	}
 	ticker := time.NewTicker(republishEvery)
 	defer ticker.Stop()
 	for {
@@ -181,7 +223,7 @@ func (r *Registry) RunRepublish(ctx context.Context) {
 			return
 		case <-ticker.C:
 			for _, name := range r.claims {
-				if _, err := r.Claim(ctx, name); err != nil {
+				if _, err := r.claim(ctx, name); err != nil {
 					r.log.Warn("republish name claim", zap.String("name", name), zap.Error(err))
 				}
 			}
@@ -206,6 +248,9 @@ func (r *Registry) searchBest(ctx context.Context, name string) *Claim {
 		}
 		if err := verifyClaim(&c); err != nil {
 			r.log.Debug("dropping invalid name claim", zap.String("name", name), zap.Error(err))
+			continue
+		}
+		if c.Name != name || c.ExpiresAt <= time.Now().UnixMilli() || c.PublishedAt > time.Now().Add(5*time.Minute).UnixMilli() {
 			continue
 		}
 		if best == nil || c.PublishedAt > best.PublishedAt {

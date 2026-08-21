@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -59,9 +60,9 @@ func cmdGetIdentity(args []string) error {
 
 func cmdGetAgentCard(args []string) error {
 	fs := flag.NewFlagSet("get-agent-card", flag.ExitOnError)
-	dataDir  := fs.String("data-dir",  "", "Data directory")
+	dataDir := fs.String("data-dir", "", "Data directory")
 	grpcAddr := fs.String("grpc-addr", "", "gRPC server address")
-	did      := fs.String("did",       "", "DID to look up (required)")
+	did := fs.String("did", "", "DID to look up (required)")
 	fs.Parse(args)
 
 	if *did == "" {
@@ -91,9 +92,9 @@ func cmdGetAgentCard(args []string) error {
 
 func cmdPublishAgentCard(args []string) error {
 	fs := flag.NewFlagSet("publish-agent-card", flag.ExitOnError)
-	dataDir     := fs.String("data-dir",     "", "Data directory")
-	grpcAddr    := fs.String("grpc-addr",    "", "gRPC server address")
-	name        := fs.String("name",        "", "Agent name (required)")
+	dataDir := fs.String("data-dir", "", "Data directory")
+	grpcAddr := fs.String("grpc-addr", "", "gRPC server address")
+	name := fs.String("name", "", "Agent name (required)")
 	description := fs.String("description", "", "Agent description")
 	fs.Parse(args)
 
@@ -137,10 +138,10 @@ func cmdPublishAgentCard(args []string) error {
 
 func cmdFindAgents(args []string) error {
 	fs := flag.NewFlagSet("find-agents", flag.ExitOnError)
-	dataDir    := fs.String("data-dir",    "", "Data directory")
-	grpcAddr   := fs.String("grpc-addr",   "", "gRPC server address")
-	capability := fs.String("capability",  "", "Capability ID to search for (required)")
-	limit      := fs.Int("limit", 10, "Max results")
+	dataDir := fs.String("data-dir", "", "Data directory")
+	grpcAddr := fs.String("grpc-addr", "", "gRPC server address")
+	capability := fs.String("capability", "", "Capability ID to search for (required)")
+	limit := fs.Int("limit", 10, "Max results")
 	fs.Parse(args)
 
 	if *capability == "" {
@@ -189,10 +190,10 @@ func cmdFindAgents(args []string) error {
 
 func cmdSendMessage(args []string) error {
 	fs := flag.NewFlagSet("send-message", flag.ExitOnError)
-	dataDir  := fs.String("data-dir",  "", "Data directory")
+	dataDir := fs.String("data-dir", "", "Data directory")
 	grpcAddr := fs.String("grpc-addr", "", "gRPC server address")
-	to       := fs.String("to",        "", "Recipient DID (required)")
-	text     := fs.String("text",      "", "Message text (required)")
+	to := fs.String("to", "", "Recipient DID (required)")
+	text := fs.String("text", "", "Message text (required)")
 	threadID := fs.String("thread-id", "", "Thread ID (optional)")
 	fs.Parse(args)
 
@@ -246,12 +247,12 @@ func cmdSendMessage(args []string) error {
 
 func cmdGetInbox(args []string) error {
 	fs := flag.NewFlagSet("get-inbox", flag.ExitOnError)
-	dataDir  := fs.String("data-dir",  "", "Data directory")
+	dataDir := fs.String("data-dir", "", "Data directory")
 	grpcAddr := fs.String("grpc-addr", "", "gRPC server address")
-	limit    := fs.Int("limit", 20, "Max messages")
-	unread   := fs.Bool("unread", false, "Unread only")
+	limit := fs.Int("limit", 20, "Max messages")
+	unread := fs.Bool("unread", false, "Unread only")
 	threadID := fs.String("thread-id", "", "Filter by thread ID")
-	taskID   := fs.String("task-id",   "", "Filter by task ID")
+	taskID := fs.String("task-id", "", "Filter by task ID")
 	fs.Parse(args)
 
 	dir, err := resolveDataDir(*dataDir)
@@ -295,10 +296,10 @@ func cmdGetInbox(args []string) error {
 
 func cmdGetOutbox(args []string) error {
 	fs := flag.NewFlagSet("get-outbox", flag.ExitOnError)
-	dataDir  := fs.String("data-dir",  "", "Data directory")
+	dataDir := fs.String("data-dir", "", "Data directory")
 	grpcAddr := fs.String("grpc-addr", "", "gRPC server address")
-	status   := fs.String("status", "", "Filter: pending|delivered|failed|expired")
-	limit    := fs.Int("limit", 20, "Max messages")
+	status := fs.String("status", "", "Filter: pending|delivered|failed|expired")
+	limit := fs.Int("limit", 20, "Max messages")
 	fs.Parse(args)
 
 	dir, err := resolveDataDir(*dataDir)
@@ -340,10 +341,10 @@ func cmdGetOutbox(args []string) error {
 
 func cmdSubscribeInbox(args []string) error {
 	fs := flag.NewFlagSet("subscribe-inbox", flag.ExitOnError)
-	dataDir  := fs.String("data-dir",  "", "Data directory")
+	dataDir := fs.String("data-dir", "", "Data directory")
 	grpcAddr := fs.String("grpc-addr", "", "gRPC server address")
 	threadID := fs.String("thread-id", "", "Subscribe to specific thread")
-	taskID   := fs.String("task-id",   "", "Subscribe to specific task")
+	taskID := fs.String("task-id", "", "Subscribe to specific task")
 	fs.Parse(args)
 
 	dir, err := resolveDataDir(*dataDir)
@@ -381,9 +382,9 @@ func cmdSubscribeInbox(args []string) error {
 
 func cmdAckMessage(args []string) error {
 	fs := flag.NewFlagSet("ack-message", flag.ExitOnError)
-	dataDir  := fs.String("data-dir",  "", "Data directory")
+	dataDir := fs.String("data-dir", "", "Data directory")
 	grpcAddr := fs.String("grpc-addr", "", "gRPC server address")
-	id       := fs.String("id", "", "Message ID to acknowledge (required)")
+	id := fs.String("id", "", "Message ID to acknowledge (required)")
 	fs.Parse(args)
 
 	if *id == "" {
@@ -413,10 +414,10 @@ func cmdAckMessage(args []string) error {
 
 func cmdCreateTask(args []string) error {
 	fs := flag.NewFlagSet("create-task", flag.ExitOnError)
-	dataDir  := fs.String("data-dir",  "", "Data directory")
+	dataDir := fs.String("data-dir", "", "Data directory")
 	grpcAddr := fs.String("grpc-addr", "", "gRPC server address")
-	to       := fs.String("to",        "", "Assignee DID (required)")
-	skill    := fs.String("skill",     "", "Skill/capability ID (required)")
+	to := fs.String("to", "", "Assignee DID (required)")
+	skill := fs.String("skill", "", "Skill/capability ID (required)")
 	threadID := fs.String("thread-id", "", "Attach to existing thread (optional)")
 	fs.Parse(args)
 
@@ -456,9 +457,9 @@ func cmdCreateTask(args []string) error {
 
 func cmdGetTask(args []string) error {
 	fs := flag.NewFlagSet("get-task", flag.ExitOnError)
-	dataDir  := fs.String("data-dir",  "", "Data directory")
+	dataDir := fs.String("data-dir", "", "Data directory")
 	grpcAddr := fs.String("grpc-addr", "", "gRPC server address")
-	id       := fs.String("id", "", "Task ID (required)")
+	id := fs.String("id", "", "Task ID (required)")
 	fs.Parse(args)
 
 	if *id == "" {
@@ -488,11 +489,11 @@ func cmdGetTask(args []string) error {
 
 func cmdUpdateTask(args []string) error {
 	fs := flag.NewFlagSet("update-task", flag.ExitOnError)
-	dataDir  := fs.String("data-dir",  "", "Data directory")
+	dataDir := fs.String("data-dir", "", "Data directory")
 	grpcAddr := fs.String("grpc-addr", "", "gRPC server address")
-	id      := fs.String("id",     "", "Task ID (required)")
-	status  := fs.String("status", "", "New status: working|completed|failed|cancelled (required)")
-	errText := fs.String("error",  "", "Error message (for failed status)")
+	id := fs.String("id", "", "Task ID (required)")
+	status := fs.String("status", "", "New status: working|completed|failed|cancelled (required)")
+	errText := fs.String("error", "", "Error message (for failed status)")
 	fs.Parse(args)
 
 	if *id == "" {
@@ -534,9 +535,9 @@ func cmdUpdateTask(args []string) error {
 
 func cmdCancelTask(args []string) error {
 	fs := flag.NewFlagSet("cancel-task", flag.ExitOnError)
-	dataDir  := fs.String("data-dir",  "", "Data directory")
+	dataDir := fs.String("data-dir", "", "Data directory")
 	grpcAddr := fs.String("grpc-addr", "", "gRPC server address")
-	id       := fs.String("id", "", "Task ID (required)")
+	id := fs.String("id", "", "Task ID (required)")
 	fs.Parse(args)
 
 	if *id == "" {
@@ -566,11 +567,11 @@ func cmdCancelTask(args []string) error {
 
 func cmdPublishTaskEvent(args []string) error {
 	fs := flag.NewFlagSet("publish-task-event", flag.ExitOnError)
-	dataDir  := fs.String("data-dir",  "", "Data directory")
+	dataDir := fs.String("data-dir", "", "Data directory")
 	grpcAddr := fs.String("grpc-addr", "", "gRPC server address")
-	taskID   := fs.String("task-id",   "", "Task ID (required)")
-	kind     := fs.String("kind", "status_update", "Event kind")
-	data     := fs.String("data", "", "Event data (string)")
+	taskID := fs.String("task-id", "", "Task ID (required)")
+	kind := fs.String("kind", "status_update", "Event kind")
+	data := fs.String("data", "", "Event data (string)")
 	fs.Parse(args)
 
 	if *taskID == "" {
@@ -607,9 +608,9 @@ func cmdPublishTaskEvent(args []string) error {
 
 func cmdSubscribeTaskEvents(args []string) error {
 	fs := flag.NewFlagSet("subscribe-task-events", flag.ExitOnError)
-	dataDir  := fs.String("data-dir",  "", "Data directory")
+	dataDir := fs.String("data-dir", "", "Data directory")
 	grpcAddr := fs.String("grpc-addr", "", "gRPC server address")
-	id       := fs.String("id", "", "Task ID (required)")
+	id := fs.String("id", "", "Task ID (required)")
 	fs.Parse(args)
 
 	if *id == "" {
@@ -651,9 +652,9 @@ func cmdSubscribeTaskEvents(args []string) error {
 
 func cmdSendFile(args []string) error {
 	fs := flag.NewFlagSet("send-file", flag.ExitOnError)
-	dataDir  := fs.String("data-dir",  "", "Data directory")
+	dataDir := fs.String("data-dir", "", "Data directory")
 	grpcAddr := fs.String("grpc-addr", "", "gRPC server address")
-	filePath := fs.String("file",      "", "File to upload (required)")
+	filePath := fs.String("file", "", "File to upload (required)")
 	mimeType := fs.String("mime-type", "application/octet-stream", "MIME type")
 	fs.Parse(args)
 
@@ -693,11 +694,11 @@ func cmdSendFile(args []string) error {
 
 func cmdFetchFile(args []string) error {
 	fs := flag.NewFlagSet("fetch-file", flag.ExitOnError)
-	dataDir  := fs.String("data-dir",  "", "Data directory")
+	dataDir := fs.String("data-dir", "", "Data directory")
 	grpcAddr := fs.String("grpc-addr", "", "gRPC server address")
-	cid      := fs.String("cid",  "", "Content ID to fetch (required)")
-	from     := fs.String("from", "", "Source DID (required)")
-	out      := fs.String("out",  "", "Output file path (default: stdout)")
+	cid := fs.String("cid", "", "Content ID to fetch (required)")
+	from := fs.String("from", "", "Source DID (required)")
+	out := fs.String("out", "", "Output file path (default: stdout)")
 	fs.Parse(args)
 
 	if *cid == "" {
@@ -761,11 +762,12 @@ func cmdFetchFile(args []string) error {
 
 func cmdCreateThread(args []string) error {
 	fs := flag.NewFlagSet("create-thread", flag.ExitOnError)
-	dataDir  := fs.String("data-dir",  "", "Data directory")
+	dataDir := fs.String("data-dir", "", "Data directory")
 	grpcAddr := fs.String("grpc-addr", "", "gRPC server address")
-	replicas := fs.String("replicas",  "", "Comma-separated replica DIDs")
-	f        := fs.Int("f", 0, "Max byzantine faults to tolerate")
-	epochMs  := fs.Int64("epoch-ms", 0, "Timeout propose in ms")
+	replicas := fs.String("replicas", "", "Comma-separated replica DIDs")
+	f := fs.Int("f", 0, "Max byzantine faults to tolerate")
+	epochMs := fs.Int64("epoch-ms", 0, "Timeout propose in ms")
+	withRecovery := fs.Bool("with-recovery", false, "Create and return a portable recovery capability")
 	fs.Parse(args)
 
 	var replicaDIDs []string
@@ -789,15 +791,24 @@ func cmdCreateThread(args []string) error {
 	defer conn.Close()
 	client := pb.NewA2ANodeClient(conn)
 
-	thread, err := client.CreateThread(context.Background(), &pb.CreateThreadRequest{
+	req := &pb.CreateThreadRequest{
 		ReplicaDids: replicaDIDs,
 		F:           int32(*f),
 		EpochMs:     *epochMs,
-	})
+	}
+	if *withRecovery {
+		response, err := client.CreateThreadWithRecovery(context.Background(), req)
+		if err != nil {
+			return err
+		}
+		data, _ := json.MarshalIndent(response, "", "  ")
+		fmt.Println(string(data))
+		return nil
+	}
+	thread, err := client.CreateThread(context.Background(), req)
 	if err != nil {
 		return err
 	}
-
 	data, _ := json.MarshalIndent(thread, "", "  ")
 	fmt.Println(string(data))
 	return nil
@@ -805,9 +816,9 @@ func cmdCreateThread(args []string) error {
 
 func cmdGetThread(args []string) error {
 	fs := flag.NewFlagSet("get-thread", flag.ExitOnError)
-	dataDir  := fs.String("data-dir",  "", "Data directory")
+	dataDir := fs.String("data-dir", "", "Data directory")
 	grpcAddr := fs.String("grpc-addr", "", "gRPC server address")
-	id       := fs.String("id", "", "Thread ID (required)")
+	id := fs.String("id", "", "Thread ID (required)")
 	fs.Parse(args)
 
 	if *id == "" {
@@ -837,11 +848,11 @@ func cmdGetThread(args []string) error {
 
 func cmdAppendEntry(args []string) error {
 	fs := flag.NewFlagSet("append-entry", flag.ExitOnError)
-	dataDir  := fs.String("data-dir",   "", "Data directory")
-	grpcAddr := fs.String("grpc-addr",  "", "gRPC server address")
-	threadID := fs.String("thread-id",  "", "Thread ID (required)")
-	payload  := fs.String("payload",    "", "Entry payload (string)")
-	kind     := fs.String("kind", "custom", "Entry kind")
+	dataDir := fs.String("data-dir", "", "Data directory")
+	grpcAddr := fs.String("grpc-addr", "", "gRPC server address")
+	threadID := fs.String("thread-id", "", "Thread ID (required)")
+	payload := fs.String("payload", "", "Entry payload (string)")
+	kind := fs.String("kind", "custom", "Entry kind")
 	fs.Parse(args)
 
 	if *threadID == "" {
@@ -875,11 +886,11 @@ func cmdAppendEntry(args []string) error {
 
 func cmdGetThreadEntries(args []string) error {
 	fs := flag.NewFlagSet("get-thread-entries", flag.ExitOnError)
-	dataDir  := fs.String("data-dir",  "", "Data directory")
+	dataDir := fs.String("data-dir", "", "Data directory")
 	grpcAddr := fs.String("grpc-addr", "", "gRPC server address")
-	id       := fs.String("id",    "", "Thread ID (required)")
-	since    := fs.Int64("since", 0, "Since height")
-	limit    := fs.Int("limit", 50, "Max entries")
+	id := fs.String("id", "", "Thread ID (required)")
+	since := fs.Int64("since", 0, "Since height")
+	limit := fs.Int("limit", 50, "Max entries")
 	fs.Parse(args)
 
 	if *id == "" {
@@ -927,10 +938,10 @@ func cmdGetThreadEntries(args []string) error {
 
 func cmdSubscribeThread(args []string) error {
 	fs := flag.NewFlagSet("subscribe-thread", flag.ExitOnError)
-	dataDir  := fs.String("data-dir",  "", "Data directory")
+	dataDir := fs.String("data-dir", "", "Data directory")
 	grpcAddr := fs.String("grpc-addr", "", "gRPC server address")
-	id       := fs.String("id",    "", "Thread ID (required)")
-	since    := fs.Int64("since", 0, "Since height")
+	id := fs.String("id", "", "Thread ID (required)")
+	since := fs.Int64("since", 0, "Since height")
 	fs.Parse(args)
 
 	if *id == "" {
@@ -971,13 +982,48 @@ func cmdSubscribeThread(args []string) error {
 	return nil
 }
 
+// cmdRecoverThread imports verified read-only history using the complete
+// bearer capability. A public thread ID alone is deliberately insufficient.
+func cmdRecoverThread(args []string) error {
+	fs := flag.NewFlagSet("recover-thread", flag.ExitOnError)
+	dataDir := fs.String("data-dir", "", "Data directory")
+	grpcAddr := fs.String("grpc-addr", "", "gRPC server address")
+	id := fs.String("id", "", "Thread ID")
+	secretB64 := fs.String("secret-base64", "", "Base64 recovery secret (required)")
+	fs.Parse(args)
+	if *id == "" || *secretB64 == "" {
+		return fmt.Errorf("--id and --secret-base64 are required")
+	}
+	secret, err := base64.StdEncoding.DecodeString(*secretB64)
+	if err != nil || len(secret) != 32 {
+		return fmt.Errorf("--secret-base64 must decode to a 32-byte recovery secret")
+	}
+	dir, err := resolveDataDir(*dataDir)
+	if err != nil {
+		return err
+	}
+	conn, err := dialGRPC(resolveGRPCAddr(*grpcAddr, dir))
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	response, err := pb.NewA2ANodeClient(conn).RecoverThreadWithHandle(context.Background(), &pb.RecoverThreadRequest{
+		Handle: &pb.ThreadRecoveryHandle{ThreadId: *id, RecoverySecret: secret, Version: 1},
+	})
+	if err != nil {
+		return err
+	}
+	jsonOut(response)
+	return nil
+}
+
 // ── Diagnostics ───────────────────────────────────────────────────────────────
 
 func cmdPing(args []string) error {
 	fs := flag.NewFlagSet("ping", flag.ExitOnError)
-	dataDir  := fs.String("data-dir",  "", "Data directory")
+	dataDir := fs.String("data-dir", "", "Data directory")
 	grpcAddr := fs.String("grpc-addr", "", "gRPC server address")
-	count    := fs.Int("count", 1, "Number of pings")
+	count := fs.Int("count", 1, "Number of pings")
 	fs.Parse(args)
 
 	target := ""
@@ -1051,7 +1097,7 @@ func cmdHealth(args []string) error {
 
 func cmdPeers(args []string) error {
 	fs := flag.NewFlagSet("peers", flag.ExitOnError)
-	dataDir  := fs.String("data-dir",  "", "Data directory")
+	dataDir := fs.String("data-dir", "", "Data directory")
 	grpcAddr := fs.String("grpc-addr", "", "gRPC server address")
 	fs.Parse(args)
 
@@ -1277,7 +1323,7 @@ func parseEventKind(s string) (pb.EventKind, error) {
 
 func cmdPublish(args []string) error {
 	fs := flag.NewFlagSet("publish", flag.ContinueOnError)
-	topic   := fs.String("topic",   "", "topic name (required)")
+	topic := fs.String("topic", "", "topic name (required)")
 	payload := fs.String("payload", "", "payload string")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -1344,7 +1390,7 @@ func cmdSubscribeTopic(args []string) error {
 
 func cmdSetWebhook(args []string) error {
 	fs := flag.NewFlagSet("set-webhook", flag.ContinueOnError)
-	url    := fs.String("url",    "", "webhook URL (required)")
+	url := fs.String("url", "", "webhook URL (required)")
 	secret := fs.String("secret", "", "shared secret")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -1557,7 +1603,7 @@ func cmdNetworkMembers(args []string) error {
 
 func cmdNetworkBroadcast(args []string) error {
 	fs := flag.NewFlagSet("network broadcast", flag.ContinueOnError)
-	netID   := fs.String("network", "", "network ID (required)")
+	netID := fs.String("network", "", "network ID (required)")
 	payload := fs.String("payload", "", "payload string")
 	if err := fs.Parse(args); err != nil {
 		return err

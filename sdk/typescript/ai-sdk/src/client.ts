@@ -15,6 +15,7 @@ export {
   isCoreCapability,
   CORE_CAPABILITY_PREFIX,
   CoreCapabilities,
+  AgentIdentity,
 } from "../../openclaw-plugin/src/client.js";
 
 export type {

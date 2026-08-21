@@ -1,13 +1,19 @@
 package tasks
 
 import (
+	"context"
+	"crypto/rand"
 	"database/sql"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
+	appactors "github.com/sahilpohare/p2p-a2a/daemon/actors"
 	"github.com/sahilpohare/p2p-a2a/pkg/assert"
 	"github.com/sahilpohare/p2p-a2a/pkg/sqlite"
 
@@ -36,6 +42,9 @@ var ErrInvalidTask = errors.New("invalid task")
 // a task that was never started, or updating a task already in a terminal
 // state).
 var ErrInvalidTransition = errors.New("invalid task status transition")
+var ErrLeaseConflict = errors.New("task lease conflict")
+var ErrLeaseExpired = errors.New("task lease expired")
+var ErrAttemptsExhausted = errors.New("task attempts exhausted")
 
 // validTransitions encodes the Task lifecycle FSM: submitted -> working ->
 // {completed, failed}, with cancellation possible from either non-terminal
@@ -65,7 +74,65 @@ func canTransition(from, to pb.TaskStatus) bool {
 
 // Store is a persistent SQLite-backed task store.
 type Store struct {
-	db *sql.DB
+	db         *sql.DB
+	exec       *appactors.Executor
+	hierarchy  *appactors.Hierarchy
+	actorMu    sync.Mutex
+	taskActors map[string]*appactors.Executor
+}
+
+func (s *Store) EnableActor(ctx context.Context, h *appactors.Hierarchy) error {
+	exec, err := appactors.NewExecutor(ctx, h, "tasks")
+	if err != nil {
+		return err
+	}
+	s.exec = exec
+	s.hierarchy = h
+	s.taskActors = make(map[string]*appactors.Executor)
+	return nil
+}
+
+func (s *Store) taskExecutor(id string) (*appactors.Executor, error) {
+	s.actorMu.Lock()
+	defer s.actorMu.Unlock()
+	if exec := s.taskActors[id]; exec != nil {
+		if exec.PID().IsRunning() {
+			return exec, nil
+		}
+		delete(s.taskActors, id)
+	}
+	exec, err := appactors.NewExecutorUnder(context.Background(), s.hierarchy, s.exec.PID(), "task-"+id)
+	if err != nil {
+		return nil, err
+	}
+	s.taskActors[id] = exec
+	appactors.Metrics.TaskActivated()
+	return exec, nil
+}
+
+func (s *Store) releaseTaskActor(id string, exec *appactors.Executor) {
+	s.actorMu.Lock()
+	released := false
+	if s.taskActors[id] == exec {
+		delete(s.taskActors, id)
+		released = true
+	}
+	s.actorMu.Unlock()
+	if !released {
+		return
+	}
+	_ = exec.Stop(context.Background())
+	appactors.Metrics.TaskPassivated()
+}
+
+func (s *Store) ActiveTaskActors() int {
+	s.actorMu.Lock()
+	defer s.actorMu.Unlock()
+	return len(s.taskActors)
+}
+
+func terminal(status pb.TaskStatus) bool {
+	return status == pb.TaskStatus_TASK_STATUS_COMPLETED || status == pb.TaskStatus_TASK_STATUS_FAILED || status == pb.TaskStatus_TASK_STATUS_CANCELLED
 }
 
 // New opens (or creates) the task store at the given path.
@@ -86,6 +153,35 @@ func New(path string) (*Store, error) {
 // own initiator (self-delegation defeats the purpose of delegation and
 // papers over callers that forgot to resolve a real assignee DID).
 func (s *Store) Create(initiator, assignee, threadID, skill string, inputArtifacts []*pb.Artifact, meta map[string]string) (*pb.Task, error) {
+	return s.CreateIdempotent(initiator, assignee, threadID, skill, inputArtifacts, meta, "")
+}
+
+// CreateIdempotent returns a prior accepted task for the same initiator/key.
+func (s *Store) CreateIdempotent(initiator, assignee, threadID, skill string, inputArtifacts []*pb.Artifact, meta map[string]string, key string) (*pb.Task, error) {
+	if key != "" {
+		var id string
+		err := s.db.QueryRow(`SELECT id FROM tasks WHERE initiator=? AND idempotency_key=?`, initiator, key).Scan(&id)
+		if err == nil {
+			return s.Get(id)
+		}
+		if !errors.Is(err, sql.ErrNoRows) {
+			return nil, err
+		}
+	}
+	if s.exec != nil {
+		value, err := s.exec.Call(context.Background(), func() (any, error) { return s.create(initiator, assignee, threadID, skill, inputArtifacts, meta, key) })
+		if err != nil {
+			return nil, err
+		}
+		task := value.(*pb.Task)
+		if _, err := s.taskExecutor(task.Id); err != nil {
+			return nil, err
+		}
+		return task, nil
+	}
+	return s.create(initiator, assignee, threadID, skill, inputArtifacts, meta, key)
+}
+func (s *Store) create(initiator, assignee, threadID, skill string, inputArtifacts []*pb.Artifact, meta map[string]string, key string) (*pb.Task, error) {
 	if skill == "" {
 		return nil, fmt.Errorf("%w: skill is required", ErrInvalidTask)
 	}
@@ -106,17 +202,31 @@ func (s *Store) Create(initiator, assignee, threadID, skill string, inputArtifac
 	}
 
 	_, err = s.db.Exec(`
-		INSERT INTO tasks (id, initiator, assignee, thread_id, skill, status, input_artifacts, metadata, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		INSERT INTO tasks (id, initiator, assignee, thread_id, skill, status, input_artifacts, metadata, created_at, updated_at, idempotency_key)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		id, initiator, assignee, threadID, skill,
 		int(pb.TaskStatus_TASK_STATUS_SUBMITTED),
-		artifactsJSON, metaJSON, now, now,
+		artifactsJSON, metaJSON, now, now, key,
 	)
 	if err != nil {
+		// The unique index is the authority for an idempotency key. A
+		// preflight lookup is useful for the usual retry path, but it cannot
+		// close a concurrent-create race. Resolve that race to the task the
+		// first writer created instead of leaking a uniqueness error to an SDK
+		// retry.
+		if key != "" {
+			var existing string
+			if lookupErr := s.db.QueryRow(`SELECT id FROM tasks WHERE initiator=? AND idempotency_key=?`, initiator, key).Scan(&existing); lookupErr == nil {
+				return s.get(existing)
+			}
+		}
+		return nil, err
+	}
+	if _, err := s.db.Exec(`INSERT INTO task_deliveries (task_id, available_at) VALUES (?, ?)`, id, now); err != nil {
 		return nil, err
 	}
 
-	task, err := s.Get(id)
+	task, err := s.get(id)
 	if err != nil {
 		return nil, err
 	}
@@ -129,6 +239,27 @@ func (s *Store) Create(initiator, assignee, threadID, skill string, inputArtifac
 
 // Get retrieves a task by ID.
 func (s *Store) Get(id string) (*pb.Task, error) {
+	if s.exec != nil {
+		exec, err := s.taskExecutor(id)
+		if err != nil {
+			return nil, err
+		}
+		value, err := exec.Call(context.Background(), func() (any, error) { return s.get(id) })
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				s.releaseTaskActor(id, exec)
+			}
+			return nil, err
+		}
+		task := value.(*pb.Task)
+		if terminal(task.Status) {
+			s.releaseTaskActor(id, exec)
+		}
+		return task, nil
+	}
+	return s.get(id)
+}
+func (s *Store) get(id string) (*pb.Task, error) {
 	row := s.db.QueryRow(`
 		SELECT id, initiator, assignee, thread_id, skill, status,
 		       input_artifacts, output_artifacts, metadata, created_at, updated_at, error
@@ -143,6 +274,24 @@ func (s *Store) Get(id string) (*pb.Task, error) {
 // task while a coordinator cancels it) can't race past the guard — the
 // loser gets ErrInvalidTransition instead of silently clobbering state.
 func (s *Store) UpdateStatus(id string, status pb.TaskStatus, errMsg string, outputArtifacts []*pb.Artifact) (*pb.Task, error) {
+	if s.exec != nil {
+		exec, err := s.taskExecutor(id)
+		if err != nil {
+			return nil, err
+		}
+		value, err := exec.Call(context.Background(), func() (any, error) { return s.updateStatus(id, status, errMsg, outputArtifacts) })
+		if err != nil {
+			return nil, err
+		}
+		task := value.(*pb.Task)
+		if terminal(task.Status) {
+			s.releaseTaskActor(id, exec)
+		}
+		return task, nil
+	}
+	return s.updateStatus(id, status, errMsg, outputArtifacts)
+}
+func (s *Store) updateStatus(id string, status pb.TaskStatus, errMsg string, outputArtifacts []*pb.Artifact) (*pb.Task, error) {
 	now := time.Now().UnixMilli()
 
 	outputJSON, err := json.Marshal(outputArtifacts)
@@ -181,7 +330,7 @@ func (s *Store) UpdateStatus(id string, status pb.TaskStatus, errMsg string, out
 		return nil, err
 	}
 
-	task, err := s.Get(id)
+	task, err := s.get(id)
 	if err != nil {
 		return nil, err
 	}
@@ -227,8 +376,266 @@ func (s *Store) Cancel(id string) (*pb.Task, error) {
 	return task, err
 }
 
+// Claim atomically assigns a submitted task to its authenticated assignee.
+// A repeat claim by the same worker returns the still-active lease.
+func (s *Store) Claim(id, worker string, lease time.Duration) (*pb.TaskLease, error) {
+	if lease <= 0 {
+		lease = 30 * time.Second
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	var assignee string
+	var status int
+	var token sql.NullString
+	var owner sql.NullString
+	var expires sql.NullInt64
+	var attempt int
+	var maxAttempts int
+	var deadline sql.NullInt64
+	if err := tx.QueryRow(`SELECT assignee,status,lease_token,lease_owner,lease_expires_at,attempt,max_attempts,deadline_at FROM tasks WHERE id=?`, id).Scan(&assignee, &status, &token, &owner, &expires, &attempt, &maxAttempts, &deadline); err != nil {
+		return nil, err
+	}
+	if assignee != worker {
+		return nil, fmt.Errorf("%w: worker is not task assignee", ErrLeaseConflict)
+	}
+	now := time.Now().UnixMilli()
+	if deadline.Valid && deadline.Int64 > 0 && now >= deadline.Int64 {
+		if _, err := tx.Exec(`UPDATE tasks SET status=?, error=?, updated_at=? WHERE id=? AND status IN (?,?)`, int(pb.TaskStatus_TASK_STATUS_FAILED), "task deadline exceeded", now, id, int(pb.TaskStatus_TASK_STATUS_SUBMITTED), int(pb.TaskStatus_TASK_STATUS_WORKING)); err != nil {
+			return nil, err
+		}
+		if err := tx.Commit(); err != nil {
+			return nil, err
+		}
+		return nil, ErrAttemptsExhausted
+	}
+	if pb.TaskStatus(status) == pb.TaskStatus_TASK_STATUS_WORKING && owner.String == worker && expires.Valid && expires.Int64 > now {
+		return &pb.TaskLease{TaskId: id, LeaseToken: token.String, ExpiresAtUnixMs: expires.Int64, Attempt: uint32(attempt)}, tx.Commit()
+	}
+	if pb.TaskStatus(status) != pb.TaskStatus_TASK_STATUS_SUBMITTED && !(pb.TaskStatus(status) == pb.TaskStatus_TASK_STATUS_WORKING && expires.Valid && expires.Int64 <= now) {
+		return nil, ErrLeaseConflict
+	}
+	if maxAttempts > 0 && attempt >= maxAttempts {
+		if _, err := tx.Exec(`UPDATE tasks SET status=?, error=?, lease_token='', lease_owner='', lease_expires_at=0, updated_at=? WHERE id=?`, int(pb.TaskStatus_TASK_STATUS_FAILED), "maximum task attempts exhausted", now, id); err != nil {
+			return nil, err
+		}
+		if err := tx.Commit(); err != nil {
+			return nil, err
+		}
+		return nil, ErrAttemptsExhausted
+	}
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		return nil, err
+	}
+	leaseToken := base64.RawURLEncoding.EncodeToString(b)
+	until := now + lease.Milliseconds()
+	if _, err := tx.Exec(`UPDATE tasks SET status=?,lease_token=?,lease_owner=?,lease_expires_at=?,attempt=attempt+1,updated_at=? WHERE id=?`, int(pb.TaskStatus_TASK_STATUS_WORKING), leaseToken, worker, until, now, id); err != nil {
+		return nil, err
+	}
+	attempt++
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return &pb.TaskLease{TaskId: id, LeaseToken: leaseToken, ExpiresAtUnixMs: until, Attempt: uint32(attempt)}, nil
+}
+
+// SetMaxAttempts records the caller's task retry budget. Zero preserves the
+// default budget, while a positive value replaces it before work is claimed.
+func (s *Store) SetMaxAttempts(id string, max int) error {
+	if max == 0 {
+		return nil
+	}
+	if max < 1 {
+		return fmt.Errorf("max attempts must be positive")
+	}
+	_, err := s.db.Exec(`UPDATE tasks SET max_attempts=? WHERE id=?`, max, id)
+	return err
+}
+
+func (s *Store) SetTimeout(id string, timeout time.Duration) error {
+	if timeout <= 0 {
+		return nil
+	}
+	_, err := s.db.Exec(`UPDATE tasks SET deadline_at=? WHERE id=?`, time.Now().Add(timeout).UnixMilli(), id)
+	return err
+}
+
+func (s *Store) RenewLease(id, worker, leaseToken string, lease time.Duration) (*pb.TaskLease, error) {
+	if lease <= 0 {
+		lease = 30 * time.Second
+	}
+	now := time.Now().UnixMilli()
+	until := now + lease.Milliseconds()
+	r, err := s.db.Exec(`UPDATE tasks SET lease_expires_at=?,updated_at=? WHERE id=? AND status=? AND lease_owner=? AND lease_token=? AND lease_expires_at>?`, until, now, id, int(pb.TaskStatus_TASK_STATUS_WORKING), worker, leaseToken, now)
+	if err != nil {
+		return nil, err
+	}
+	n, _ := r.RowsAffected()
+	if n == 0 {
+		return nil, ErrLeaseExpired
+	}
+	var attempt int
+	_ = s.db.QueryRow(`SELECT attempt FROM tasks WHERE id=?`, id).Scan(&attempt)
+	return &pb.TaskLease{TaskId: id, LeaseToken: leaseToken, ExpiresAtUnixMs: until, Attempt: uint32(attempt)}, nil
+}
+
+func (s *Store) FinishLease(id, worker, leaseToken string, status pb.TaskStatus, errMsg string, outputs []*pb.Artifact) (*pb.Task, error) {
+	if status != pb.TaskStatus_TASK_STATUS_COMPLETED && status != pb.TaskStatus_TASK_STATUS_FAILED {
+		return nil, ErrInvalidTransition
+	}
+	now := time.Now().UnixMilli()
+	out, err := json.Marshal(outputs)
+	if err != nil {
+		return nil, err
+	}
+	r, err := s.db.Exec(`UPDATE tasks SET status=?,error=?,output_artifacts=?,lease_token='',lease_owner='',lease_expires_at=0,updated_at=? WHERE id=? AND status=? AND lease_owner=? AND lease_token=? AND lease_expires_at>?`, int(status), errMsg, out, now, id, int(pb.TaskStatus_TASK_STATUS_WORKING), worker, leaseToken, now)
+	if err != nil {
+		return nil, err
+	}
+	n, _ := r.RowsAffected()
+	if n == 0 {
+		return nil, ErrLeaseExpired
+	}
+	return s.get(id)
+}
+
+// ListDeliveries returns the latest durable delivery for each task that is
+// available to worker. Sequence is a database-assigned cursor, so callers can
+// reconnect with AfterSequence without losing or renumbering work.
+//
+// An expired lease is returned to SUBMITTED before the query. This is done in
+// the store, rather than in a stream-local timer, so expiry survives daemon and
+// SDK restarts. Exhausted and timed-out tasks are terminally failed instead.
+func (s *Store) ListDeliveries(worker string, skills []string, after uint64, limit int) ([]*pb.TaskDelivery, error) {
+	if worker == "" {
+		return nil, ErrLeaseConflict
+	}
+	if err := s.requeueExpired(); err != nil {
+		return nil, err
+	}
+	args := []any{worker, int(pb.TaskStatus_TASK_STATUS_SUBMITTED), after}
+	query := `SELECT d.sequence, t.id, t.initiator, t.assignee, t.thread_id, t.skill, t.status,
+				t.input_artifacts, t.output_artifacts, t.metadata, t.created_at, t.updated_at, t.error
+		FROM task_deliveries d JOIN tasks t ON t.id=d.task_id
+		WHERE t.assignee=? AND t.status=? AND d.sequence>?
+		  AND d.sequence=(SELECT MAX(latest.sequence) FROM task_deliveries latest WHERE latest.task_id=t.id)`
+	if len(skills) > 0 {
+		placeholders := make([]string, len(skills))
+		for i, skill := range skills {
+			placeholders[i] = "?"
+			args = append(args, skill)
+		}
+		query += ` AND t.skill IN (` + strings.Join(placeholders, ",") + `)`
+	}
+	query += ` ORDER BY d.sequence`
+	if limit > 0 {
+		query += fmt.Sprintf(` LIMIT %d`, limit)
+	}
+	rows, err := s.db.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var deliveries []*pb.TaskDelivery
+	for rows.Next() {
+		var sequence uint64
+		var task pb.Task
+		if err := scanTaskWithSequence(rows, &sequence, &task); err != nil {
+			return nil, err
+		}
+		deliveries = append(deliveries, &pb.TaskDelivery{Task: &task, Sequence: sequence})
+	}
+	return deliveries, rows.Err()
+}
+
+func (s *Store) requeueExpired() error {
+	now := time.Now().UnixMilli()
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback() //nolint:errcheck
+	rows, err := tx.Query(`SELECT id, attempt, max_attempts, deadline_at FROM tasks WHERE status=? AND lease_expires_at>0 AND lease_expires_at<=?`, int(pb.TaskStatus_TASK_STATUS_WORKING), now)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id string
+		var attempt, maxAttempts int
+		var deadline sql.NullInt64
+		if err := rows.Scan(&id, &attempt, &maxAttempts, &deadline); err != nil {
+			return err
+		}
+		if (deadline.Valid && deadline.Int64 > 0 && now >= deadline.Int64) || (maxAttempts > 0 && attempt >= maxAttempts) {
+			if _, err := tx.Exec(`UPDATE tasks SET status=?, error=?, lease_token='', lease_owner='', lease_expires_at=0, updated_at=? WHERE id=?`, int(pb.TaskStatus_TASK_STATUS_FAILED), "task lease expired after retry budget", now, id); err != nil {
+				return err
+			}
+			continue
+		}
+		if _, err := tx.Exec(`UPDATE tasks SET status=?, lease_token='', lease_owner='', lease_expires_at=0, updated_at=? WHERE id=?`, int(pb.TaskStatus_TASK_STATUS_SUBMITTED), now, id); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(`INSERT INTO task_deliveries (task_id, available_at) VALUES (?, ?)`, id, now); err != nil {
+			return err
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
 // List returns tasks filtered by initiator or assignee DID.
 func (s *Store) List(did string, limit int) ([]*pb.Task, error) {
+	if s.exec != nil {
+		value, err := s.exec.Call(context.Background(), func() (any, error) { return s.list(did, limit) })
+		if err != nil {
+			return nil, err
+		}
+		return value.([]*pb.Task), nil
+	}
+	return s.list(did, limit)
+}
+
+// SaveEvent durably records a task event. Duplicate sequence numbers are
+// idempotent, allowing direct-message retries without duplicate replay.
+func (s *Store) SaveEvent(event *pb.TaskEvent) error {
+	if event == nil || event.TaskId == "" {
+		return fmt.Errorf("task event requires task_id")
+	}
+	data, err := json.Marshal(event)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.Exec(`INSERT OR IGNORE INTO task_events (task_id, seq, event, emitted_at) VALUES (?, ?, ?, ?)`, event.TaskId, event.Seq, data, event.EmittedAt)
+	return err
+}
+
+func (s *Store) ListEvents(taskID string, afterSeq int64) ([]*pb.TaskEvent, error) {
+	rows, err := s.db.Query(`SELECT event FROM task_events WHERE task_id = ? AND seq > ? ORDER BY seq`, taskID, afterSeq)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var events []*pb.TaskEvent
+	for rows.Next() {
+		var data []byte
+		if err := rows.Scan(&data); err != nil {
+			return nil, err
+		}
+		var event pb.TaskEvent
+		if err := json.Unmarshal(data, &event); err != nil {
+			return nil, err
+		}
+		events = append(events, &event)
+	}
+	return events, rows.Err()
+}
+func (s *Store) list(did string, limit int) ([]*pb.Task, error) {
 	q := `SELECT id, initiator, assignee, thread_id, skill, status,
 		         input_artifacts, output_artifacts, metadata, created_at, updated_at, error
 		  FROM tasks WHERE initiator = ? OR assignee = ? ORDER BY created_at DESC`
@@ -265,12 +672,12 @@ type scanner interface {
 
 func scanTask(row scanner) (*pb.Task, error) {
 	var (
-		t               pb.Task
-		status          int
-		inputJSON       []byte
-		outputJSON      []byte
-		metaJSON        []byte
-		errMsg          sql.NullString
+		t          pb.Task
+		status     int
+		inputJSON  []byte
+		outputJSON []byte
+		metaJSON   []byte
+		errMsg     sql.NullString
 	)
 	err := row.Scan(
 		&t.Id, &t.Initiator, &t.Assignee, &t.ThreadId, &t.Skill,
@@ -304,6 +711,41 @@ func scanTask(row scanner) (*pb.Task, error) {
 	return &t, nil
 }
 
+func scanTaskWithSequence(row scanner, sequence *uint64, task *pb.Task) error {
+	var (
+		status     int
+		inputJSON  []byte
+		outputJSON []byte
+		metaJSON   []byte
+		errMsg     sql.NullString
+	)
+	if err := row.Scan(sequence, &task.Id, &task.Initiator, &task.Assignee, &task.ThreadId, &task.Skill,
+		&status, &inputJSON, &outputJSON, &metaJSON, &task.CreatedAt, &task.UpdatedAt, &errMsg); err != nil {
+		return err
+	}
+	task.Status = pb.TaskStatus(status)
+	if !knownStatuses[task.Status] {
+		return fmt.Errorf("task %s has unrecognized status %d in storage", task.Id, status)
+	}
+	if errMsg.Valid {
+		task.Error = errMsg.String
+	}
+	if err := json.Unmarshal(inputJSON, &task.InputArtifacts); err != nil && string(inputJSON) != "null" {
+		return fmt.Errorf("unmarshal input artifacts: %w", err)
+	}
+	if len(outputJSON) > 0 && string(outputJSON) != "null" {
+		if err := json.Unmarshal(outputJSON, &task.OutputArtifacts); err != nil {
+			return fmt.Errorf("unmarshal output artifacts: %w", err)
+		}
+	}
+	if len(metaJSON) > 0 && string(metaJSON) != "null" {
+		if err := json.Unmarshal(metaJSON, &task.Metadata); err != nil {
+			return fmt.Errorf("unmarshal metadata: %w", err)
+		}
+	}
+	return nil
+}
+
 func migrate(db *sql.DB) error {
 	_, err := db.Exec(`
 		CREATE TABLE IF NOT EXISTS tasks (
@@ -318,12 +760,46 @@ func migrate(db *sql.DB) error {
 			metadata         BLOB,
 			created_at       INTEGER NOT NULL,
 			updated_at       INTEGER NOT NULL,
-			error            TEXT
+			error            TEXT,
+			idempotency_key  TEXT NOT NULL DEFAULT '',
+			max_attempts     INTEGER NOT NULL DEFAULT 3,
+			deadline_at      INTEGER
 		);
 		CREATE INDEX IF NOT EXISTS idx_tasks_initiator ON tasks(initiator);
 		CREATE INDEX IF NOT EXISTS idx_tasks_assignee  ON tasks(assignee);
 		CREATE INDEX IF NOT EXISTS idx_tasks_status    ON tasks(status);
 		CREATE INDEX IF NOT EXISTS idx_tasks_thread    ON tasks(thread_id);
+		CREATE TABLE IF NOT EXISTS task_events (
+			task_id    TEXT NOT NULL,
+			seq        INTEGER NOT NULL,
+			event      BLOB NOT NULL,
+			emitted_at INTEGER NOT NULL,
+			PRIMARY KEY (task_id, seq)
+		);
+		CREATE INDEX IF NOT EXISTS idx_task_events_task ON task_events(task_id, seq);
+		CREATE TABLE IF NOT EXISTS task_deliveries (
+			sequence     INTEGER PRIMARY KEY AUTOINCREMENT,
+			task_id      TEXT NOT NULL,
+			available_at INTEGER NOT NULL,
+			FOREIGN KEY (task_id) REFERENCES tasks(id)
+		);
+		CREATE INDEX IF NOT EXISTS idx_task_deliveries_task_sequence ON task_deliveries(task_id, sequence);
 	`)
-	return err
+	if err != nil {
+		return err
+	}
+	for _, q := range []string{
+		`ALTER TABLE tasks ADD COLUMN lease_token TEXT`, `ALTER TABLE tasks ADD COLUMN lease_owner TEXT`, `ALTER TABLE tasks ADD COLUMN lease_expires_at INTEGER`, `ALTER TABLE tasks ADD COLUMN attempt INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE tasks ADD COLUMN idempotency_key TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE tasks ADD COLUMN max_attempts INTEGER NOT NULL DEFAULT 3`,
+		`ALTER TABLE tasks ADD COLUMN deadline_at INTEGER`,
+	} {
+		if _, e := db.Exec(q); e != nil && !strings.Contains(e.Error(), "duplicate column") {
+			return e
+		}
+	}
+	if _, e := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_tasks_idempotency ON tasks(initiator, idempotency_key) WHERE idempotency_key <> ''`); e != nil {
+		return e
+	}
+	return nil
 }

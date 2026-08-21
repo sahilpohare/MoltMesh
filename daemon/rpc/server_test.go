@@ -7,19 +7,20 @@ import (
 	"testing"
 	"time"
 
-	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	"github.com/libp2p/go-libp2p"
+	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/protobuf/proto"
 
-	pb "github.com/sahilpohare/p2p-a2a/gen/a2a/v1"
 	"github.com/sahilpohare/p2p-a2a/daemon/gossip"
 	"github.com/sahilpohare/p2p-a2a/daemon/identity"
 	"github.com/sahilpohare/p2p-a2a/daemon/inbox"
 	"github.com/sahilpohare/p2p-a2a/daemon/outbox"
 	"github.com/sahilpohare/p2p-a2a/daemon/rpc"
 	"github.com/sahilpohare/p2p-a2a/daemon/tasks"
+	pb "github.com/sahilpohare/p2p-a2a/gen/a2a/v1"
 
 	// blank import for sqlite3 driver
 	_ "github.com/mattn/go-sqlite3"
@@ -33,6 +34,7 @@ type testEnv struct {
 	ib     *inbox.Inbox
 	ob     *outbox.Outbox
 	ts     *tasks.Store
+	server *rpc.Server
 }
 
 func newTestEnv(t *testing.T) *testEnv {
@@ -106,6 +108,7 @@ func newTestEnv(t *testing.T) *testEnv {
 		ib:     ib,
 		ob:     ob,
 		ts:     ts,
+		server: srv,
 	}
 }
 
@@ -353,6 +356,34 @@ func TestCreateTask_EnqueuesOutboxMessage(t *testing.T) {
 	}
 	if msgs[0].Kind != pb.MessageKind_MESSAGE_KIND_TASK_REQUEST {
 		t.Errorf("outbox message kind: %v", msgs[0].Kind)
+	}
+	var request pb.TaskRequest
+	if err := proto.Unmarshal(msgs[0].Payload, &request); err != nil || request.Skill != "test-skill" {
+		t.Fatalf("task request payload was not delivered: request=%v err=%v", &request, err)
+	}
+}
+
+func TestIncomingTaskResultCompletesInitiatorTaskAndPersistsEvent(t *testing.T) {
+	env := newTestEnv(t)
+	task, err := env.client.CreateTask(context.Background(), &pb.CreateTaskRequest{ToDid: "did:key:zAssignee", Task: &pb.TaskRequest{Skill: "calculator"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := &pb.TaskResult{TaskId: task.Id, Status: pb.TaskStatus_TASK_STATUS_COMPLETED, Data: []byte("4"), OutputArtifacts: []*pb.Artifact{{Inline: []byte("4")}}}
+	payload, err := proto.Marshal(result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := env.server.HandleIncoming(&pb.Message{FromDid: task.Assignee, ToDid: env.id.DID, TaskId: task.Id, Kind: pb.MessageKind_MESSAGE_KIND_TASK_RESULT, Payload: payload}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := env.ts.Get(task.Id)
+	if err != nil || got.Status != pb.TaskStatus_TASK_STATUS_COMPLETED || string(got.OutputArtifacts[0].Inline) != "4" {
+		t.Fatalf("result not applied: task=%v err=%v", got, err)
+	}
+	events, err := env.ts.ListEvents(task.Id, 0)
+	if err != nil || len(events) != 1 || string(events[0].Data) != "4" {
+		t.Fatalf("result event not durable: events=%v err=%v", events, err)
 	}
 }
 

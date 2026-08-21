@@ -5,13 +5,14 @@ import (
 	"testing"
 	"time"
 
-	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	"github.com/libp2p/go-libp2p"
+	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	"go.uber.org/zap"
+	"google.golang.org/protobuf/proto"
 
-	pb "github.com/sahilpohare/p2p-a2a/gen/a2a/v1"
 	"github.com/sahilpohare/p2p-a2a/daemon/identity"
 	"github.com/sahilpohare/p2p-a2a/daemon/thread"
+	pb "github.com/sahilpohare/p2p-a2a/gen/a2a/v1"
 )
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
@@ -72,6 +73,143 @@ func TestStore_GetThread_NotFound(t *testing.T) {
 	_, err := s.GetThread("nonexistent")
 	if err == nil {
 		t.Fatal("expected error for nonexistent thread")
+	}
+}
+
+func TestStore_KeyEnvelopeRoundTrip(t *testing.T) {
+	s := newStore(t)
+	envelope := &pb.ThreadKeyEnvelope{ThreadId: "thread-1", EncryptionEpoch: 1, RecipientDid: "did:key:zRecipient", EphemeralPublicKey: make([]byte, 32), Nonce: make([]byte, 24), Ciphertext: []byte("ciphertext")}
+	if err := s.SaveKeyEnvelope(envelope); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.KeyEnvelopes(envelope.ThreadId, envelope.EncryptionEpoch, envelope.RecipientDid)
+	if err != nil || len(got) != 1 || string(got[0].Ciphertext) != string(envelope.Ciphertext) {
+		t.Fatalf("envelopes = %#v, %v", got, err)
+	}
+}
+
+func TestStore_RecoveryKeyEnvelopesAreSeparateFromMemberEnvelopes(t *testing.T) {
+	s := newStore(t)
+	envelope := &pb.ThreadKeyEnvelope{ThreadId: "thread-1", EncryptionEpoch: 1, EphemeralPublicKey: make([]byte, 32), Nonce: make([]byte, 24), Ciphertext: []byte("recovery-ciphertext"), RecoveryEnvelope: true}
+	if err := s.SaveRecoveryKeyEnvelope(envelope); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.RecoveryKeyEnvelopes(envelope.ThreadId)
+	if err != nil || len(got) != 1 || !got[0].RecoveryEnvelope || string(got[0].Ciphertext) != string(envelope.Ciphertext) {
+		t.Fatalf("recovery envelopes = %#v, %v", got, err)
+	}
+	member, err := s.KeyEnvelopes(envelope.ThreadId, envelope.EncryptionEpoch, "did:key:zRecipient")
+	if err != nil || len(member) != 0 {
+		t.Fatalf("recovery envelope leaked into member query: %#v, %v", member, err)
+	}
+}
+
+func TestStore_MembershipChangesAdvanceEpochAtomically(t *testing.T) {
+	s := newStore(t)
+	const threadID = "membership-epoch"
+	if err := s.SaveMember(threadID, &pb.ThreadMember{Did: "did:key:zCreator", Role: pb.ThreadMemberRole_THREAD_MEMBER_ROLE_ADMIN, JoinedEpoch: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if epoch, err := s.MembershipEpoch(threadID); err != nil || epoch != 1 {
+		t.Fatalf("initial epoch = %d, %v", epoch, err)
+	}
+	nonce := []byte("unique-nonce")
+	if err := s.SaveInvite(threadID, "did:key:zObserver", pb.ThreadMemberRole_THREAD_MEMBER_ROLE_OBSERVER, nonce, time.Now().Add(time.Minute).UnixMilli()); err != nil {
+		t.Fatal(err)
+	}
+	member, epoch, err := s.AcceptInviteWithEpoch(threadID, "did:key:zObserver", nonce)
+	if err != nil || epoch != 2 || member.JoinedEpoch != 2 {
+		t.Fatalf("accept = %#v, epoch %d, err %v", member, epoch, err)
+	}
+	member, epoch, err = s.PromoteMemberWithEpoch(threadID, "did:key:zObserver")
+	if err != nil || epoch != 3 || member.Role != pb.ThreadMemberRole_THREAD_MEMBER_ROLE_VOTER {
+		t.Fatalf("promote = %#v, epoch %d, err %v", member, epoch, err)
+	}
+	epoch, err = s.RemoveMemberWithEpoch(threadID, "did:key:zObserver")
+	if err != nil || epoch != 4 {
+		t.Fatalf("remove epoch = %d, err %v", epoch, err)
+	}
+	if got, err := s.MembershipEpoch(threadID); err != nil || got != 4 {
+		t.Fatalf("stored epoch = %d, %v", got, err)
+	}
+}
+
+func TestStore_RecoveryCapabilityIsHashedAndValidated(t *testing.T) {
+	s := newStore(t)
+	secret := make([]byte, 32)
+	secret[0] = 1
+	if err := s.SaveRecoveryCapability("thread-1", secret); err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := s.AuthorizeRecoveryCapability("thread-1", secret); err != nil || !ok {
+		t.Fatalf("valid capability = %v, %v", ok, err)
+	}
+	wrong := append([]byte(nil), secret...)
+	wrong[0] = 2
+	if ok, err := s.AuthorizeRecoveryCapability("thread-1", wrong); err != nil || ok {
+		t.Fatalf("wrong capability = %v, %v", ok, err)
+	}
+}
+
+func TestStore_ArchiveAcknowledgements(t *testing.T) {
+	s := newStore(t)
+	id := newID(t)
+	ack, err := thread.NewArchiveAcknowledgement(id, "thread-1", "block-1", time.UnixMilli(1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SaveArchiveAcknowledgement(ack); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.ArchiveAcknowledgements(ack.ThreadId, ack.BlockHash)
+	if err != nil || len(got) != 1 || got[0].ProviderDid != ack.ProviderDid {
+		t.Fatalf("acks = %#v, %v", got, err)
+	}
+	if ok, err := s.HasArchiveAcknowledgementQuorum(ack.ThreadId, ack.BlockHash, 1); err != nil || !ok {
+		t.Fatalf("one-provider quorum = %v, %v", ok, err)
+	}
+	if ok, err := s.HasArchiveAcknowledgementQuorum(ack.ThreadId, ack.BlockHash, 2); err != nil || ok {
+		t.Fatalf("two-provider quorum = %v, %v", ok, err)
+	}
+	ack.BlockHash = "forged"
+	if err := s.SaveArchiveAcknowledgement(ack); err == nil {
+		t.Fatal("forged acknowledgement was retained")
+	}
+}
+
+func TestVerifyArchiveAcknowledgement(t *testing.T) {
+	id := newID(t)
+	ack := &pb.ArchiveAcknowledgement{ThreadId: "thread-1", ProviderDid: id.DID, BlockHash: "block-1", AcknowledgedAtUnixMs: 1}
+	data, err := proto.MarshalOptions{Deterministic: true}.Marshal(ack)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ack.Signature = id.Sign(data)
+	if err := thread.VerifyArchiveAcknowledgement(ack); err != nil {
+		t.Fatal(err)
+	}
+	ack.BlockHash = "forged"
+	if err := thread.VerifyArchiveAcknowledgement(ack); err == nil {
+		t.Fatal("forged acknowledgement verified")
+	}
+}
+
+func TestStore_ArchiveProvidersFilterAndPruneExpiredRecords(t *testing.T) {
+	s := newStore(t)
+	now := time.Now()
+	valid := &pb.ArchiveProviderRecord{ProviderDid: "did:key:zProvider", NodePeerId: "peer-1", Multiaddrs: []string{"/ip4/127.0.0.1/tcp/1"}, ExpiresAtUnixMs: now.Add(time.Minute).UnixMilli(), Signature: []byte("sig")}
+	if err := s.SaveArchiveProvider(valid); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SaveArchiveProvider(&pb.ArchiveProviderRecord{ProviderDid: "did:key:zExpired", NodePeerId: "peer-2", ExpiresAtUnixMs: now.Add(-time.Minute).UnixMilli(), Signature: []byte("sig")}); err == nil {
+		t.Fatal("expired provider was accepted")
+	}
+	providers, err := s.ArchiveProviders(0)
+	if err != nil || len(providers) != 1 || providers[0].ProviderDid != valid.ProviderDid {
+		t.Fatalf("providers = %#v, %v", providers, err)
+	}
+	if n, err := s.PruneArchiveProviders(now.Add(2 * time.Minute).UnixMilli()); err != nil || n != 1 {
+		t.Fatalf("prune = %d, %v", n, err)
 	}
 }
 
@@ -161,6 +299,37 @@ func TestStore_PendingEntries(t *testing.T) {
 	entries2, _ := s.DequeuePendingEntries("t1", 10)
 	if len(entries2) != 0 {
 		t.Errorf("expected empty after dequeue, got %d", len(entries2))
+	}
+}
+
+func TestStore_PendingClaimSurvivesUntilAtomicCommit(t *testing.T) {
+	s, err := thread.NewStore(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	th := &pb.Thread{Id: "claim-thread", CreatorDid: "did:key:z", ReplicaDids: []string{"did:key:z"}, N: 1, CreatedAt: time.Now().UnixMilli()}
+	if err := s.SaveThread(th); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.EnqueueEntry(th.Id, &pb.ThreadEntry{Kind: "message", Payload: []byte("durable")}); err != nil {
+		t.Fatal(err)
+	}
+	batch, err := s.ClaimPendingEntries(th.Id, 10)
+	if err != nil || len(batch.Entries) != 1 {
+		t.Fatalf("ClaimPendingEntries: entries=%d err=%v", len(batch.Entries), err)
+	}
+	pending, err := s.PendingEntryCount(th.Id)
+	if err != nil || pending != 1 {
+		t.Fatalf("claimed input was deleted before commit: count=%d err=%v", pending, err)
+	}
+	block := &pb.ThreadBlock{ThreadId: th.Id, Height: 1, Entries: batch.Entries, ProposerDid: "did:key:z", BlockHash: "hash", CommittedAt: time.Now().UnixMilli()}
+	if err := s.SaveBlockAndAckPending(block, batch.IDs); err != nil {
+		t.Fatal(err)
+	}
+	pending, err = s.PendingEntryCount(th.Id)
+	if err != nil || pending != 0 {
+		t.Fatalf("committed input was not acknowledged atomically: count=%d err=%v", pending, err)
 	}
 }
 
@@ -273,6 +442,10 @@ func TestManager_CreateThread(t *testing.T) {
 	}
 	if th.N != 4 {
 		t.Errorf("N should be 4, got %d", th.N)
+	}
+	members, err := tm.ListMembers(th.Id)
+	if err != nil || len(members) != 1 || members[0].Did != id.DID || members[0].Role != pb.ThreadMemberRole_THREAD_MEMBER_ROLE_ADMIN {
+		t.Fatalf("creator membership = %#v, %v", members, err)
 	}
 
 	// Engine should be running.

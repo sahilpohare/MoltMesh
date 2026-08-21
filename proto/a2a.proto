@@ -10,6 +10,39 @@ message AgentIdentity {
   string did        = 1; // did:key:z6Mk...
   string public_key = 2; // base64-encoded Ed25519 public key
   repeated string multiaddrs = 3; // libp2p multiaddrs this agent is reachable at
+  // Raw SDK-owned public keys. public_key remains for v1 compatibility.
+  bytes signing_public_key = 4;
+  bytes encryption_public_key = 5;
+}
+
+// NodeIdentity identifies the daemon transport. It is deliberately distinct
+// from AgentIdentity: SDK agents own agent keys while daemons own peer keys.
+message NodeIdentity {
+  string node_id = 1;
+  string peer_id = 2;
+  repeated string multiaddrs = 3;
+}
+
+message BeginAgentSessionRequest {
+  AgentIdentity identity = 1;
+}
+
+message AgentChallenge {
+  string challenge_id = 1;
+  bytes nonce = 2;
+  int64 expires_at_unix_ms = 3;
+}
+
+message CompleteAgentSessionRequest {
+  string challenge_id = 1;
+  bytes signature = 2;
+  AgentCard card = 3;
+}
+
+message AgentSession {
+  string token = 1;
+  string agent_did = 2;
+  int64 expires_at_unix_ms = 3;
 }
 
 // ─── Agent Card ──────────────────────────────────────────────────────────────
@@ -25,6 +58,12 @@ message AgentCard {
   int64  expires_at   = 8;
   string signature    = 9; // base64 Ed25519 sig over canonical JSON of fields 1-8
   map<string,string> metadata = 10;
+  // SDK-agent routing and encryption information, included in the signed
+  // canonical card payload. The node peer ID is transport metadata only; it
+  // never replaces the agent DID as the identity used by applications.
+  bytes encryption_public_key = 11;
+  string node_peer_id = 12;
+  uint64 sequence = 13;
 }
 
 message Skill {
@@ -137,6 +176,20 @@ message TaskStatusUpdate {
   repeated Artifact output_artifacts = 4;
 }
 
+message TaskResult {
+  string task_id = 1;
+  TaskStatus status = 2; // completed or failed
+  repeated Artifact output_artifacts = 3;
+  string error = 4;
+  bytes data = 5; // optional small structured/text result
+}
+
+message SendTaskResultRequest {
+  string to_did = 1; // task initiator
+  string thread_id = 2;
+  TaskResult result = 3;
+}
+
 // ─── Discovery ───────────────────────────────────────────────────────────────
 
 message CapabilityQuery {
@@ -177,6 +230,8 @@ message PublishResult {
 
 message TaskID {
   string id = 1;
+  // Cursor for durable task-event replay. Ignored by unary task APIs.
+  int64 after_sequence = 2;
 }
 
 message Empty {}
@@ -223,6 +278,11 @@ message HealthResponse {
 service A2ANode {
   // Identity
   rpc GetIdentity(Empty) returns (AgentIdentity);
+  rpc GetNodeIdentity(Empty) returns (NodeIdentity);
+  rpc GetAgentIdentity(Empty) returns (AgentIdentity);
+  rpc BeginAgentSession(BeginAgentSessionRequest) returns (AgentChallenge);
+  rpc CompleteAgentSession(CompleteAgentSessionRequest) returns (AgentSession);
+  rpc CloseAgentSession(Empty) returns (Empty);
 
   // Registry
   rpc PublishAgentCard(AgentCard) returns (PublishResult);
@@ -243,6 +303,12 @@ service A2ANode {
   rpc CancelTask(TaskID) returns (Task);
   rpc PublishTaskEvent(TaskEvent) returns (Empty);
   rpc SubscribeTaskEvents(TaskID) returns (stream TaskEvent);
+  rpc SendTaskResult(SendTaskResultRequest) returns (SendResult);
+  rpc SubscribeTasks(WorkerSubscription) returns (stream TaskDelivery);
+  rpc ClaimTask(ClaimTaskRequest) returns (TaskLease);
+  rpc RenewTaskLease(RenewTaskLeaseRequest) returns (TaskLease);
+  rpc CompleteTask(CompleteTaskRequest) returns (Task);
+  rpc FailTask(FailTaskRequest) returns (Task);
 
   // Files
   rpc SendFile(SendFileRequest) returns (Artifact);
@@ -250,10 +316,28 @@ service A2ANode {
 
   // Threads (Tendermint BFT)
   rpc CreateThread(CreateThreadRequest) returns (Thread);
+  rpc CreateThreadWithRecovery(CreateThreadRequest) returns (CreateThreadResponse);
   rpc GetThread(ThreadID) returns (Thread);
   rpc AppendEntry(AppendEntryRequest) returns (AppendEntryResult);
+  rpc PutThreadKeyEnvelope(ThreadKeyEnvelope) returns (Empty);
+  rpc GetThreadKeyEnvelopes(ThreadKeyEnvelopeQuery) returns (ThreadKeyEnvelopes);
+	// Recovery envelopes are readable only with the complete bearer recovery
+	// capability, never with a normal member session.
+  rpc GetRecoveryThreadKeyEnvelopes(RecoverThreadRequest) returns (ThreadKeyEnvelopes);
   rpc GetThreadEntries(GetThreadEntriesRequest) returns (stream ThreadEntryWithPos);
   rpc SubscribeThread(SubscribeThreadRequest) returns (stream ThreadEntryWithPos);
+	// An observer obtains its local committed state then signs it as a
+	// catch-up attestation for the creator's promotion request.
+  rpc GetThreadCatchupState(ThreadID) returns (ThreadCatchupState);
+  rpc AddThreadReplica(ThreadReplicaRequest) returns (Thread);
+  rpc InviteThreadMember(InviteThreadMemberRequest) returns (ThreadMembershipChange);
+  rpc AcceptThreadInvite(AcceptThreadInviteRequest) returns (Thread);
+  rpc PromoteThreadMember(PromoteThreadMemberRequest) returns (ThreadMembershipChange);
+  rpc RemoveThreadMember(RemoveThreadMemberRequest) returns (ThreadMembershipChange);
+  rpc LeaveThread(ThreadID) returns (ThreadMembershipChange);
+  rpc ListThreadMembers(ThreadID) returns (ThreadMembers);
+  rpc RecoverThread(ThreadID) returns (Thread);
+  rpc RecoverThreadWithHandle(RecoverThreadRequest) returns (RecoverThreadResponse);
 
   // Diagnostics
   rpc Ping(PingRequest) returns (PingResponse);
@@ -298,7 +382,18 @@ message AckRequest {
 message CreateTaskRequest {
   string to_did  = 1; // assignee DID
   TaskRequest task = 2;
+  string idempotency_key = 3;
+  int64 timeout_ms = 4;
+  uint32 max_attempts = 5;
 }
+
+message WorkerSubscription { repeated string skills = 1; uint64 after_sequence = 2; }
+message TaskDelivery { Task task = 1; uint64 sequence = 2; }
+message TaskLease { string task_id = 1; string lease_token = 2; int64 expires_at_unix_ms = 3; uint32 attempt = 4; }
+message ClaimTaskRequest { string task_id = 1; uint32 lease_seconds = 2; }
+message RenewTaskLeaseRequest { string task_id = 1; string lease_token = 2; uint32 lease_seconds = 3; }
+message CompleteTaskRequest { string task_id = 1; string lease_token = 2; repeated Artifact output_artifacts = 3; bytes data = 4; }
+message FailTaskRequest { string task_id = 1; string lease_token = 2; string error = 3; }
 
 // ─── Threads (Tendermint BFT) ─────────────────────────────────────────────────
 
@@ -319,7 +414,33 @@ message ThreadEntry {
   string kind         = 3; // "message" | "task_event" | "custom"
   string author_sig   = 4; // Ed25519 sig over (thread_id || height || payload)
   int64  submitted_at = 5;
+  // v2 encrypted-entry fields. payload carries ciphertext for v2 writes;
+  // legacy v1 decoders retain the first five fields.
+  uint32 encoding_version = 6;
+  uint64 sequence = 7;
+  bytes previous_block_hash = 8;
+  uint64 membership_epoch = 9;
+  uint64 encryption_epoch = 10;
+  bytes nonce = 11;
+  bytes author_signature = 12;
 }
+
+// An independently wrapped copy of an epoch data key. Envelope bytes are
+// opaque to daemons and archive providers; recipients unwrap with X25519.
+message ThreadKeyEnvelope {
+  string thread_id = 1;
+  uint64 encryption_epoch = 2;
+  string recipient_did = 3;
+  bytes ephemeral_public_key = 4;
+  bytes nonce = 5;
+  bytes ciphertext = 6;
+  bool recovery_envelope = 7;
+  // Deterministic signature by the thread creator over this envelope with
+  // author_signature cleared. Required for recovery-envelope archival.
+  bytes author_signature = 8;
+}
+message ThreadKeyEnvelopeQuery { string thread_id = 1; uint64 encryption_epoch = 2; }
+message ThreadKeyEnvelopes { repeated ThreadKeyEnvelope envelopes = 1; }
 
 message ThreadBlock {
   string   thread_id    = 1;
@@ -415,12 +536,24 @@ message CreateThreadRequest {
   int32  f         = 2; // desired fault tolerance (N = 3f+1)
   int64  epoch_ms  = 3; // timeoutPropose; 0 = default (1000ms)
   map<string,string> metadata = 4;
+  // SDK-owned descriptor intent. These fields are required for authenticated
+  // agent sessions; legacy daemon-owned creation leaves them empty.
+  string thread_id = 5;
+  string creator_did = 6;
+  bytes creator_signature = 7;
+  int64 created_at = 8;
+  // Only accepted by CreateThreadWithRecovery. The descriptor must commit to
+  // SHA-256(recovery_secret), allowing a fresh daemon to validate a handle
+  // before it imports any history.
+  bytes recovery_secret = 9;
 }
 
 message AppendEntryRequest {
   string thread_id = 1;
   bytes  payload   = 2;
   string kind      = 3;
+  // SDK-prepared v2 ciphertext entry. When present, payload/kind are ignored.
+  ThreadEntry encrypted_entry = 4;
 }
 
 message AppendEntryResult {
@@ -449,6 +582,73 @@ message SubscribeThreadRequest {
 
 message ThreadID {
   string id = 1;
+}
+
+// A complete handle is a read-only bearer capability and must never be logged,
+// published through discovery, or treated as thread membership.
+message ThreadRecoveryHandle {
+  string thread_id = 1;
+  bytes recovery_secret = 2;
+  uint32 version = 3;
+}
+
+message CreateThreadResponse {
+  Thread thread = 1;
+  ThreadRecoveryHandle recovery_handle = 2;
+}
+
+enum ThreadAccess {
+  THREAD_ACCESS_UNSPECIFIED = 0;
+  THREAD_ACCESS_READ_ONLY = 1;
+  THREAD_ACCESS_MEMBER = 2;
+}
+
+message RecoverThreadRequest {
+  ThreadRecoveryHandle handle = 1;
+  bool subscribe = 2;
+}
+
+message RecoverThreadResponse {
+  Thread thread = 1;
+  ThreadAccess access = 2;
+}
+
+message ThreadReplicaRequest {
+  string thread_id = 1;
+  string replica_did = 2;
+}
+
+enum ThreadMemberRole {
+  THREAD_MEMBER_ROLE_UNSPECIFIED = 0;
+  THREAD_MEMBER_ROLE_OBSERVER = 1;
+  THREAD_MEMBER_ROLE_VOTER = 2;
+  THREAD_MEMBER_ROLE_ADMIN = 3;
+}
+
+message ThreadMember { string did = 1; ThreadMemberRole role = 2; uint64 joined_epoch = 3; }
+message ThreadMembers { repeated ThreadMember members = 1; }
+message InviteThreadMemberRequest { string thread_id = 1; string invitee_did = 2; ThreadMemberRole role = 3; int64 expires_at_unix_ms = 4; bytes nonce = 5; bytes signature = 6; }
+message ThreadInvitation { string thread_id = 1; string inviter_did = 2; string invitee_did = 3; ThreadMemberRole role = 4; int64 expires_at_unix_ms = 5; bytes nonce = 6; bytes signature = 7; }
+message AcceptThreadInviteRequest { string thread_id = 1; bytes invite = 2; }
+message PromoteThreadMemberRequest { string thread_id = 1; string member_did = 2; bytes catchup_proof = 3; }
+message RemoveThreadMemberRequest { string thread_id = 1; string member_did = 2; }
+message ThreadMembershipChange { string thread_id = 1; uint64 membership_epoch = 2; ThreadMember member = 3; bytes signed_invitation = 4; }
+message ThreadCatchupState { string thread_id = 1; string observer_did = 2; int64 committed_height = 3; string head_block_hash = 4; }
+message ThreadCatchupProof { string thread_id = 1; string observer_did = 2; int64 committed_height = 3; string head_block_hash = 4; int64 issued_at_unix_ms = 5; bytes signature = 6; }
+
+message ArchiveProviderRecord {
+  string provider_did = 1;
+  string node_peer_id = 2;
+  repeated string multiaddrs = 3;
+  int64 expires_at_unix_ms = 4;
+  bytes signature = 5;
+}
+message ArchiveAcknowledgement {
+  string thread_id = 1;
+  string provider_did = 2;
+  string block_hash = 3;
+  int64 acknowledged_at_unix_ms = 4;
+  bytes signature = 5;
 }
 
 // ─── Files ────────────────────────────────────────────────────────────────────

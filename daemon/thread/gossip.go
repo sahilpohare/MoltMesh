@@ -3,13 +3,14 @@ package thread
 import (
 	"context"
 	"fmt"
+	"time"
 
 	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/proto"
 
-	pb "github.com/sahilpohare/p2p-a2a/gen/a2a/v1"
 	"github.com/sahilpohare/p2p-a2a/daemon/identity"
+	pb "github.com/sahilpohare/p2p-a2a/gen/a2a/v1"
 )
 
 // ConsensusTopic returns the GossipSub topic name for a thread's consensus messages.
@@ -43,6 +44,10 @@ func NewGossipBridge(
 	if err != nil {
 		return nil, fmt.Errorf("join thread topic %q: %w", topicName, err)
 	}
+	if err := registerConsensusValidator(ps, engine.thread); err != nil {
+		_ = t.Close()
+		return nil, fmt.Errorf("register thread validator %q: %w", topicName, err)
+	}
 	return &GossipBridge{
 		ps:       ps,
 		engine:   engine,
@@ -69,8 +74,17 @@ func (g *GossipBridge) BroadcastFunc() func(*pb.ConsensusMsg) {
 			g.log.Warn("thread: marshal consensus msg", zap.Error(err))
 			return
 		}
+		select {
+		case consensusPublishSlots <- struct{}{}:
+		default:
+			g.log.Warn("thread: publish queue full", zap.String("thread", g.threadID))
+			return
+		}
 		go func() {
-			if err := g.topic.Publish(context.Background(), data); err != nil {
+			defer func() { <-consensusPublishSlots }()
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if err := g.topic.Publish(ctx, data); err != nil {
 				g.log.Warn("thread: publish consensus msg",
 					zap.String("thread", g.threadID),
 					zap.Error(err),
@@ -84,6 +98,8 @@ func (g *GossipBridge) BroadcastFunc() func(*pb.ConsensusMsg) {
 // It starts the engine's consensus loop in a separate goroutine.
 // Blocks until ctx is cancelled.
 func (g *GossipBridge) Run(ctx context.Context) {
+	defer g.ps.UnregisterTopicValidator(ConsensusTopic(g.threadID)) //nolint:errcheck
+	defer g.topic.Close()                                           //nolint:errcheck
 	sub, err := g.topic.Subscribe()
 	if err != nil {
 		g.log.Error("thread: subscribe gossipsub topic",

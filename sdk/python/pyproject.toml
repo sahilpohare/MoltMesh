@@ -8,9 +8,11 @@ version = "0.1.0"
 description = "Python SDK for the p2p-a2a daemon — gRPC client, CrewAI tools"
 requires-python = ">=3.10"
 dependencies = [
+    "cryptography>=42.0",
     "grpcio>=1.62.0",
     "grpcio-tools>=1.62.0",
     "protobuf>=4.25.0",
+    "PyNaCl>=1.5.0",
 ]
 
 [project.optional-dependencies]

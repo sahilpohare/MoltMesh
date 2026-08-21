@@ -1,11 +1,45 @@
 package tasks
 
 import (
+	"context"
 	"errors"
+	appactors "github.com/sahilpohare/p2p-a2a/daemon/actors"
+	"go.uber.org/zap"
 	"testing"
+	"time"
 
 	pb "github.com/sahilpohare/p2p-a2a/gen/a2a/v1"
 )
+
+func TestTerminalTaskActorPassivates(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	system, err := appactors.NewSystem(ctx, zap.NewNop())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer system.Stop(ctx)
+	hierarchy, err := system.NewHierarchy(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.EnableActor(ctx, hierarchy); err != nil {
+		t.Fatal(err)
+	}
+	task, err := s.Create(initiator, assignee, "", skill, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.StartWork(task.Id); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Complete(task.Id, nil); err != nil {
+		t.Fatal(err)
+	}
+	if got := s.ActiveTaskActors(); got != 0 {
+		t.Fatalf("terminal task retained %d actors", got)
+	}
+}
 
 const (
 	initiator = "did:key:zInitiator"
@@ -46,6 +80,40 @@ func TestCreate(t *testing.T) {
 	}
 	if task.CreatedAt == 0 {
 		t.Error("CreatedAt is zero")
+	}
+}
+
+func TestDeliveriesHaveDurableCursorsAndRequeueExpiredLeases(t *testing.T) {
+	s := newTestStore(t)
+	first, err := s.Create(initiator, assignee, "", skill, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	deliveries, err := s.ListDeliveries(assignee, []string{skill}, 0, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(deliveries) != 1 || deliveries[0].Task.Id != first.Id || deliveries[0].Sequence == 0 {
+		t.Fatalf("initial deliveries = %#v", deliveries)
+	}
+	firstCursor := deliveries[0].Sequence
+	if got, err := s.ListDeliveries(assignee, nil, firstCursor, 10); err != nil || len(got) != 0 {
+		t.Fatalf("cursor replay = %#v, %v; want none", got, err)
+	}
+
+	if _, err := s.Claim(first.Id, assignee, time.Millisecond); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(5 * time.Millisecond)
+	deliveries, err = s.ListDeliveries(assignee, nil, firstCursor, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(deliveries) != 1 || deliveries[0].Task.Id != first.Id || deliveries[0].Sequence <= firstCursor {
+		t.Fatalf("requeued deliveries = %#v", deliveries)
+	}
+	if deliveries[0].Task.Status != pb.TaskStatus_TASK_STATUS_SUBMITTED {
+		t.Fatalf("requeued task status = %v, want submitted", deliveries[0].Task.Status)
 	}
 }
 
@@ -324,5 +392,96 @@ func TestNamedTransitions_Fail(t *testing.T) {
 	}
 	if failed.Error != "boom" {
 		t.Errorf("error mismatch: %q", failed.Error)
+	}
+}
+
+func TestLeaseClaimRenewAndFinishAreWorkerBound(t *testing.T) {
+	s := newTestStore(t)
+	task, err := s.Create(initiator, assignee, "", skill, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lease, err := s.Claim(task.Id, assignee, time.Minute)
+	if err != nil || lease.LeaseToken == "" {
+		t.Fatalf("Claim = %#v, %v", lease, err)
+	}
+	again, err := s.Claim(task.Id, assignee, time.Minute)
+	if err != nil || again.LeaseToken != lease.LeaseToken {
+		t.Fatalf("duplicate claim = %#v, %v", again, err)
+	}
+	if _, err := s.Claim(task.Id, "did:key:zOther", time.Minute); !errors.Is(err, ErrLeaseConflict) {
+		t.Fatalf("other worker claim = %v", err)
+	}
+	if _, err := s.RenewLease(task.Id, assignee, lease.LeaseToken, time.Minute); err != nil {
+		t.Fatalf("renew: %v", err)
+	}
+	if _, err := s.FinishLease(task.Id, assignee, "wrong", pb.TaskStatus_TASK_STATUS_COMPLETED, "", nil); !errors.Is(err, ErrLeaseExpired) {
+		t.Fatalf("wrong lease completion = %v", err)
+	}
+	finished, err := s.FinishLease(task.Id, assignee, lease.LeaseToken, pb.TaskStatus_TASK_STATUS_COMPLETED, "", nil)
+	if err != nil || finished.Status != pb.TaskStatus_TASK_STATUS_COMPLETED {
+		t.Fatalf("finish = %#v, %v", finished, err)
+	}
+}
+
+func TestCreateIdempotentReturnsOriginalTask(t *testing.T) {
+	s := newTestStore(t)
+	first, err := s.CreateIdempotent(initiator, assignee, "", skill, nil, nil, "request-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := s.CreateIdempotent(initiator, assignee, "", skill, nil, nil, "request-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.Id != second.Id {
+		t.Fatalf("idempotent create made %s and %s", first.Id, second.Id)
+	}
+}
+
+func TestExpiredLeaseStopsAtAttemptBudget(t *testing.T) {
+	s := newTestStore(t)
+	task, err := s.Create(initiator, assignee, "", skill, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetMaxAttempts(task.Id, 1); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Claim(task.Id, assignee, time.Millisecond); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(3 * time.Millisecond)
+	if _, err := s.Claim(task.Id, assignee, time.Second); !errors.Is(err, ErrAttemptsExhausted) {
+		t.Fatalf("claim after exhausted lease = %v", err)
+	}
+	got, err := s.Get(task.Id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != pb.TaskStatus_TASK_STATUS_FAILED {
+		t.Fatalf("status = %v", got.Status)
+	}
+}
+
+func TestDeadlinePreventsClaim(t *testing.T) {
+	s := newTestStore(t)
+	task, err := s.Create(initiator, assignee, "", skill, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetTimeout(task.Id, time.Millisecond); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(3 * time.Millisecond)
+	if _, err := s.Claim(task.Id, assignee, time.Second); !errors.Is(err, ErrAttemptsExhausted) {
+		t.Fatalf("expired task claim = %v", err)
+	}
+	got, err := s.Get(task.Id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != pb.TaskStatus_TASK_STATUS_FAILED {
+		t.Fatalf("status = %v", got.Status)
 	}
 }

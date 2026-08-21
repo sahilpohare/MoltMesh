@@ -1,4 +1,7 @@
 from moltmesh.client import A2AClient
+from moltmesh.identity import AgentIdentity
+from moltmesh.threadcrypto import decrypt_entry_for_thread, encrypt_entry, unwrap_epoch_key, unwrap_recovery_epoch_key, wrap_epoch_key, wrap_recovery_epoch_key
+from moltmesh.worker import Worker
 from moltmesh.capability import (
     CapabilityId,
     CapabilityTag,
@@ -30,6 +33,14 @@ STATUS_CANCELLED = pb.TASK_STATUS_CANCELLED
 
 __all__ = [
     "A2AClient",
+    "AgentIdentity",
+    "encrypt_entry",
+    "decrypt_entry_for_thread",
+    "wrap_epoch_key",
+    "unwrap_epoch_key",
+    "wrap_recovery_epoch_key",
+    "unwrap_recovery_epoch_key",
+    "Worker",
     "pb",
     "STATUS_SUBMITTED",
     "STATUS_WORKING",

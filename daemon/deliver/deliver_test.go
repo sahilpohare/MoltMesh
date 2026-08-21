@@ -12,10 +12,11 @@ import (
 	"github.com/libp2p/go-msgio"
 	"go.uber.org/zap"
 
-	pb "github.com/sahilpohare/p2p-a2a/gen/a2a/v1"
+	appactors "github.com/sahilpohare/p2p-a2a/daemon/actors"
 	"github.com/sahilpohare/p2p-a2a/daemon/deliver"
 	"github.com/sahilpohare/p2p-a2a/daemon/identity"
 	"github.com/sahilpohare/p2p-a2a/daemon/inbox"
+	pb "github.com/sahilpohare/p2p-a2a/gen/a2a/v1"
 )
 
 func newHost(t *testing.T) host.Host {
@@ -75,6 +76,18 @@ func TestSendDirect_DeliveredToInbox(t *testing.T) {
 
 	// Sender Deliverer (nil registry — using SendDirect)
 	senderDlv := deliver.New(senderHost, nil, newInbox(t), nil, log)
+	actorSystem, err := appactors.NewSystem(context.Background(), zap.NewNop())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer actorSystem.Stop(context.Background())
+	hierarchy, err := actorSystem.NewHierarchy(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := senderDlv.EnableActor(hierarchy); err != nil {
+		t.Fatal(err)
+	}
 
 	// Derive DID from the sender's libp2p host key so it matches the peer identity.
 	senderDID := didFromHost(t, senderHost)
@@ -82,7 +95,7 @@ func TestSendDirect_DeliveredToInbox(t *testing.T) {
 	msg := &pb.Message{
 		Id:      "test-msg-001",
 		FromDid: senderDID,
-		ToDid:   "did:key:zReceiver",
+		ToDid:   didFromHost(t, receiverHost),
 		Kind:    pb.MessageKind_MESSAGE_KIND_TEXT,
 	}
 
@@ -106,6 +119,9 @@ func TestSendDirect_DeliveredToInbox(t *testing.T) {
 	if msgs[0].FromDid != senderDID {
 		t.Errorf("FromDid mismatch: %q", msgs[0].FromDid)
 	}
+	if got := senderDlv.ActivePeerActors(); got != 0 {
+		t.Fatalf("idle peer retained %d actors", got)
+	}
 }
 
 func TestSendDirect_MultipleMessages(t *testing.T) {
@@ -120,6 +136,7 @@ func TestSendDirect_MultipleMessages(t *testing.T) {
 	dlv := deliver.New(h1, nil, newInbox(t), nil, log)
 
 	senderDID := didFromHost(t, h1)
+	receiverDID := didFromHost(t, h2)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -128,6 +145,7 @@ func TestSendDirect_MultipleMessages(t *testing.T) {
 		msg := &pb.Message{
 			Id:      fmt.Sprintf("msg-%d", i),
 			FromDid: senderDID,
+			ToDid:   receiverDID,
 			Kind:    pb.MessageKind_MESSAGE_KIND_TEXT,
 		}
 		if err := dlv.SendDirect(ctx, h2.ID(), msg); err != nil {

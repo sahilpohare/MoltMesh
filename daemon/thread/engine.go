@@ -2,12 +2,13 @@ package thread
 
 import (
 	"context"
+	"fmt"
 	"sync"
 
 	"go.uber.org/zap"
 
-	pb "github.com/sahilpohare/p2p-a2a/gen/a2a/v1"
 	"github.com/sahilpohare/p2p-a2a/daemon/identity"
+	pb "github.com/sahilpohare/p2p-a2a/gen/a2a/v1"
 )
 
 // CommitCallback is called (outside any lock) when a block commits.
@@ -60,6 +61,16 @@ func NewEngine(
 
 // Deliver feeds an inbound ConsensusMsg into the backend.
 func (e *Engine) Deliver(msg *pb.ConsensusMsg) { e.backend.Deliver(msg) }
+
+// ProposeVoterChange exposes Raft's serialized ConfChangeV2 path without
+// leaking the backend implementation to the RPC layer.
+func (e *Engine) ProposeVoterChange(ctx context.Context, did string, add bool) error {
+	raftBackend, ok := e.backend.(*RaftBackend)
+	if !ok {
+		return fmt.Errorf("voter changes require the raft backend")
+	}
+	return raftBackend.ProposeVoterChange(ctx, did, add)
+}
 
 // Subscribe returns a channel that receives committed entries in order.
 func (e *Engine) Subscribe() <-chan *pb.ThreadEntryWithPos {

@@ -18,6 +18,7 @@ import (
 	"sync"
 	"time"
 
+	appactors "github.com/sahilpohare/p2p-a2a/daemon/actors"
 	"go.uber.org/zap"
 )
 
@@ -45,30 +46,60 @@ type Event struct {
 
 // Dispatcher holds the webhook configuration and delivers events.
 type Dispatcher struct {
-	mu     sync.RWMutex
+	mu      sync.RWMutex
+	configs map[string]config
+	// Legacy default-owner mirror retained for callers/tests that construct a
+	// Dispatcher directly. Authenticated owners use configs instead.
 	url    string
 	secret string
 	client *http.Client
 	log    *zap.Logger
+	exec   *appactors.Executor
+}
+type config struct{ url, secret string }
+
+func (d *Dispatcher) EnableActor(ctx context.Context, h *appactors.Hierarchy) error {
+	exec, err := appactors.NewExecutor(ctx, h, "webhooks")
+	if err != nil {
+		return err
+	}
+	d.exec = exec
+	return nil
 }
 
 // New creates a Dispatcher. url and secret may be empty (disabled).
 func New(log *zap.Logger) *Dispatcher {
 	return &Dispatcher{
-		client: &http.Client{Timeout: httpTimeout},
-		log:    log,
+		client:  &http.Client{Timeout: httpTimeout},
+		log:     log,
+		configs: make(map[string]config),
 	}
 }
 
 // Set configures the webhook URL and optional secret.
 // Returns an error if the URL points to a private/internal network.
 func (d *Dispatcher) Set(rawURL, secret string) error {
+	return d.SetForOwner("", rawURL, secret)
+}
+func (d *Dispatcher) SetForOwner(owner, rawURL, secret string) error {
+	if d.exec != nil {
+		_, err := d.exec.Call(context.Background(), func() (any, error) { return nil, d.set(owner, rawURL, secret) })
+		return err
+	}
+	return d.set(owner, rawURL, secret)
+}
+func (d *Dispatcher) set(owner, rawURL, secret string) error {
 	if err := validateWebhookURL(rawURL); err != nil {
 		return fmt.Errorf("invalid webhook URL: %w", err)
 	}
 	d.mu.Lock()
-	d.url = rawURL
-	d.secret = secret
+	if d.configs == nil {
+		d.configs = make(map[string]config)
+	}
+	d.configs[owner] = config{rawURL, secret}
+	if owner == "" {
+		d.url, d.secret = rawURL, secret
+	}
 	d.mu.Unlock()
 	return nil
 }
@@ -114,24 +145,68 @@ func validateWebhookURL(rawURL string) error {
 
 // Clear disables webhook delivery.
 func (d *Dispatcher) Clear() {
+	d.ClearForOwner("")
+}
+func (d *Dispatcher) ClearForOwner(owner string) {
+	if d.exec != nil {
+		_, _ = d.exec.Call(context.Background(), func() (any, error) { d.clear(owner); return nil, nil })
+		return
+	}
+	d.clear(owner)
+}
+func (d *Dispatcher) clear(owner string) {
 	d.mu.Lock()
-	d.url = ""
-	d.secret = ""
+	delete(d.configs, owner)
+	if owner == "" {
+		d.url, d.secret = "", ""
+	}
 	d.mu.Unlock()
 }
 
 // URL returns the currently configured webhook URL (empty if disabled).
 func (d *Dispatcher) URL() string {
+	return d.URLForOwner("")
+}
+func (d *Dispatcher) URLForOwner(owner string) string {
+	if d.exec != nil {
+		value, err := d.exec.Call(context.Background(), func() (any, error) { return d.currentURL(owner), nil })
+		if err == nil {
+			return value.(string)
+		}
+		return ""
+	}
+	return d.currentURL(owner)
+}
+func (d *Dispatcher) currentURL(owner string) string {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
-	return d.url
+	if cfg, ok := d.configs[owner]; ok {
+		return cfg.url
+	}
+	if owner == "" {
+		return d.url
+	}
+	return ""
 }
 
 // Send dispatches an event asynchronously.
 func (d *Dispatcher) Send(kind EventKind, data interface{}) {
+	d.SendForOwner("", kind, data)
+}
+func (d *Dispatcher) SendForOwner(owner string, kind EventKind, data interface{}) {
+	if d.exec != nil {
+		_ = d.exec.Cast(context.Background(), func() (any, error) { d.send(owner, kind, data); return nil, nil })
+		return
+	}
+	d.send(owner, kind, data)
+}
+func (d *Dispatcher) send(owner string, kind EventKind, data interface{}) {
 	d.mu.RLock()
-	url := d.url
-	secret := d.secret
+	cfg, ok := d.configs[owner]
+	url, secret := cfg.url, cfg.secret
+	if !ok && owner == "" {
+		url, secret = d.url, d.secret
+	}
 	d.mu.RUnlock()
 
 	if url == "" {
@@ -144,7 +219,7 @@ func (d *Dispatcher) Send(kind EventKind, data interface{}) {
 		Data:      data,
 	}
 
-	go d.deliver(context.Background(), url, secret, event)
+	d.deliver(context.Background(), url, secret, event)
 }
 
 func (d *Dispatcher) deliver(ctx context.Context, url, secret string, event Event) {

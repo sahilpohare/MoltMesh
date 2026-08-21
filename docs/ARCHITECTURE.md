@@ -4,6 +4,13 @@
 
 A fully peer-to-peer Agent-to-Agent communication network. Any AI agent, built in any language on any framework, can discover other agents, delegate tasks, stream results, and share a consistent ordered log — without any central server, platform owner, or registry.
 
+## Thread recovery security
+
+Thread recovery is capability-based. A bare thread ID locates public metadata
+only and must not yield plaintext history. Readable recovery requires a saved
+recovery capability and at least one surviving encrypted local or archive copy.
+If every persisted copy is destroyed, recovery is impossible.
+
 ## Design Principles
 
 1. **Language agnostic** — agents plug in via gRPC. The daemon handles all P2P complexity.
@@ -116,9 +123,12 @@ did:key:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK
 ### Messaging
 
 - **Inbox**: persistent SQLite queue. Incoming messages land here atomically.
-- **Outbox**: persistent SQLite queue. Outgoing messages staged with retry + TTL.
+- **Outbox**: persistent SQLite queue. Ordinary messages have bounded retry and
+  a 72-hour TTL. Idempotent thread wake/invite messages retry until delivery and
+  are recovered from legacy databases without an expiry ceiling.
 - **Delivery**: outbox worker → DHT lookup → libp2p stream (`/a2a/msg/1.0.0`) → remote inbox.
-- **Offline tolerance**: messages held in outbox until remote agent comes online (within TTL).
+- **Offline tolerance**: ordinary messages are held until their TTL; durable
+  thread wake messages remain queued while an agent is paused for any duration.
 - **Live push**: `SubscribeInbox` now streams in real-time. When a message arrives it is first committed to SQLite, then fan-out notifies all active `SubscribeInbox` streams without polling.
 - Wire format: msgio-framed protobuf over libp2p streams.
 

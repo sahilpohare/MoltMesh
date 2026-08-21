@@ -155,6 +155,55 @@ func TestFlush_ExpiredMessages(t *testing.T) {
 	}
 }
 
+func TestThreadWakeNeverExpiresOrHitsAttemptCeiling(t *testing.T) {
+	ob := newTestOutbox(t, func(_ context.Context, _ *pb.Message) error { return context.DeadlineExceeded })
+	msg := makeMsg("wake", "did:key:zA")
+	msg.Kind = pb.MessageKind_MESSAGE_KIND_THREAD_INVITE
+	msg.ThreadId = "thread-1"
+	if err := ob.Enqueue(msg); err != nil {
+		t.Fatal(err)
+	}
+	ob.db.Exec(`UPDATE outbox SET attempts = ?, last_attempt = 0, expires_at = 0 WHERE id = ?`, maxAttempts-1, msg.Id)
+	ob.flush(context.Background())
+	pending, err := ob.List("pending", 0)
+	if err != nil || len(pending) != 1 {
+		t.Fatalf("durable wake did not remain pending: len=%d err=%v", len(pending), err)
+	}
+}
+
+func TestMigrationAddsDurableColumn(t *testing.T) {
+	path := t.TempDir() + "/outbox.db"
+	ob, err := New(path, func(context.Context, *pb.Message) error { return nil }, zap.NewNop())
+	if err != nil {
+		t.Fatal(err)
+	}
+	msg := makeMsg("legacy-wake", "did:key:zA")
+	msg.Kind = pb.MessageKind_MESSAGE_KIND_THREAD_INVITE
+	if err := ob.Enqueue(msg); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ob.db.Exec(`UPDATE outbox SET status = 'failed' WHERE id = ?`, msg.Id); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ob.db.Exec(`ALTER TABLE outbox DROP COLUMN durable`); err != nil {
+		t.Fatal(err)
+	}
+	ob.Close()
+	ob, err = New(path, func(context.Context, *pb.Message) error { return nil }, zap.NewNop())
+	if err != nil {
+		t.Fatalf("reopen legacy outbox: %v", err)
+	}
+	defer ob.Close()
+	var durable int
+	var status string
+	if err := ob.db.QueryRow(`SELECT durable, status FROM outbox WHERE id = ?`, msg.Id).Scan(&durable, &status); err != nil {
+		t.Fatal(err)
+	}
+	if durable != 1 || status != "pending" {
+		t.Fatalf("legacy wake was not recovered: durable=%d status=%s", durable, status)
+	}
+}
+
 func TestListLimit(t *testing.T) {
 	ob := newTestOutbox(t, func(_ context.Context, _ *pb.Message) error { return nil })
 	for i := 0; i < 5; i++ {
@@ -163,5 +212,23 @@ func TestListLimit(t *testing.T) {
 	msgs, _ := ob.List("pending", 3)
 	if len(msgs) != 3 {
 		t.Errorf("expected 3 with limit, got %d", len(msgs))
+	}
+}
+
+func TestOwnerNamespacesDoNotLeakOutgoingOperations(t *testing.T) {
+	ob := newTestOutbox(t, func(_ context.Context, _ *pb.Message) error { return nil })
+	if err := ob.EnqueueForOwner("did:key:zAgentA", makeMsg("a", "did:key:zRemote")); err != nil {
+		t.Fatal(err)
+	}
+	if err := ob.EnqueueForOwner("did:key:zAgentB", makeMsg("b", "did:key:zRemote")); err != nil {
+		t.Fatal(err)
+	}
+	a, err := ob.ListForOwner("did:key:zAgentA", "pending", 0)
+	if err != nil || len(a) != 1 || a[0].Id != "a" {
+		t.Fatalf("agent A outbox = %#v, %v", a, err)
+	}
+	b, err := ob.ListForOwner("did:key:zAgentB", "pending", 0)
+	if err != nil || len(b) != 1 || b[0].Id != "b" {
+		t.Fatalf("agent B outbox = %#v, %v", b, err)
 	}
 }

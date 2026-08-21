@@ -14,7 +14,7 @@ import { createServer } from "net";
 import { join } from "path";
 import { tmpdir } from "os";
 
-import { A2AClient } from "./client.js";
+import { A2AClient, AgentIdentity } from "./client.js";
 
 // ── harness ───────────────────────────────────────────────────────────────────
 
@@ -30,9 +30,12 @@ function freePort(): Promise<number> {
 }
 
 function repoRoot(): string {
-  // Bun sets import.meta.dirname to the package root (openclaw-plugin/),
-  // not the source file directory, so 3 levels up reaches p2p_a2a.
-  return join(import.meta.dirname, "..", "..", "..");
+  // import.meta.dirname is this file's own directory
+  // (sdk/typescript/openclaw-plugin/src/), so 4 levels up reaches p2p_a2a.
+  // (Previously documented as 3 levels — verified wrong: that silently
+  // pointed cwd at sdk/, which made every `go build` in this suite fail
+  // and skipReason swallow every test as a silent no-op pass.)
+  return join(import.meta.dirname, "..", "..", "..", "..");
 }
 
 function hasGo(): boolean {
@@ -172,7 +175,26 @@ describe("identity", () => {
     const b = await c.getIdentity();
     expect(a.did).toBe(b.did);
   });
+
+  dtest("SDK-owned identity establishes an authenticated agent session", async c => {
+    const home = mkdtempSync(join(tmpdir(), "moltmesh_sdk_agent_"));
+    try {
+      const identity = AgentIdentity.loadOrCreate(home);
+      const scoped = new A2AClient(grpcAddr!, { identity });
+      const agent = await unaryAgentIdentity(scoped);
+      expect(agent.did).toBe(identity.did);
+      scoped.close();
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
 });
+
+async function unaryAgentIdentity(client: A2AClient): Promise<{ did: string }> {
+  // getAgentIdentity is intentionally accessed through the public gRPC helper
+  // surface only after the client has lazily completed its authenticated setup.
+  return (await client.getAgentIdentity()) as { did: string };
+}
 
 // ── messaging ─────────────────────────────────────────────────────────────────
 
@@ -245,6 +267,9 @@ describe("tasks", () => {
 
   dtest("waitTask resolves for already-completed task", async c => {
     const task = await c.createTask("did:key:zAssigneeTest", "test-skill");
+    // FSM only allows SUBMITTED -> WORKING -> COMPLETED (daemon/tasks/tasks.go's
+    // validTransitions) — markWorking is required before markCompleted.
+    await c.markWorking(task.id);
     await c.markCompleted(task.id);
     const result = await c.waitTask(task.id, { timeoutMs: 5_000 });
     expect(result.status).toBe("TASK_STATUS_COMPLETED");
@@ -253,6 +278,14 @@ describe("tasks", () => {
   dtest("waitTask throws on timeout", async c => {
     const task = await c.createTask("did:key:zAssigneeTest", "long-running");
     await expect(c.waitTask(task.id, { timeoutMs: 300, pollMs: 100 })).rejects.toThrow(/timed out/);
+  });
+
+  dtest("sendTaskResult queues a durable terminal result", async c => {
+    const id = await c.getIdentity();
+    const task = await c.createTask(id.did, "test-skill");
+    const result = await c.sendTaskResult(id.did, task.id, { data: Buffer.from("done") });
+    expect(result.messageId).toBeTruthy();
+    expect(result.queued).toBe(true);
   });
 });
 
@@ -318,6 +351,14 @@ describe("threads", () => {
     }
     expect(entries.length).toBeGreaterThan(0);
   });
+
+  dtest("addThreadObserver commits a non-voting late participant", async c => {
+    const id = await c.getIdentity();
+    const thread = await c.createThread([id.did]);
+    const updated = await c.addThreadObserver(thread.id, "did:key:zLateObserver");
+    expect(updated.replicaDids).toContain("did:key:zLateObserver");
+    expect(updated.f).toBe(thread.f);
+  });
 });
 
 // ── diagnostics ───────────────────────────────────────────────────────────────
@@ -370,7 +411,7 @@ describe("networks", () => {
   dtest("listNetworks includes created network", async c => {
     const net = await c.createNetwork("ts-listed-net");
     const networks = await c.listNetworks();
-    const ids = networks.map((n: Record<string, unknown>) => n.id);
+    const ids = networks.map(n => n.id);
     expect(ids).toContain(net.id);
   });
 
@@ -378,7 +419,7 @@ describe("networks", () => {
     const net = await c.createNetwork("ts-leave-net");
     await c.leaveNetwork(net.id);
     const networks = await c.listNetworks();
-    const ids = networks.map((n: Record<string, unknown>) => n.id);
+    const ids = networks.map(n => n.id);
     expect(ids).not.toContain(net.id);
   });
 

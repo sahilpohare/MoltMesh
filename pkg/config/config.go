@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/BurntSushi/toml"
 )
@@ -47,6 +48,14 @@ type NetworkConfig struct {
 	// TCP/UDP port. "0" = OS-assigned (default).
 	Port string `toml:"port"`
 
+	// IP to bind the libp2p listeners to. "0.0.0.0" = all interfaces (default).
+	// Set to a specific LAN IP (e.g. "192.168.1.5") to restrict mDNS
+	// advertisement to that interface — useful when VPN tunnel interfaces
+	// (utun on macOS) are also up and interfere with mDNS peer discovery,
+	// since go-libp2p's mDNS service advertises addresses from every
+	// interface the host is listening on with no way to filter it.
+	ListenHost string `toml:"listen_host"`
+
 	// Additional bootstrap peer multiaddrs.
 	// IPFS public bootstrap peers are always included unless ipfs_bootstrap = false.
 	BootstrapPeers []string `toml:"bootstrap_peers"`
@@ -71,6 +80,10 @@ type DaemonConfig struct {
 
 	// Enable verbose (development) logging.
 	Verbose bool `toml:"verbose"`
+
+	// Seconds before an inactive thread actor snapshots and passivates.
+	// Default: 300. Set to 0 in the file to use the default.
+	ThreadPassivationSeconds int `toml:"thread_passivation_seconds"`
 }
 
 // Defaults returns a Config with all defaults applied.
@@ -80,6 +93,7 @@ func Defaults() *Config {
 		Network: NetworkConfig{
 			IPFSBootstrap: &t,
 		},
+		Daemon: DaemonConfig{ThreadPassivationSeconds: 300},
 	}
 }
 
@@ -108,8 +122,19 @@ func Load(path string) (*Config, error) {
 		t := true
 		cfg.Network.IPFSBootstrap = &t
 	}
+	if cfg.Daemon.ThreadPassivationSeconds <= 0 {
+		cfg.Daemon.ThreadPassivationSeconds = 300
+	}
 
 	return cfg, nil
+}
+
+func (c *Config) ThreadPassivationAfter() time.Duration {
+	seconds := c.Daemon.ThreadPassivationSeconds
+	if seconds <= 0 {
+		seconds = 300
+	}
+	return time.Duration(seconds) * time.Second
 }
 
 // IPFSBootstrapEnabled returns whether IPFS bootstrap peers should be used.

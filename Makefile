@@ -11,18 +11,14 @@ BINARIES   := moltmesh daemon tui
 
 all: proto build
 
-STRAY_GEN  := github.com/sahilpohare/p2p-a2a/gen/a2a/v1
-
 proto:
-	PATH="$$PATH:$(GOPATH_BIN)" protoc \
-		--proto_path=$(PROTO_DIR) \
-		--go_out=. \
-		--go_opt=paths=import \
-		--go-grpc_out=. \
-		--go-grpc_opt=paths=import \
-		$(PROTO_DIR)/a2a.proto
-	cp $(STRAY_GEN)/a2a.pb.go      $(GEN_DIR)/a2a.pb.go
-	cp $(STRAY_GEN)/a2a_grpc.pb.go $(GEN_DIR)/a2a_grpc.pb.go
+	cd $(PROTO_DIR) && PATH="$$PATH:$(GOPATH_BIN)" protoc \
+		--proto_path=. \
+		--go_out=../$(GEN_DIR) \
+		--go_opt=paths=source_relative \
+		--go-grpc_out=../$(GEN_DIR) \
+		--go-grpc_opt=paths=source_relative \
+		a2a.proto
 
 build:
 	@mkdir -p $(BIN_DIR)

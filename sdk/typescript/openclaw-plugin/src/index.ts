@@ -189,6 +189,28 @@ export default {
       },
     });
 
+    api.registerTool({
+      name: "p2p_send_task_result",
+      description: "Durably return a completed or failed task result to its initiator; delivery remains queued while they are offline.",
+      parameters: Type.Object({
+        toDid: Type.String({ description: "Task initiator DID" }),
+        taskId: Type.String(),
+        threadId: Type.Optional(Type.String()),
+        data: Type.Optional(Type.String({ description: "UTF-8 result data" })),
+        error: Type.Optional(Type.String()),
+        failed: Type.Optional(Type.Boolean({ description: "Set true to return a failed result" })),
+      }),
+      async execute(_: string, p: { toDid: string; taskId: string; threadId?: string; data?: string; error?: string; failed?: boolean }, cfg: { grpcAddr?: string }) {
+        const result = await C(cfg).sendTaskResult(p.toDid, p.taskId, {
+          threadId: p.threadId,
+          status: p.failed ? "TASK_STATUS_FAILED" : "TASK_STATUS_COMPLETED",
+          data: p.data === undefined ? undefined : Buffer.from(p.data),
+          error: p.error,
+        });
+        return text(`Task result queued. ID: ${result.messageId}`);
+      },
+    });
+
     // ── blobs ─────────────────────────────────────────────────────────────
 
     api.registerTool({
@@ -263,6 +285,26 @@ export default {
           `  [h=${e.height} i=${e.index}] ${e.entry.kind}: ${Buffer.from(e.entry.payload).toString("utf8").slice(0, 80)}`
         );
         return text(`${entries.length} entry/entries:\n${lines.join("\n")}`);
+      },
+    });
+
+    api.registerTool({
+      name: "p2p_add_thread_observer",
+      description: "Add a late participant as a non-voting thread observer. Validator quorum is unchanged.",
+      parameters: Type.Object({ threadId: Type.String(), did: Type.String({ description: "Observer DID" }) }),
+      async execute(_: string, p: { threadId: string; did: string }, cfg: { grpcAddr?: string }) {
+        const thread = await C(cfg).addThreadObserver(p.threadId, p.did);
+        return text(`Observer added to thread ${thread.id}.`);
+      },
+    });
+
+    api.registerTool({
+      name: "p2p_recover_thread",
+      description: "Recover and verify a read-only durable thread history from a thread ID.",
+      parameters: Type.Object({ threadId: Type.String() }),
+      async execute(_: string, p: { threadId: string }, cfg: { grpcAddr?: string }) {
+        const thread = await C(cfg).recoverThread(p.threadId);
+        return text(`Recovered thread ${thread.id} with ${thread.replicaDids.length} replica(s).`);
       },
     });
 

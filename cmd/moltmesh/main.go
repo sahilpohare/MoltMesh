@@ -126,6 +126,8 @@ func main() {
 		err = cmdGetThreadEntries(args[1:])
 	case "subscribe-thread":
 		err = cmdSubscribeThread(args[1:])
+	case "recover-thread":
+		err = cmdRecoverThread(args[1:])
 
 	// ── diagnostics ─────────────────────────────────────────────────────────
 	case "ping":
@@ -368,11 +370,12 @@ Networks:
   network broadcast <id>  Broadcast a message
 
 Threads:
-  create-thread           Create a thread
+  create-thread           Create a thread (--with-recovery returns a recovery handle)
   get-thread              Get thread info (--id)
   append-entry            Append entry (--thread-id, --payload)
   get-thread-entries      List entries (--id)
   subscribe-thread        Stream entries (--id)
+  recover-thread          Recover verified history (--id, --secret-base64)
 
 Global options:
   --data-dir string    Data directory (default: ~/.moltmesh)

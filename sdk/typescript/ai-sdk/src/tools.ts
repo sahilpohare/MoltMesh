@@ -54,7 +54,7 @@ export function createMoltMeshTools(opts: MoltMeshToolsOptions = {}) {
     }),
     execute: async ({ capability, limit }) => {
       const cards = await client.findAgents(capability, limit ?? 5);
-      return cards.map(c => ({ did: c.did, name: c.name, capabilities: c.capabilities }));
+      return cards.map(c => ({ did: c.did, name: c.name, skills: (c.skills ?? []).map(s => s.id) }));
     },
   });
 
@@ -159,6 +159,64 @@ export function createMoltMeshTools(opts: MoltMeshToolsOptions = {}) {
       const task = await client.cancelTask(taskId);
       return { id: task.id, status: task.status };
     },
+  });
+
+  const p2p_send_task_result = tool({
+    description: "Durably return a completed or failed task result to its initiator. Delivery is queued if the initiator is offline.",
+    parameters: z.object({
+      toDid: z.string().describe("Task initiator DID"),
+      taskId: z.string(),
+      threadId: z.string().optional(),
+      status: z.enum(["completed", "failed"]).optional(),
+      data: z.string().optional().describe("Optional UTF-8 result data"),
+      error: z.string().optional(),
+    }),
+    execute: async ({ toDid, taskId, threadId, status, data, error }) => {
+      const result = await client.sendTaskResult(toDid, taskId, {
+        threadId,
+        status: status === "failed" ? "TASK_STATUS_FAILED" : "TASK_STATUS_COMPLETED",
+        data: data === undefined ? undefined : Buffer.from(data),
+        error,
+      });
+      return result;
+    },
+  });
+
+  // ── durable threads ─────────────────────────────────────────────────────
+
+  const p2p_create_thread = tool({
+    description: "Create a durable replicated thread. Include this daemon's DID among validator replicas.",
+    parameters: z.object({
+      replicaDids: z.array(z.string()).min(1),
+      f: z.number().int().nonnegative().optional(),
+      epochMs: z.number().int().positive().optional(),
+      backend: z.enum(["raft", "tendermint"]).optional(),
+    }),
+    execute: async ({ replicaDids, f, epochMs, backend }) => client.createThread(replicaDids, { f, epochMs, backend }),
+  });
+
+  const p2p_append_thread_entry = tool({
+    description: "Write an entry ahead of activation into a durable thread. It remains queued until consensus commits it.",
+    parameters: z.object({ threadId: z.string(), payload: z.string(), kind: z.string().optional() }),
+    execute: async ({ threadId, payload, kind }) => client.appendEntry(threadId, Buffer.from(payload), { kind }),
+  });
+
+  const p2p_get_thread_entries = tool({
+    description: "Read committed durable-thread entries, including history restored after passivation.",
+    parameters: z.object({ threadId: z.string(), sinceHeight: z.number().int().nonnegative().optional(), limit: z.number().int().nonnegative().optional() }),
+    execute: async ({ threadId, sinceHeight, limit }) => client.getThreadEntries(threadId, { sinceHeight, limit }),
+  });
+
+  const p2p_add_thread_observer = tool({
+    description: "Add a late participant as a non-voting observer. This does not change the validator quorum.",
+    parameters: z.object({ threadId: z.string(), did: z.string() }),
+    execute: async ({ threadId, did }) => client.addThreadObserver(threadId, did),
+  });
+
+  const p2p_recover_thread = tool({
+    description: "Recover and verify a read-only durable thread history from its ID.",
+    parameters: z.object({ threadId: z.string() }),
+    execute: async ({ threadId }) => client.recoverThread(threadId),
   });
 
   // ── diagnostics ───────────────────────────────────────────────────────────
@@ -294,6 +352,12 @@ export function createMoltMeshTools(opts: MoltMeshToolsOptions = {}) {
     p2p_get_task,
     p2p_wait_task,
     p2p_cancel_task,
+    p2p_send_task_result,
+    p2p_create_thread,
+    p2p_append_thread_entry,
+    p2p_get_thread_entries,
+    p2p_add_thread_observer,
+    p2p_recover_thread,
     p2p_health,
     p2p_ping,
     p2p_publish,

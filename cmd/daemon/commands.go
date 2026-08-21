@@ -2,12 +2,15 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
 	"os"
 	"strings"
+
+	"google.golang.org/protobuf/proto"
 
 	pb "github.com/sahilpohare/p2p-a2a/gen/a2a/v1"
 	"github.com/sahilpohare/p2p-a2a/pkg/format"
@@ -52,8 +55,7 @@ func cmdGetIdentity(args []string) error {
 		return err
 	}
 
-	data, _ := json.MarshalIndent(id, "", "  ")
-	fmt.Println(string(data))
+	jsonOut(id)
 	return nil
 }
 
@@ -84,8 +86,7 @@ func cmdGetAgentCard(args []string) error {
 		return err
 	}
 
-	data, _ := json.MarshalIndent(card, "", "  ")
-	fmt.Println(string(data))
+	jsonOut(card)
 	return nil
 }
 
@@ -132,6 +133,10 @@ func cmdPublishAgentCard(args []string) error {
 	if !result.Success {
 		return fmt.Errorf("publish failed: %s", result.Error)
 	}
+	if jsonMode {
+		jsonOut(result)
+		return nil
+	}
 	fmt.Println("Agent card published.")
 	return nil
 }
@@ -167,7 +172,7 @@ func cmdFindAgents(args []string) error {
 		return err
 	}
 
-	count := 0
+	var cards []*pb.AgentCard
 	for {
 		card, err := stream.Recv()
 		if err == io.EOF {
@@ -176,11 +181,18 @@ func cmdFindAgents(args []string) error {
 		if err != nil {
 			return err
 		}
+		if jsonMode {
+			cards = append(cards, card)
+			continue
+		}
 		data, _ := json.MarshalIndent(card, "", "  ")
 		fmt.Println(string(data))
-		count++
 	}
-	if count == 0 {
+	if jsonMode {
+		jsonOut(cards)
+		return nil
+	}
+	if len(cards) == 0 {
 		fmt.Println("No agents found.")
 	}
 	return nil
@@ -239,6 +251,10 @@ func cmdSendMessage(args []string) error {
 		return err
 	}
 
+	if jsonMode {
+		jsonOut(result)
+		return nil
+	}
 	if result.Queued {
 		fmt.Printf("Message queued (recipient offline): %s\n", result.MessageId)
 	} else {
@@ -255,6 +271,7 @@ func cmdGetInbox(args []string) error {
 	unread := fs.Bool("unread", false, "Unread only")
 	threadID := fs.String("thread-id", "", "Filter by thread ID")
 	taskID := fs.String("task-id", "", "Filter by task ID")
+	decode := fs.Bool("decode", false, "Decode known protobuf payloads")
 	fs.Parse(args)
 
 	dir, err := resolveDataDir(*dataDir)
@@ -278,6 +295,8 @@ func cmdGetInbox(args []string) error {
 		return err
 	}
 
+	var msgs []*pb.Message
+	var decoded []map[string]any
 	count := 0
 	for {
 		msg, err := stream.Recv()
@@ -287,8 +306,38 @@ func cmdGetInbox(args []string) error {
 		if err != nil {
 			return err
 		}
+		if jsonMode {
+			if *decode {
+				item := map[string]any{"message": msg}
+				switch msg.Kind {
+				case pb.MessageKind_MESSAGE_KIND_TASK_REQUEST:
+					var request pb.TaskRequest
+					if proto.Unmarshal(msg.Payload, &request) == nil {
+						item["decoded"] = &request
+					}
+				case pb.MessageKind_MESSAGE_KIND_TASK_RESULT:
+					var result pb.TaskResult
+					if proto.Unmarshal(msg.Payload, &result) == nil {
+						item["decoded"] = &result
+					}
+				}
+				decoded = append(decoded, item)
+			} else {
+				msgs = append(msgs, msg)
+			}
+			count++
+			continue
+		}
 		printMessage(msg)
 		count++
+	}
+	if jsonMode {
+		if *decode {
+			jsonOut(decoded)
+		} else {
+			jsonOut(msgs)
+		}
+		return nil
 	}
 	if count == 0 {
 		fmt.Println("Inbox empty.")
@@ -323,6 +372,7 @@ func cmdGetOutbox(args []string) error {
 		return err
 	}
 
+	var msgs []*pb.Message
 	count := 0
 	for {
 		msg, err := stream.Recv()
@@ -332,8 +382,17 @@ func cmdGetOutbox(args []string) error {
 		if err != nil {
 			return err
 		}
+		if jsonMode {
+			msgs = append(msgs, msg)
+			count++
+			continue
+		}
 		printMessage(msg)
 		count++
+	}
+	if jsonMode {
+		jsonOut(msgs)
+		return nil
 	}
 	if count == 0 {
 		fmt.Println("Outbox empty.")
@@ -408,6 +467,10 @@ func cmdAckMessage(args []string) error {
 	if err != nil {
 		return err
 	}
+	if jsonMode {
+		jsonOut(map[string]interface{}{"message_id": *id, "acknowledged": true})
+		return nil
+	}
 	fmt.Printf("Acknowledged: %s\n", *id)
 	return nil
 }
@@ -421,6 +484,7 @@ func cmdCreateTask(args []string) error {
 	to := fs.String("to", "", "Assignee DID (required)")
 	skill := fs.String("skill", "", "Skill/capability ID (required)")
 	threadID := fs.String("thread-id", "", "Attach to existing thread (optional)")
+	input := fs.String("input", "", "Inline UTF-8 task input")
 	fs.Parse(args)
 
 	if *to == "" {
@@ -446,14 +510,53 @@ func cmdCreateTask(args []string) error {
 		Task: &pb.TaskRequest{
 			Skill:    *skill,
 			ThreadId: *threadID,
+			InputArtifacts: func() []*pb.Artifact {
+				if *input == "" {
+					return nil
+				}
+				return []*pb.Artifact{{Name: "input.txt", MimeType: "text/plain", Size: int64(len(*input)), Inline: []byte(*input)}}
+			}(),
 		},
 	})
 	if err != nil {
 		return err
 	}
 
-	data, _ := json.MarshalIndent(task, "", "  ")
-	fmt.Println(string(data))
+	jsonOut(task)
+	return nil
+}
+
+func cmdSendTaskResult(args []string) error {
+	fs := flag.NewFlagSet("send-task-result", flag.ExitOnError)
+	dataDir := fs.String("data-dir", "", "Data directory")
+	grpcAddr := fs.String("grpc-addr", "", "gRPC server address")
+	to := fs.String("to", "", "Task initiator DID")
+	taskID := fs.String("task-id", "", "Task ID")
+	threadID := fs.String("thread-id", "", "Associated thread ID")
+	result := fs.String("result", "", "UTF-8 result")
+	errMsg := fs.String("error", "", "Failure text")
+	fs.Parse(args)
+	if *to == "" || *taskID == "" {
+		return fmt.Errorf("--to and --task-id are required")
+	}
+	status := pb.TaskStatus_TASK_STATUS_COMPLETED
+	if *errMsg != "" {
+		status = pb.TaskStatus_TASK_STATUS_FAILED
+	}
+	dir, err := resolveDataDir(*dataDir)
+	if err != nil {
+		return err
+	}
+	conn, err := dialGRPC(resolveGRPCAddr(*grpcAddr, dir))
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	response, err := pb.NewA2ANodeClient(conn).SendTaskResult(context.Background(), &pb.SendTaskResultRequest{ToDid: *to, ThreadId: *threadID, Result: &pb.TaskResult{TaskId: *taskID, Status: status, Error: *errMsg, Data: []byte(*result), OutputArtifacts: []*pb.Artifact{{Name: "result.txt", MimeType: "text/plain", Size: int64(len(*result)), Inline: []byte(*result)}}}})
+	if err != nil {
+		return err
+	}
+	jsonOut(response)
 	return nil
 }
 
@@ -484,8 +587,7 @@ func cmdGetTask(args []string) error {
 		return err
 	}
 
-	data, _ := json.MarshalIndent(task, "", "  ")
-	fmt.Println(string(data))
+	jsonOut(task)
 	return nil
 }
 
@@ -530,8 +632,7 @@ func cmdUpdateTask(args []string) error {
 		return err
 	}
 
-	data, _ := json.MarshalIndent(task, "", "  ")
-	fmt.Println(string(data))
+	jsonOut(task)
 	return nil
 }
 
@@ -562,8 +663,7 @@ func cmdCancelTask(args []string) error {
 		return err
 	}
 
-	data, _ := json.MarshalIndent(task, "", "  ")
-	fmt.Println(string(data))
+	jsonOut(task)
 	return nil
 }
 
@@ -604,6 +704,10 @@ func cmdPublishTaskEvent(args []string) error {
 	if err != nil {
 		return err
 	}
+	if jsonMode {
+		jsonOut(map[string]interface{}{"task_id": *taskID, "published": true})
+		return nil
+	}
 	fmt.Println("Event published.")
 	return nil
 }
@@ -643,6 +747,10 @@ func cmdSubscribeTaskEvents(args []string) error {
 		}
 		if err != nil {
 			return err
+		}
+		if jsonMode {
+			jsonOut(ev)
+			continue
 		}
 		data, _ := json.MarshalIndent(ev, "", "  ")
 		fmt.Println(string(data))
@@ -689,8 +797,7 @@ func cmdSendFile(args []string) error {
 		return err
 	}
 
-	data, _ := json.MarshalIndent(artifact, "", "  ")
-	fmt.Println(string(data))
+	jsonOut(artifact)
 	return nil
 }
 
@@ -769,6 +876,7 @@ func cmdCreateThread(args []string) error {
 	replicas := fs.String("replicas", "", "Comma-separated replica DIDs")
 	f := fs.Int("f", 0, "Max byzantine faults to tolerate")
 	epochMs := fs.Int64("epoch-ms", 0, "Timeout propose in ms (0 = default 1000ms)")
+	withRecovery := fs.Bool("with-recovery", false, "Create and return a portable recovery capability")
 	fs.Parse(args)
 
 	var replicaDIDs []string
@@ -792,17 +900,24 @@ func cmdCreateThread(args []string) error {
 	defer conn.Close()
 	client := pb.NewA2ANodeClient(conn)
 
-	thread, err := client.CreateThread(context.Background(), &pb.CreateThreadRequest{
+	req := &pb.CreateThreadRequest{
 		ReplicaDids: replicaDIDs,
 		F:           int32(*f),
 		EpochMs:     *epochMs,
-	})
+	}
+	if *withRecovery {
+		response, err := client.CreateThreadWithRecovery(context.Background(), req)
+		if err != nil {
+			return err
+		}
+		jsonOut(response)
+		return nil
+	}
+	thread, err := client.CreateThread(context.Background(), req)
 	if err != nil {
 		return err
 	}
-
-	data, _ := json.MarshalIndent(thread, "", "  ")
-	fmt.Println(string(data))
+	jsonOut(thread)
 	return nil
 }
 
@@ -833,8 +948,7 @@ func cmdGetThread(args []string) error {
 		return err
 	}
 
-	data, _ := json.MarshalIndent(thread, "", "  ")
-	fmt.Println(string(data))
+	jsonOut(thread)
 	return nil
 }
 
@@ -871,8 +985,7 @@ func cmdAppendEntry(args []string) error {
 		return err
 	}
 
-	data, _ := json.MarshalIndent(result, "", "  ")
-	fmt.Println(string(data))
+	jsonOut(result)
 	return nil
 }
 
@@ -909,6 +1022,7 @@ func cmdGetThreadEntries(args []string) error {
 		return err
 	}
 
+	var entries []*pb.ThreadEntryWithPos
 	count := 0
 	for {
 		entry, err := stream.Recv()
@@ -918,9 +1032,18 @@ func cmdGetThreadEntries(args []string) error {
 		if err != nil {
 			return err
 		}
+		if jsonMode {
+			entries = append(entries, entry)
+			count++
+			continue
+		}
 		data, _ := json.MarshalIndent(entry, "", "  ")
 		fmt.Println(string(data))
 		count++
+	}
+	if jsonMode {
+		jsonOut(entries)
+		return nil
 	}
 	if count == 0 {
 		fmt.Println("No entries.")
@@ -968,9 +1091,73 @@ func cmdSubscribeThread(args []string) error {
 		if err != nil {
 			return err
 		}
+		if jsonMode {
+			jsonOut(entry)
+			continue
+		}
 		data, _ := json.MarshalIndent(entry, "", "  ")
 		fmt.Println(string(data))
 	}
+	return nil
+}
+
+func cmdAddThreadReplica(args []string) error {
+	fs := flag.NewFlagSet("add-thread-replica", flag.ExitOnError)
+	dataDir := fs.String("data-dir", "", "Data directory")
+	grpcAddr := fs.String("grpc-addr", "", "gRPC server address")
+	threadID := fs.String("thread-id", "", "Thread ID")
+	did := fs.String("did", "", "Observer DID")
+	fs.Parse(args)
+	if *threadID == "" || *did == "" {
+		return fmt.Errorf("--thread-id and --did are required")
+	}
+	dir, err := resolveDataDir(*dataDir)
+	if err != nil {
+		return err
+	}
+	conn, err := dialGRPC(resolveGRPCAddr(*grpcAddr, dir))
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	th, err := pb.NewA2ANodeClient(conn).AddThreadReplica(context.Background(), &pb.ThreadReplicaRequest{ThreadId: *threadID, ReplicaDid: *did})
+	if err != nil {
+		return err
+	}
+	jsonOut(th)
+	return nil
+}
+
+func cmdRecoverThread(args []string) error {
+	fs := flag.NewFlagSet("recover-thread", flag.ExitOnError)
+	dataDir := fs.String("data-dir", "", "Data directory")
+	grpcAddr := fs.String("grpc-addr", "", "gRPC server address")
+	id := fs.String("id", "", "Thread ID")
+	secretB64 := fs.String("secret-base64", "", "Base64 recovery secret (required)")
+	fs.Parse(args)
+	if *id == "" || *secretB64 == "" {
+		return fmt.Errorf("--id and --secret-base64 are required")
+	}
+	secret, err := base64.StdEncoding.DecodeString(*secretB64)
+	if err != nil || len(secret) != 32 {
+		return fmt.Errorf("--secret-base64 must decode to a 32-byte recovery secret")
+	}
+	dir, err := resolveDataDir(*dataDir)
+	if err != nil {
+		return err
+	}
+	conn, err := dialGRPC(resolveGRPCAddr(*grpcAddr, dir))
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	response, err := pb.NewA2ANodeClient(conn).RecoverThreadWithHandle(context.Background(), &pb.RecoverThreadRequest{
+		Handle: &pb.ThreadRecoveryHandle{ThreadId: *id, RecoverySecret: secret, Version: 1},
+	})
+	if err != nil {
+		return err
+	}
+	jsonOut(response)
 	return nil
 }
 
@@ -1397,6 +1584,10 @@ func cmdClearWebhook(args []string) error {
 	if _, err := extClient.ClearWebhook(context.Background(), &pb.Empty{}); err != nil {
 		return err
 	}
+	if jsonMode {
+		jsonOut(map[string]interface{}{"cleared": true})
+		return nil
+	}
 	fmt.Println("webhook cleared")
 	return nil
 }
@@ -1508,6 +1699,10 @@ func cmdNetworkLeave(args []string) error {
 	if _, err := extClient.LeaveNetwork(context.Background(), &pb.NetworkIDRequest{NetworkId: args[0]}); err != nil {
 		return err
 	}
+	if jsonMode {
+		jsonOut(map[string]interface{}{"network_id": args[0], "left": true})
+		return nil
+	}
 	fmt.Printf("left network %s\n", args[0])
 	return nil
 }
@@ -1599,6 +1794,10 @@ func cmdNetworkBroadcast(args []string) error {
 		Payload:   []byte(*payload),
 	}); err != nil {
 		return err
+	}
+	if jsonMode {
+		jsonOut(map[string]interface{}{"network_id": *netID, "broadcast": true})
+		return nil
 	}
 	fmt.Println("broadcast sent")
 	return nil

@@ -1,9 +1,13 @@
 package p2putil
 
 import (
+	"crypto/sha256"
 	"fmt"
 
+	blocks "github.com/ipfs/go-block-format"
+	"github.com/ipfs/go-cid"
 	"github.com/libp2p/go-libp2p/core/peer"
+	mh "github.com/multiformats/go-multihash"
 	"github.com/multiformats/go-multiaddr"
 )
 
@@ -30,4 +34,16 @@ func AddrsToAddrInfo(addrs []string) (*peer.AddrInfo, error) {
 		return nil, fmt.Errorf("could not extract peer info")
 	}
 	return &infos[0], nil
+}
+
+// CIDv1Block builds an IPFS block with a CIDv1 (raw codec, sha2-256
+// multihash) — the bafy... CID format used project-wide (see ADR-0013).
+func CIDv1Block(data []byte) (blocks.Block, error) {
+	sum := sha256.Sum256(data)
+	mhash, err := mh.Encode(sum[:], mh.SHA2_256)
+	if err != nil {
+		return nil, err
+	}
+	c := cid.NewCidV1(cid.Raw, mhash)
+	return blocks.NewBlockWithCid(data, c)
 }

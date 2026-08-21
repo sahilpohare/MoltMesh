@@ -11,6 +11,10 @@ bin/
 
 # ── data / runtime ────────────────────────────────────────────────────────────
 ~/.p2p-a2a/
+.moltmesh/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
 *.sock
 *.db
 *.db-shm
@@ -30,6 +34,8 @@ sdk/python/build/
 # ── Node / TypeScript ─────────────────────────────────────────────────────────
 sdk/typescript/openclaw-plugin/node_modules/
 sdk/typescript/openclaw-plugin/dist/
+!sdk/typescript/openclaw-plugin/bin/
+!sdk/typescript/openclaw-plugin/bin/moltmesh-mcp.mjs
 sdk/typescript/openclaw-plugin/*.js.map
 
 # ── proto generated code ──────────────────────────────────────────────────────
@@ -42,3 +48,7 @@ sdk/typescript/openclaw-plugin/*.js.map
 *.swo
 .cloudflared/
 .env
+
+# inscope: workspace-local Claude config dir (holds a login)
+.inscope/
+e2e/manual-thread/runtime/

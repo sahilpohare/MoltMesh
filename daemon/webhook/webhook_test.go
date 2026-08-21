@@ -314,3 +314,16 @@ func TestDeliver_ContentTypeJSON(t *testing.T) {
 		t.Errorf("Content-Type: got %q, want application/json", contentType)
 	}
 }
+
+func TestOwnerConfigurationsAreIsolated(t *testing.T) {
+	d := New(zap.NewNop())
+	d.configs["did:key:zA"] = config{url: "https://a.example"}
+	d.configs["did:key:zB"] = config{url: "https://b.example"}
+	if got := d.URLForOwner("did:key:zA"); got != "https://a.example" {
+		t.Fatalf("owner A URL = %q", got)
+	}
+	d.ClearForOwner("did:key:zA")
+	if got := d.URLForOwner("did:key:zB"); got != "https://b.example" {
+		t.Fatalf("owner B was affected: %q", got)
+	}
+}

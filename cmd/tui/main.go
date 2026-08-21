@@ -10,11 +10,11 @@ import (
 	"strings"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -125,7 +125,10 @@ var tabNames = []string{"Identity", "Inbox", "Compose", "Tasks", "Peers", "Files
 
 type identityMsg struct{ id *pb.AgentIdentity }
 type inboxMsg struct{ msgs []*pb.Message }
-type newMessageMsg struct{ msg *pb.Message }
+type newMessageMsg struct {
+	msg    *pb.Message
+	stream pb.A2ANode_SubscribeInboxClient
+}
 type tasksMsg struct{ tasks []*pb.Task }
 type peersMsg struct{ peers []*pb.PeerInfo }
 type healthMsg struct{ h *pb.HealthResponse }
@@ -169,8 +172,10 @@ func (i taskItem) FilterValue() string { return i.t.Id + i.t.Skill }
 
 type peerItem struct{ p *pb.PeerInfo }
 
-func (i peerItem) Title() string       { return shortPeer(i.p.PeerId) }
-func (i peerItem) Description() string { return fmt.Sprintf("latency: %dms  addrs: %d", i.p.LatencyMs, len(i.p.Addrs)) }
+func (i peerItem) Title() string { return shortPeer(i.p.PeerId) }
+func (i peerItem) Description() string {
+	return fmt.Sprintf("latency: %dms  addrs: %d", i.p.LatencyMs, len(i.p.Addrs))
+}
 func (i peerItem) FilterValue() string { return i.p.PeerId }
 
 // ─── Root model ───────────────────────────────────────────────────────────────
@@ -195,6 +200,8 @@ type model struct {
 	inboxList   list.Model
 	inboxMsgs   []*pb.Message
 	selectedMsg *pb.Message
+	inboxSeen   map[string]bool // message IDs already shown, to dedupe live + backlog
+	inboxStream pb.A2ANode_SubscribeInboxClient
 
 	// compose screen
 	composeTo      textinput.Model
@@ -292,6 +299,7 @@ func newModel(client pb.A2ANodeClient, conn *grpc.ClientConn) model {
 		conn:           conn,
 		ctx:            ctx,
 		cancel:         cancel,
+		inboxSeen:      make(map[string]bool),
 		inboxList:      il,
 		taskList:       tl,
 		peerList:       pl,
@@ -363,17 +371,26 @@ func (m model) fetchInbox() tea.Cmd {
 	}
 }
 
+// subscribeInbox reads the next message off the long-lived inbox stream,
+// opening it once and reusing it thereafter. The server replays the whole
+// backlog at stream-open (see SubscribeInbox in daemon/rpc/server.go), so
+// reopening per-message would re-deliver history as "new" every time and
+// accumulate duplicates forever — the stream must stay open across calls.
 func (m model) subscribeInbox() tea.Cmd {
+	stream := m.inboxStream
 	return func() tea.Msg {
-		stream, err := m.client.SubscribeInbox(m.ctx, &pb.SubscribeRequest{})
-		if err != nil {
-			return nil
+		if stream == nil {
+			var err error
+			stream, err = m.client.SubscribeInbox(m.ctx, &pb.SubscribeRequest{})
+			if err != nil {
+				return nil
+			}
 		}
 		msg, err := stream.Recv()
 		if err != nil {
 			return nil
 		}
-		return newMessageMsg{msg}
+		return newMessageMsg{msg: msg, stream: stream}
 	}
 }
 
@@ -539,21 +556,30 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case inboxMsg:
 		m.inboxMsgs = msg.msgs
+		m.inboxSeen = make(map[string]bool, len(msg.msgs))
 		items := make([]list.Item, len(msg.msgs))
-		for i, m := range msg.msgs {
-			items[i] = msgItem{m}
+		for i, msg := range msg.msgs {
+			items[i] = msgItem{msg}
+			m.inboxSeen[msg.Id] = true
 		}
 		m.inboxList.SetItems(items)
 
 	case newMessageMsg:
-		m.inboxMsgs = append([]*pb.Message{msg.msg}, m.inboxMsgs...)
-		items := make([]list.Item, len(m.inboxMsgs))
-		for i, msg := range m.inboxMsgs {
-			items[i] = msgItem{msg}
+		m.inboxStream = msg.stream
+		if m.inboxSeen == nil {
+			m.inboxSeen = make(map[string]bool)
 		}
-		m.inboxList.SetItems(items)
-		m.setStatus(styleSuccess.Render("● New message from " + shortDID(msg.msg.FromDid)))
-		// re-subscribe
+		if !m.inboxSeen[msg.msg.Id] {
+			m.inboxSeen[msg.msg.Id] = true
+			m.inboxMsgs = append([]*pb.Message{msg.msg}, m.inboxMsgs...)
+			items := make([]list.Item, len(m.inboxMsgs))
+			for i, im := range m.inboxMsgs {
+				items[i] = msgItem{im}
+			}
+			m.inboxList.SetItems(items)
+			m.setStatus(styleSuccess.Render("● New message from " + shortDID(msg.msg.FromDid)))
+		}
+		// wait for the next message on the same stream
 		cmds = append(cmds, m.subscribeInbox())
 
 	case tasksMsg:

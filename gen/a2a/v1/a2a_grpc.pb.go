@@ -19,47 +19,72 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	A2ANode_GetIdentity_FullMethodName         = "/a2a.v1.A2ANode/GetIdentity"
-	A2ANode_PublishAgentCard_FullMethodName    = "/a2a.v1.A2ANode/PublishAgentCard"
-	A2ANode_GetAgentCard_FullMethodName        = "/a2a.v1.A2ANode/GetAgentCard"
-	A2ANode_FindAgents_FullMethodName          = "/a2a.v1.A2ANode/FindAgents"
-	A2ANode_SendMessage_FullMethodName         = "/a2a.v1.A2ANode/SendMessage"
-	A2ANode_SubscribeInbox_FullMethodName      = "/a2a.v1.A2ANode/SubscribeInbox"
-	A2ANode_GetInbox_FullMethodName            = "/a2a.v1.A2ANode/GetInbox"
-	A2ANode_GetOutbox_FullMethodName           = "/a2a.v1.A2ANode/GetOutbox"
-	A2ANode_AckMessage_FullMethodName          = "/a2a.v1.A2ANode/AckMessage"
-	A2ANode_CreateTask_FullMethodName          = "/a2a.v1.A2ANode/CreateTask"
-	A2ANode_GetTask_FullMethodName             = "/a2a.v1.A2ANode/GetTask"
-	A2ANode_UpdateTask_FullMethodName          = "/a2a.v1.A2ANode/UpdateTask"
-	A2ANode_CancelTask_FullMethodName          = "/a2a.v1.A2ANode/CancelTask"
-	A2ANode_PublishTaskEvent_FullMethodName    = "/a2a.v1.A2ANode/PublishTaskEvent"
-	A2ANode_SubscribeTaskEvents_FullMethodName = "/a2a.v1.A2ANode/SubscribeTaskEvents"
-	A2ANode_SendFile_FullMethodName            = "/a2a.v1.A2ANode/SendFile"
-	A2ANode_FetchFile_FullMethodName           = "/a2a.v1.A2ANode/FetchFile"
-	A2ANode_CreateThread_FullMethodName        = "/a2a.v1.A2ANode/CreateThread"
-	A2ANode_GetThread_FullMethodName           = "/a2a.v1.A2ANode/GetThread"
-	A2ANode_AppendEntry_FullMethodName         = "/a2a.v1.A2ANode/AppendEntry"
-	A2ANode_GetThreadEntries_FullMethodName    = "/a2a.v1.A2ANode/GetThreadEntries"
-	A2ANode_SubscribeThread_FullMethodName     = "/a2a.v1.A2ANode/SubscribeThread"
-	A2ANode_Ping_FullMethodName                = "/a2a.v1.A2ANode/Ping"
-	A2ANode_Health_FullMethodName              = "/a2a.v1.A2ANode/Health"
-	A2ANode_ListPeers_FullMethodName           = "/a2a.v1.A2ANode/ListPeers"
-	A2ANode_Publish_FullMethodName             = "/a2a.v1.A2ANode/Publish"
-	A2ANode_SubscribeTopic_FullMethodName      = "/a2a.v1.A2ANode/SubscribeTopic"
-	A2ANode_SetWebhook_FullMethodName          = "/a2a.v1.A2ANode/SetWebhook"
-	A2ANode_ClearWebhook_FullMethodName        = "/a2a.v1.A2ANode/ClearWebhook"
-	A2ANode_GetWebhook_FullMethodName          = "/a2a.v1.A2ANode/GetWebhook"
-	A2ANode_CreateNetwork_FullMethodName       = "/a2a.v1.A2ANode/CreateNetwork"
-	A2ANode_JoinNetwork_FullMethodName         = "/a2a.v1.A2ANode/JoinNetwork"
-	A2ANode_LeaveNetwork_FullMethodName        = "/a2a.v1.A2ANode/LeaveNetwork"
-	A2ANode_ListNetworks_FullMethodName        = "/a2a.v1.A2ANode/ListNetworks"
-	A2ANode_NetworkMembers_FullMethodName      = "/a2a.v1.A2ANode/NetworkMembers"
-	A2ANode_BroadcastNetwork_FullMethodName    = "/a2a.v1.A2ANode/BroadcastNetwork"
-	A2ANode_SubscribeNetwork_FullMethodName    = "/a2a.v1.A2ANode/SubscribeNetwork"
-	A2ANode_ClaimName_FullMethodName           = "/a2a.v1.A2ANode/ClaimName"
-	A2ANode_ResolveName_FullMethodName         = "/a2a.v1.A2ANode/ResolveName"
-	A2ANode_ConnectPeer_FullMethodName         = "/a2a.v1.A2ANode/ConnectPeer"
-	A2ANode_DisconnectPeer_FullMethodName      = "/a2a.v1.A2ANode/DisconnectPeer"
+	A2ANode_GetIdentity_FullMethodName                   = "/a2a.v1.A2ANode/GetIdentity"
+	A2ANode_GetNodeIdentity_FullMethodName               = "/a2a.v1.A2ANode/GetNodeIdentity"
+	A2ANode_GetAgentIdentity_FullMethodName              = "/a2a.v1.A2ANode/GetAgentIdentity"
+	A2ANode_BeginAgentSession_FullMethodName             = "/a2a.v1.A2ANode/BeginAgentSession"
+	A2ANode_CompleteAgentSession_FullMethodName          = "/a2a.v1.A2ANode/CompleteAgentSession"
+	A2ANode_CloseAgentSession_FullMethodName             = "/a2a.v1.A2ANode/CloseAgentSession"
+	A2ANode_PublishAgentCard_FullMethodName              = "/a2a.v1.A2ANode/PublishAgentCard"
+	A2ANode_GetAgentCard_FullMethodName                  = "/a2a.v1.A2ANode/GetAgentCard"
+	A2ANode_FindAgents_FullMethodName                    = "/a2a.v1.A2ANode/FindAgents"
+	A2ANode_SendMessage_FullMethodName                   = "/a2a.v1.A2ANode/SendMessage"
+	A2ANode_SubscribeInbox_FullMethodName                = "/a2a.v1.A2ANode/SubscribeInbox"
+	A2ANode_GetInbox_FullMethodName                      = "/a2a.v1.A2ANode/GetInbox"
+	A2ANode_GetOutbox_FullMethodName                     = "/a2a.v1.A2ANode/GetOutbox"
+	A2ANode_AckMessage_FullMethodName                    = "/a2a.v1.A2ANode/AckMessage"
+	A2ANode_CreateTask_FullMethodName                    = "/a2a.v1.A2ANode/CreateTask"
+	A2ANode_GetTask_FullMethodName                       = "/a2a.v1.A2ANode/GetTask"
+	A2ANode_UpdateTask_FullMethodName                    = "/a2a.v1.A2ANode/UpdateTask"
+	A2ANode_CancelTask_FullMethodName                    = "/a2a.v1.A2ANode/CancelTask"
+	A2ANode_PublishTaskEvent_FullMethodName              = "/a2a.v1.A2ANode/PublishTaskEvent"
+	A2ANode_SubscribeTaskEvents_FullMethodName           = "/a2a.v1.A2ANode/SubscribeTaskEvents"
+	A2ANode_SendTaskResult_FullMethodName                = "/a2a.v1.A2ANode/SendTaskResult"
+	A2ANode_SubscribeTasks_FullMethodName                = "/a2a.v1.A2ANode/SubscribeTasks"
+	A2ANode_ClaimTask_FullMethodName                     = "/a2a.v1.A2ANode/ClaimTask"
+	A2ANode_RenewTaskLease_FullMethodName                = "/a2a.v1.A2ANode/RenewTaskLease"
+	A2ANode_CompleteTask_FullMethodName                  = "/a2a.v1.A2ANode/CompleteTask"
+	A2ANode_FailTask_FullMethodName                      = "/a2a.v1.A2ANode/FailTask"
+	A2ANode_SendFile_FullMethodName                      = "/a2a.v1.A2ANode/SendFile"
+	A2ANode_FetchFile_FullMethodName                     = "/a2a.v1.A2ANode/FetchFile"
+	A2ANode_CreateThread_FullMethodName                  = "/a2a.v1.A2ANode/CreateThread"
+	A2ANode_CreateThreadWithRecovery_FullMethodName      = "/a2a.v1.A2ANode/CreateThreadWithRecovery"
+	A2ANode_GetThread_FullMethodName                     = "/a2a.v1.A2ANode/GetThread"
+	A2ANode_AppendEntry_FullMethodName                   = "/a2a.v1.A2ANode/AppendEntry"
+	A2ANode_PutThreadKeyEnvelope_FullMethodName          = "/a2a.v1.A2ANode/PutThreadKeyEnvelope"
+	A2ANode_GetThreadKeyEnvelopes_FullMethodName         = "/a2a.v1.A2ANode/GetThreadKeyEnvelopes"
+	A2ANode_GetRecoveryThreadKeyEnvelopes_FullMethodName = "/a2a.v1.A2ANode/GetRecoveryThreadKeyEnvelopes"
+	A2ANode_GetThreadEntries_FullMethodName              = "/a2a.v1.A2ANode/GetThreadEntries"
+	A2ANode_SubscribeThread_FullMethodName               = "/a2a.v1.A2ANode/SubscribeThread"
+	A2ANode_GetThreadCatchupState_FullMethodName         = "/a2a.v1.A2ANode/GetThreadCatchupState"
+	A2ANode_AddThreadReplica_FullMethodName              = "/a2a.v1.A2ANode/AddThreadReplica"
+	A2ANode_InviteThreadMember_FullMethodName            = "/a2a.v1.A2ANode/InviteThreadMember"
+	A2ANode_AcceptThreadInvite_FullMethodName            = "/a2a.v1.A2ANode/AcceptThreadInvite"
+	A2ANode_PromoteThreadMember_FullMethodName           = "/a2a.v1.A2ANode/PromoteThreadMember"
+	A2ANode_RemoveThreadMember_FullMethodName            = "/a2a.v1.A2ANode/RemoveThreadMember"
+	A2ANode_LeaveThread_FullMethodName                   = "/a2a.v1.A2ANode/LeaveThread"
+	A2ANode_ListThreadMembers_FullMethodName             = "/a2a.v1.A2ANode/ListThreadMembers"
+	A2ANode_RecoverThread_FullMethodName                 = "/a2a.v1.A2ANode/RecoverThread"
+	A2ANode_RecoverThreadWithHandle_FullMethodName       = "/a2a.v1.A2ANode/RecoverThreadWithHandle"
+	A2ANode_Ping_FullMethodName                          = "/a2a.v1.A2ANode/Ping"
+	A2ANode_Health_FullMethodName                        = "/a2a.v1.A2ANode/Health"
+	A2ANode_ListPeers_FullMethodName                     = "/a2a.v1.A2ANode/ListPeers"
+	A2ANode_Publish_FullMethodName                       = "/a2a.v1.A2ANode/Publish"
+	A2ANode_SubscribeTopic_FullMethodName                = "/a2a.v1.A2ANode/SubscribeTopic"
+	A2ANode_SetWebhook_FullMethodName                    = "/a2a.v1.A2ANode/SetWebhook"
+	A2ANode_ClearWebhook_FullMethodName                  = "/a2a.v1.A2ANode/ClearWebhook"
+	A2ANode_GetWebhook_FullMethodName                    = "/a2a.v1.A2ANode/GetWebhook"
+	A2ANode_CreateNetwork_FullMethodName                 = "/a2a.v1.A2ANode/CreateNetwork"
+	A2ANode_JoinNetwork_FullMethodName                   = "/a2a.v1.A2ANode/JoinNetwork"
+	A2ANode_LeaveNetwork_FullMethodName                  = "/a2a.v1.A2ANode/LeaveNetwork"
+	A2ANode_ListNetworks_FullMethodName                  = "/a2a.v1.A2ANode/ListNetworks"
+	A2ANode_NetworkMembers_FullMethodName                = "/a2a.v1.A2ANode/NetworkMembers"
+	A2ANode_BroadcastNetwork_FullMethodName              = "/a2a.v1.A2ANode/BroadcastNetwork"
+	A2ANode_SubscribeNetwork_FullMethodName              = "/a2a.v1.A2ANode/SubscribeNetwork"
+	A2ANode_ClaimName_FullMethodName                     = "/a2a.v1.A2ANode/ClaimName"
+	A2ANode_ResolveName_FullMethodName                   = "/a2a.v1.A2ANode/ResolveName"
+	A2ANode_ConnectPeer_FullMethodName                   = "/a2a.v1.A2ANode/ConnectPeer"
+	A2ANode_DisconnectPeer_FullMethodName                = "/a2a.v1.A2ANode/DisconnectPeer"
 )
 
 // A2ANodeClient is the client API for A2ANode service.
@@ -68,6 +93,11 @@ const (
 type A2ANodeClient interface {
 	// Identity
 	GetIdentity(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*AgentIdentity, error)
+	GetNodeIdentity(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*NodeIdentity, error)
+	GetAgentIdentity(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*AgentIdentity, error)
+	BeginAgentSession(ctx context.Context, in *BeginAgentSessionRequest, opts ...grpc.CallOption) (*AgentChallenge, error)
+	CompleteAgentSession(ctx context.Context, in *CompleteAgentSessionRequest, opts ...grpc.CallOption) (*AgentSession, error)
+	CloseAgentSession(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*Empty, error)
 	// Registry
 	PublishAgentCard(ctx context.Context, in *AgentCard, opts ...grpc.CallOption) (*PublishResult, error)
 	GetAgentCard(ctx context.Context, in *AgentIdentityRequest, opts ...grpc.CallOption) (*AgentCard, error)
@@ -85,15 +115,39 @@ type A2ANodeClient interface {
 	CancelTask(ctx context.Context, in *TaskID, opts ...grpc.CallOption) (*Task, error)
 	PublishTaskEvent(ctx context.Context, in *TaskEvent, opts ...grpc.CallOption) (*Empty, error)
 	SubscribeTaskEvents(ctx context.Context, in *TaskID, opts ...grpc.CallOption) (grpc.ServerStreamingClient[TaskEvent], error)
+	SendTaskResult(ctx context.Context, in *SendTaskResultRequest, opts ...grpc.CallOption) (*SendResult, error)
+	SubscribeTasks(ctx context.Context, in *WorkerSubscription, opts ...grpc.CallOption) (grpc.ServerStreamingClient[TaskDelivery], error)
+	ClaimTask(ctx context.Context, in *ClaimTaskRequest, opts ...grpc.CallOption) (*TaskLease, error)
+	RenewTaskLease(ctx context.Context, in *RenewTaskLeaseRequest, opts ...grpc.CallOption) (*TaskLease, error)
+	CompleteTask(ctx context.Context, in *CompleteTaskRequest, opts ...grpc.CallOption) (*Task, error)
+	FailTask(ctx context.Context, in *FailTaskRequest, opts ...grpc.CallOption) (*Task, error)
 	// Files
 	SendFile(ctx context.Context, in *SendFileRequest, opts ...grpc.CallOption) (*Artifact, error)
 	FetchFile(ctx context.Context, in *FetchFileRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[FileChunk], error)
 	// Threads (Tendermint BFT)
 	CreateThread(ctx context.Context, in *CreateThreadRequest, opts ...grpc.CallOption) (*Thread, error)
+	CreateThreadWithRecovery(ctx context.Context, in *CreateThreadRequest, opts ...grpc.CallOption) (*CreateThreadResponse, error)
 	GetThread(ctx context.Context, in *ThreadID, opts ...grpc.CallOption) (*Thread, error)
 	AppendEntry(ctx context.Context, in *AppendEntryRequest, opts ...grpc.CallOption) (*AppendEntryResult, error)
+	PutThreadKeyEnvelope(ctx context.Context, in *ThreadKeyEnvelope, opts ...grpc.CallOption) (*Empty, error)
+	GetThreadKeyEnvelopes(ctx context.Context, in *ThreadKeyEnvelopeQuery, opts ...grpc.CallOption) (*ThreadKeyEnvelopes, error)
+	// Recovery envelopes are readable only with the complete bearer recovery
+	// capability, never with a normal member session.
+	GetRecoveryThreadKeyEnvelopes(ctx context.Context, in *RecoverThreadRequest, opts ...grpc.CallOption) (*ThreadKeyEnvelopes, error)
 	GetThreadEntries(ctx context.Context, in *GetThreadEntriesRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ThreadEntryWithPos], error)
 	SubscribeThread(ctx context.Context, in *SubscribeThreadRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ThreadEntryWithPos], error)
+	// An observer obtains its local committed state then signs it as a
+	// catch-up attestation for the creator's promotion request.
+	GetThreadCatchupState(ctx context.Context, in *ThreadID, opts ...grpc.CallOption) (*ThreadCatchupState, error)
+	AddThreadReplica(ctx context.Context, in *ThreadReplicaRequest, opts ...grpc.CallOption) (*Thread, error)
+	InviteThreadMember(ctx context.Context, in *InviteThreadMemberRequest, opts ...grpc.CallOption) (*ThreadMembershipChange, error)
+	AcceptThreadInvite(ctx context.Context, in *AcceptThreadInviteRequest, opts ...grpc.CallOption) (*Thread, error)
+	PromoteThreadMember(ctx context.Context, in *PromoteThreadMemberRequest, opts ...grpc.CallOption) (*ThreadMembershipChange, error)
+	RemoveThreadMember(ctx context.Context, in *RemoveThreadMemberRequest, opts ...grpc.CallOption) (*ThreadMembershipChange, error)
+	LeaveThread(ctx context.Context, in *ThreadID, opts ...grpc.CallOption) (*ThreadMembershipChange, error)
+	ListThreadMembers(ctx context.Context, in *ThreadID, opts ...grpc.CallOption) (*ThreadMembers, error)
+	RecoverThread(ctx context.Context, in *ThreadID, opts ...grpc.CallOption) (*Thread, error)
+	RecoverThreadWithHandle(ctx context.Context, in *RecoverThreadRequest, opts ...grpc.CallOption) (*RecoverThreadResponse, error)
 	// Diagnostics
 	Ping(ctx context.Context, in *PingRequest, opts ...grpc.CallOption) (*PingResponse, error)
 	Health(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*HealthResponse, error)
@@ -133,6 +187,56 @@ func (c *a2ANodeClient) GetIdentity(ctx context.Context, in *Empty, opts ...grpc
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(AgentIdentity)
 	err := c.cc.Invoke(ctx, A2ANode_GetIdentity_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *a2ANodeClient) GetNodeIdentity(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*NodeIdentity, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(NodeIdentity)
+	err := c.cc.Invoke(ctx, A2ANode_GetNodeIdentity_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *a2ANodeClient) GetAgentIdentity(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*AgentIdentity, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AgentIdentity)
+	err := c.cc.Invoke(ctx, A2ANode_GetAgentIdentity_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *a2ANodeClient) BeginAgentSession(ctx context.Context, in *BeginAgentSessionRequest, opts ...grpc.CallOption) (*AgentChallenge, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AgentChallenge)
+	err := c.cc.Invoke(ctx, A2ANode_BeginAgentSession_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *a2ANodeClient) CompleteAgentSession(ctx context.Context, in *CompleteAgentSessionRequest, opts ...grpc.CallOption) (*AgentSession, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AgentSession)
+	err := c.cc.Invoke(ctx, A2ANode_CompleteAgentSession_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *a2ANodeClient) CloseAgentSession(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(Empty)
+	err := c.cc.Invoke(ctx, A2ANode_CloseAgentSession_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -324,6 +428,75 @@ func (c *a2ANodeClient) SubscribeTaskEvents(ctx context.Context, in *TaskID, opt
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type A2ANode_SubscribeTaskEventsClient = grpc.ServerStreamingClient[TaskEvent]
 
+func (c *a2ANodeClient) SendTaskResult(ctx context.Context, in *SendTaskResultRequest, opts ...grpc.CallOption) (*SendResult, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SendResult)
+	err := c.cc.Invoke(ctx, A2ANode_SendTaskResult_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *a2ANodeClient) SubscribeTasks(ctx context.Context, in *WorkerSubscription, opts ...grpc.CallOption) (grpc.ServerStreamingClient[TaskDelivery], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &A2ANode_ServiceDesc.Streams[5], A2ANode_SubscribeTasks_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[WorkerSubscription, TaskDelivery]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type A2ANode_SubscribeTasksClient = grpc.ServerStreamingClient[TaskDelivery]
+
+func (c *a2ANodeClient) ClaimTask(ctx context.Context, in *ClaimTaskRequest, opts ...grpc.CallOption) (*TaskLease, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(TaskLease)
+	err := c.cc.Invoke(ctx, A2ANode_ClaimTask_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *a2ANodeClient) RenewTaskLease(ctx context.Context, in *RenewTaskLeaseRequest, opts ...grpc.CallOption) (*TaskLease, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(TaskLease)
+	err := c.cc.Invoke(ctx, A2ANode_RenewTaskLease_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *a2ANodeClient) CompleteTask(ctx context.Context, in *CompleteTaskRequest, opts ...grpc.CallOption) (*Task, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(Task)
+	err := c.cc.Invoke(ctx, A2ANode_CompleteTask_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *a2ANodeClient) FailTask(ctx context.Context, in *FailTaskRequest, opts ...grpc.CallOption) (*Task, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(Task)
+	err := c.cc.Invoke(ctx, A2ANode_FailTask_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *a2ANodeClient) SendFile(ctx context.Context, in *SendFileRequest, opts ...grpc.CallOption) (*Artifact, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(Artifact)
@@ -336,7 +509,7 @@ func (c *a2ANodeClient) SendFile(ctx context.Context, in *SendFileRequest, opts 
 
 func (c *a2ANodeClient) FetchFile(ctx context.Context, in *FetchFileRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[FileChunk], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &A2ANode_ServiceDesc.Streams[5], A2ANode_FetchFile_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &A2ANode_ServiceDesc.Streams[6], A2ANode_FetchFile_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -363,6 +536,16 @@ func (c *a2ANodeClient) CreateThread(ctx context.Context, in *CreateThreadReques
 	return out, nil
 }
 
+func (c *a2ANodeClient) CreateThreadWithRecovery(ctx context.Context, in *CreateThreadRequest, opts ...grpc.CallOption) (*CreateThreadResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CreateThreadResponse)
+	err := c.cc.Invoke(ctx, A2ANode_CreateThreadWithRecovery_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *a2ANodeClient) GetThread(ctx context.Context, in *ThreadID, opts ...grpc.CallOption) (*Thread, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(Thread)
@@ -383,9 +566,39 @@ func (c *a2ANodeClient) AppendEntry(ctx context.Context, in *AppendEntryRequest,
 	return out, nil
 }
 
+func (c *a2ANodeClient) PutThreadKeyEnvelope(ctx context.Context, in *ThreadKeyEnvelope, opts ...grpc.CallOption) (*Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(Empty)
+	err := c.cc.Invoke(ctx, A2ANode_PutThreadKeyEnvelope_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *a2ANodeClient) GetThreadKeyEnvelopes(ctx context.Context, in *ThreadKeyEnvelopeQuery, opts ...grpc.CallOption) (*ThreadKeyEnvelopes, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ThreadKeyEnvelopes)
+	err := c.cc.Invoke(ctx, A2ANode_GetThreadKeyEnvelopes_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *a2ANodeClient) GetRecoveryThreadKeyEnvelopes(ctx context.Context, in *RecoverThreadRequest, opts ...grpc.CallOption) (*ThreadKeyEnvelopes, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ThreadKeyEnvelopes)
+	err := c.cc.Invoke(ctx, A2ANode_GetRecoveryThreadKeyEnvelopes_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *a2ANodeClient) GetThreadEntries(ctx context.Context, in *GetThreadEntriesRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ThreadEntryWithPos], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &A2ANode_ServiceDesc.Streams[6], A2ANode_GetThreadEntries_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &A2ANode_ServiceDesc.Streams[7], A2ANode_GetThreadEntries_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -404,7 +617,7 @@ type A2ANode_GetThreadEntriesClient = grpc.ServerStreamingClient[ThreadEntryWith
 
 func (c *a2ANodeClient) SubscribeThread(ctx context.Context, in *SubscribeThreadRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ThreadEntryWithPos], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &A2ANode_ServiceDesc.Streams[7], A2ANode_SubscribeThread_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &A2ANode_ServiceDesc.Streams[8], A2ANode_SubscribeThread_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -420,6 +633,106 @@ func (c *a2ANodeClient) SubscribeThread(ctx context.Context, in *SubscribeThread
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type A2ANode_SubscribeThreadClient = grpc.ServerStreamingClient[ThreadEntryWithPos]
+
+func (c *a2ANodeClient) GetThreadCatchupState(ctx context.Context, in *ThreadID, opts ...grpc.CallOption) (*ThreadCatchupState, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ThreadCatchupState)
+	err := c.cc.Invoke(ctx, A2ANode_GetThreadCatchupState_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *a2ANodeClient) AddThreadReplica(ctx context.Context, in *ThreadReplicaRequest, opts ...grpc.CallOption) (*Thread, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(Thread)
+	err := c.cc.Invoke(ctx, A2ANode_AddThreadReplica_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *a2ANodeClient) InviteThreadMember(ctx context.Context, in *InviteThreadMemberRequest, opts ...grpc.CallOption) (*ThreadMembershipChange, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ThreadMembershipChange)
+	err := c.cc.Invoke(ctx, A2ANode_InviteThreadMember_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *a2ANodeClient) AcceptThreadInvite(ctx context.Context, in *AcceptThreadInviteRequest, opts ...grpc.CallOption) (*Thread, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(Thread)
+	err := c.cc.Invoke(ctx, A2ANode_AcceptThreadInvite_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *a2ANodeClient) PromoteThreadMember(ctx context.Context, in *PromoteThreadMemberRequest, opts ...grpc.CallOption) (*ThreadMembershipChange, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ThreadMembershipChange)
+	err := c.cc.Invoke(ctx, A2ANode_PromoteThreadMember_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *a2ANodeClient) RemoveThreadMember(ctx context.Context, in *RemoveThreadMemberRequest, opts ...grpc.CallOption) (*ThreadMembershipChange, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ThreadMembershipChange)
+	err := c.cc.Invoke(ctx, A2ANode_RemoveThreadMember_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *a2ANodeClient) LeaveThread(ctx context.Context, in *ThreadID, opts ...grpc.CallOption) (*ThreadMembershipChange, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ThreadMembershipChange)
+	err := c.cc.Invoke(ctx, A2ANode_LeaveThread_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *a2ANodeClient) ListThreadMembers(ctx context.Context, in *ThreadID, opts ...grpc.CallOption) (*ThreadMembers, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ThreadMembers)
+	err := c.cc.Invoke(ctx, A2ANode_ListThreadMembers_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *a2ANodeClient) RecoverThread(ctx context.Context, in *ThreadID, opts ...grpc.CallOption) (*Thread, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(Thread)
+	err := c.cc.Invoke(ctx, A2ANode_RecoverThread_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *a2ANodeClient) RecoverThreadWithHandle(ctx context.Context, in *RecoverThreadRequest, opts ...grpc.CallOption) (*RecoverThreadResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RecoverThreadResponse)
+	err := c.cc.Invoke(ctx, A2ANode_RecoverThreadWithHandle_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
 
 func (c *a2ANodeClient) Ping(ctx context.Context, in *PingRequest, opts ...grpc.CallOption) (*PingResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
@@ -463,7 +776,7 @@ func (c *a2ANodeClient) Publish(ctx context.Context, in *PublishRequest, opts ..
 
 func (c *a2ANodeClient) SubscribeTopic(ctx context.Context, in *SubscribeTopicRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[TopicMessage], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &A2ANode_ServiceDesc.Streams[8], A2ANode_SubscribeTopic_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &A2ANode_ServiceDesc.Streams[9], A2ANode_SubscribeTopic_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -572,7 +885,7 @@ func (c *a2ANodeClient) BroadcastNetwork(ctx context.Context, in *BroadcastReque
 
 func (c *a2ANodeClient) SubscribeNetwork(ctx context.Context, in *NetworkIDRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[BroadcastMessage], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &A2ANode_ServiceDesc.Streams[9], A2ANode_SubscribeNetwork_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &A2ANode_ServiceDesc.Streams[10], A2ANode_SubscribeNetwork_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -635,6 +948,11 @@ func (c *a2ANodeClient) DisconnectPeer(ctx context.Context, in *ConnectPeerReque
 type A2ANodeServer interface {
 	// Identity
 	GetIdentity(context.Context, *Empty) (*AgentIdentity, error)
+	GetNodeIdentity(context.Context, *Empty) (*NodeIdentity, error)
+	GetAgentIdentity(context.Context, *Empty) (*AgentIdentity, error)
+	BeginAgentSession(context.Context, *BeginAgentSessionRequest) (*AgentChallenge, error)
+	CompleteAgentSession(context.Context, *CompleteAgentSessionRequest) (*AgentSession, error)
+	CloseAgentSession(context.Context, *Empty) (*Empty, error)
 	// Registry
 	PublishAgentCard(context.Context, *AgentCard) (*PublishResult, error)
 	GetAgentCard(context.Context, *AgentIdentityRequest) (*AgentCard, error)
@@ -652,15 +970,39 @@ type A2ANodeServer interface {
 	CancelTask(context.Context, *TaskID) (*Task, error)
 	PublishTaskEvent(context.Context, *TaskEvent) (*Empty, error)
 	SubscribeTaskEvents(*TaskID, grpc.ServerStreamingServer[TaskEvent]) error
+	SendTaskResult(context.Context, *SendTaskResultRequest) (*SendResult, error)
+	SubscribeTasks(*WorkerSubscription, grpc.ServerStreamingServer[TaskDelivery]) error
+	ClaimTask(context.Context, *ClaimTaskRequest) (*TaskLease, error)
+	RenewTaskLease(context.Context, *RenewTaskLeaseRequest) (*TaskLease, error)
+	CompleteTask(context.Context, *CompleteTaskRequest) (*Task, error)
+	FailTask(context.Context, *FailTaskRequest) (*Task, error)
 	// Files
 	SendFile(context.Context, *SendFileRequest) (*Artifact, error)
 	FetchFile(*FetchFileRequest, grpc.ServerStreamingServer[FileChunk]) error
 	// Threads (Tendermint BFT)
 	CreateThread(context.Context, *CreateThreadRequest) (*Thread, error)
+	CreateThreadWithRecovery(context.Context, *CreateThreadRequest) (*CreateThreadResponse, error)
 	GetThread(context.Context, *ThreadID) (*Thread, error)
 	AppendEntry(context.Context, *AppendEntryRequest) (*AppendEntryResult, error)
+	PutThreadKeyEnvelope(context.Context, *ThreadKeyEnvelope) (*Empty, error)
+	GetThreadKeyEnvelopes(context.Context, *ThreadKeyEnvelopeQuery) (*ThreadKeyEnvelopes, error)
+	// Recovery envelopes are readable only with the complete bearer recovery
+	// capability, never with a normal member session.
+	GetRecoveryThreadKeyEnvelopes(context.Context, *RecoverThreadRequest) (*ThreadKeyEnvelopes, error)
 	GetThreadEntries(*GetThreadEntriesRequest, grpc.ServerStreamingServer[ThreadEntryWithPos]) error
 	SubscribeThread(*SubscribeThreadRequest, grpc.ServerStreamingServer[ThreadEntryWithPos]) error
+	// An observer obtains its local committed state then signs it as a
+	// catch-up attestation for the creator's promotion request.
+	GetThreadCatchupState(context.Context, *ThreadID) (*ThreadCatchupState, error)
+	AddThreadReplica(context.Context, *ThreadReplicaRequest) (*Thread, error)
+	InviteThreadMember(context.Context, *InviteThreadMemberRequest) (*ThreadMembershipChange, error)
+	AcceptThreadInvite(context.Context, *AcceptThreadInviteRequest) (*Thread, error)
+	PromoteThreadMember(context.Context, *PromoteThreadMemberRequest) (*ThreadMembershipChange, error)
+	RemoveThreadMember(context.Context, *RemoveThreadMemberRequest) (*ThreadMembershipChange, error)
+	LeaveThread(context.Context, *ThreadID) (*ThreadMembershipChange, error)
+	ListThreadMembers(context.Context, *ThreadID) (*ThreadMembers, error)
+	RecoverThread(context.Context, *ThreadID) (*Thread, error)
+	RecoverThreadWithHandle(context.Context, *RecoverThreadRequest) (*RecoverThreadResponse, error)
 	// Diagnostics
 	Ping(context.Context, *PingRequest) (*PingResponse, error)
 	Health(context.Context, *Empty) (*HealthResponse, error)
@@ -698,6 +1040,21 @@ type UnimplementedA2ANodeServer struct{}
 
 func (UnimplementedA2ANodeServer) GetIdentity(context.Context, *Empty) (*AgentIdentity, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetIdentity not implemented")
+}
+func (UnimplementedA2ANodeServer) GetNodeIdentity(context.Context, *Empty) (*NodeIdentity, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetNodeIdentity not implemented")
+}
+func (UnimplementedA2ANodeServer) GetAgentIdentity(context.Context, *Empty) (*AgentIdentity, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetAgentIdentity not implemented")
+}
+func (UnimplementedA2ANodeServer) BeginAgentSession(context.Context, *BeginAgentSessionRequest) (*AgentChallenge, error) {
+	return nil, status.Error(codes.Unimplemented, "method BeginAgentSession not implemented")
+}
+func (UnimplementedA2ANodeServer) CompleteAgentSession(context.Context, *CompleteAgentSessionRequest) (*AgentSession, error) {
+	return nil, status.Error(codes.Unimplemented, "method CompleteAgentSession not implemented")
+}
+func (UnimplementedA2ANodeServer) CloseAgentSession(context.Context, *Empty) (*Empty, error) {
+	return nil, status.Error(codes.Unimplemented, "method CloseAgentSession not implemented")
 }
 func (UnimplementedA2ANodeServer) PublishAgentCard(context.Context, *AgentCard) (*PublishResult, error) {
 	return nil, status.Error(codes.Unimplemented, "method PublishAgentCard not implemented")
@@ -741,6 +1098,24 @@ func (UnimplementedA2ANodeServer) PublishTaskEvent(context.Context, *TaskEvent) 
 func (UnimplementedA2ANodeServer) SubscribeTaskEvents(*TaskID, grpc.ServerStreamingServer[TaskEvent]) error {
 	return status.Error(codes.Unimplemented, "method SubscribeTaskEvents not implemented")
 }
+func (UnimplementedA2ANodeServer) SendTaskResult(context.Context, *SendTaskResultRequest) (*SendResult, error) {
+	return nil, status.Error(codes.Unimplemented, "method SendTaskResult not implemented")
+}
+func (UnimplementedA2ANodeServer) SubscribeTasks(*WorkerSubscription, grpc.ServerStreamingServer[TaskDelivery]) error {
+	return status.Error(codes.Unimplemented, "method SubscribeTasks not implemented")
+}
+func (UnimplementedA2ANodeServer) ClaimTask(context.Context, *ClaimTaskRequest) (*TaskLease, error) {
+	return nil, status.Error(codes.Unimplemented, "method ClaimTask not implemented")
+}
+func (UnimplementedA2ANodeServer) RenewTaskLease(context.Context, *RenewTaskLeaseRequest) (*TaskLease, error) {
+	return nil, status.Error(codes.Unimplemented, "method RenewTaskLease not implemented")
+}
+func (UnimplementedA2ANodeServer) CompleteTask(context.Context, *CompleteTaskRequest) (*Task, error) {
+	return nil, status.Error(codes.Unimplemented, "method CompleteTask not implemented")
+}
+func (UnimplementedA2ANodeServer) FailTask(context.Context, *FailTaskRequest) (*Task, error) {
+	return nil, status.Error(codes.Unimplemented, "method FailTask not implemented")
+}
 func (UnimplementedA2ANodeServer) SendFile(context.Context, *SendFileRequest) (*Artifact, error) {
 	return nil, status.Error(codes.Unimplemented, "method SendFile not implemented")
 }
@@ -750,17 +1125,59 @@ func (UnimplementedA2ANodeServer) FetchFile(*FetchFileRequest, grpc.ServerStream
 func (UnimplementedA2ANodeServer) CreateThread(context.Context, *CreateThreadRequest) (*Thread, error) {
 	return nil, status.Error(codes.Unimplemented, "method CreateThread not implemented")
 }
+func (UnimplementedA2ANodeServer) CreateThreadWithRecovery(context.Context, *CreateThreadRequest) (*CreateThreadResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method CreateThreadWithRecovery not implemented")
+}
 func (UnimplementedA2ANodeServer) GetThread(context.Context, *ThreadID) (*Thread, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetThread not implemented")
 }
 func (UnimplementedA2ANodeServer) AppendEntry(context.Context, *AppendEntryRequest) (*AppendEntryResult, error) {
 	return nil, status.Error(codes.Unimplemented, "method AppendEntry not implemented")
 }
+func (UnimplementedA2ANodeServer) PutThreadKeyEnvelope(context.Context, *ThreadKeyEnvelope) (*Empty, error) {
+	return nil, status.Error(codes.Unimplemented, "method PutThreadKeyEnvelope not implemented")
+}
+func (UnimplementedA2ANodeServer) GetThreadKeyEnvelopes(context.Context, *ThreadKeyEnvelopeQuery) (*ThreadKeyEnvelopes, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetThreadKeyEnvelopes not implemented")
+}
+func (UnimplementedA2ANodeServer) GetRecoveryThreadKeyEnvelopes(context.Context, *RecoverThreadRequest) (*ThreadKeyEnvelopes, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetRecoveryThreadKeyEnvelopes not implemented")
+}
 func (UnimplementedA2ANodeServer) GetThreadEntries(*GetThreadEntriesRequest, grpc.ServerStreamingServer[ThreadEntryWithPos]) error {
 	return status.Error(codes.Unimplemented, "method GetThreadEntries not implemented")
 }
 func (UnimplementedA2ANodeServer) SubscribeThread(*SubscribeThreadRequest, grpc.ServerStreamingServer[ThreadEntryWithPos]) error {
 	return status.Error(codes.Unimplemented, "method SubscribeThread not implemented")
+}
+func (UnimplementedA2ANodeServer) GetThreadCatchupState(context.Context, *ThreadID) (*ThreadCatchupState, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetThreadCatchupState not implemented")
+}
+func (UnimplementedA2ANodeServer) AddThreadReplica(context.Context, *ThreadReplicaRequest) (*Thread, error) {
+	return nil, status.Error(codes.Unimplemented, "method AddThreadReplica not implemented")
+}
+func (UnimplementedA2ANodeServer) InviteThreadMember(context.Context, *InviteThreadMemberRequest) (*ThreadMembershipChange, error) {
+	return nil, status.Error(codes.Unimplemented, "method InviteThreadMember not implemented")
+}
+func (UnimplementedA2ANodeServer) AcceptThreadInvite(context.Context, *AcceptThreadInviteRequest) (*Thread, error) {
+	return nil, status.Error(codes.Unimplemented, "method AcceptThreadInvite not implemented")
+}
+func (UnimplementedA2ANodeServer) PromoteThreadMember(context.Context, *PromoteThreadMemberRequest) (*ThreadMembershipChange, error) {
+	return nil, status.Error(codes.Unimplemented, "method PromoteThreadMember not implemented")
+}
+func (UnimplementedA2ANodeServer) RemoveThreadMember(context.Context, *RemoveThreadMemberRequest) (*ThreadMembershipChange, error) {
+	return nil, status.Error(codes.Unimplemented, "method RemoveThreadMember not implemented")
+}
+func (UnimplementedA2ANodeServer) LeaveThread(context.Context, *ThreadID) (*ThreadMembershipChange, error) {
+	return nil, status.Error(codes.Unimplemented, "method LeaveThread not implemented")
+}
+func (UnimplementedA2ANodeServer) ListThreadMembers(context.Context, *ThreadID) (*ThreadMembers, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListThreadMembers not implemented")
+}
+func (UnimplementedA2ANodeServer) RecoverThread(context.Context, *ThreadID) (*Thread, error) {
+	return nil, status.Error(codes.Unimplemented, "method RecoverThread not implemented")
+}
+func (UnimplementedA2ANodeServer) RecoverThreadWithHandle(context.Context, *RecoverThreadRequest) (*RecoverThreadResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method RecoverThreadWithHandle not implemented")
 }
 func (UnimplementedA2ANodeServer) Ping(context.Context, *PingRequest) (*PingResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Ping not implemented")
@@ -854,6 +1271,96 @@ func _A2ANode_GetIdentity_Handler(srv interface{}, ctx context.Context, dec func
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(A2ANodeServer).GetIdentity(ctx, req.(*Empty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _A2ANode_GetNodeIdentity_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(Empty)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(A2ANodeServer).GetNodeIdentity(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: A2ANode_GetNodeIdentity_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(A2ANodeServer).GetNodeIdentity(ctx, req.(*Empty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _A2ANode_GetAgentIdentity_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(Empty)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(A2ANodeServer).GetAgentIdentity(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: A2ANode_GetAgentIdentity_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(A2ANodeServer).GetAgentIdentity(ctx, req.(*Empty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _A2ANode_BeginAgentSession_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(BeginAgentSessionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(A2ANodeServer).BeginAgentSession(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: A2ANode_BeginAgentSession_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(A2ANodeServer).BeginAgentSession(ctx, req.(*BeginAgentSessionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _A2ANode_CompleteAgentSession_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CompleteAgentSessionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(A2ANodeServer).CompleteAgentSession(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: A2ANode_CompleteAgentSession_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(A2ANodeServer).CompleteAgentSession(ctx, req.(*CompleteAgentSessionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _A2ANode_CloseAgentSession_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(Empty)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(A2ANodeServer).CloseAgentSession(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: A2ANode_CloseAgentSession_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(A2ANodeServer).CloseAgentSession(ctx, req.(*Empty))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1075,6 +1582,107 @@ func _A2ANode_SubscribeTaskEvents_Handler(srv interface{}, stream grpc.ServerStr
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type A2ANode_SubscribeTaskEventsServer = grpc.ServerStreamingServer[TaskEvent]
 
+func _A2ANode_SendTaskResult_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SendTaskResultRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(A2ANodeServer).SendTaskResult(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: A2ANode_SendTaskResult_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(A2ANodeServer).SendTaskResult(ctx, req.(*SendTaskResultRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _A2ANode_SubscribeTasks_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(WorkerSubscription)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(A2ANodeServer).SubscribeTasks(m, &grpc.GenericServerStream[WorkerSubscription, TaskDelivery]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type A2ANode_SubscribeTasksServer = grpc.ServerStreamingServer[TaskDelivery]
+
+func _A2ANode_ClaimTask_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ClaimTaskRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(A2ANodeServer).ClaimTask(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: A2ANode_ClaimTask_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(A2ANodeServer).ClaimTask(ctx, req.(*ClaimTaskRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _A2ANode_RenewTaskLease_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RenewTaskLeaseRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(A2ANodeServer).RenewTaskLease(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: A2ANode_RenewTaskLease_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(A2ANodeServer).RenewTaskLease(ctx, req.(*RenewTaskLeaseRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _A2ANode_CompleteTask_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CompleteTaskRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(A2ANodeServer).CompleteTask(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: A2ANode_CompleteTask_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(A2ANodeServer).CompleteTask(ctx, req.(*CompleteTaskRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _A2ANode_FailTask_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(FailTaskRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(A2ANodeServer).FailTask(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: A2ANode_FailTask_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(A2ANodeServer).FailTask(ctx, req.(*FailTaskRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _A2ANode_SendFile_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(SendFileRequest)
 	if err := dec(in); err != nil {
@@ -1122,6 +1730,24 @@ func _A2ANode_CreateThread_Handler(srv interface{}, ctx context.Context, dec fun
 	return interceptor(ctx, in, info, handler)
 }
 
+func _A2ANode_CreateThreadWithRecovery_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateThreadRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(A2ANodeServer).CreateThreadWithRecovery(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: A2ANode_CreateThreadWithRecovery_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(A2ANodeServer).CreateThreadWithRecovery(ctx, req.(*CreateThreadRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _A2ANode_GetThread_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ThreadID)
 	if err := dec(in); err != nil {
@@ -1158,6 +1784,60 @@ func _A2ANode_AppendEntry_Handler(srv interface{}, ctx context.Context, dec func
 	return interceptor(ctx, in, info, handler)
 }
 
+func _A2ANode_PutThreadKeyEnvelope_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ThreadKeyEnvelope)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(A2ANodeServer).PutThreadKeyEnvelope(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: A2ANode_PutThreadKeyEnvelope_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(A2ANodeServer).PutThreadKeyEnvelope(ctx, req.(*ThreadKeyEnvelope))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _A2ANode_GetThreadKeyEnvelopes_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ThreadKeyEnvelopeQuery)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(A2ANodeServer).GetThreadKeyEnvelopes(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: A2ANode_GetThreadKeyEnvelopes_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(A2ANodeServer).GetThreadKeyEnvelopes(ctx, req.(*ThreadKeyEnvelopeQuery))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _A2ANode_GetRecoveryThreadKeyEnvelopes_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RecoverThreadRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(A2ANodeServer).GetRecoveryThreadKeyEnvelopes(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: A2ANode_GetRecoveryThreadKeyEnvelopes_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(A2ANodeServer).GetRecoveryThreadKeyEnvelopes(ctx, req.(*RecoverThreadRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _A2ANode_GetThreadEntries_Handler(srv interface{}, stream grpc.ServerStream) error {
 	m := new(GetThreadEntriesRequest)
 	if err := stream.RecvMsg(m); err != nil {
@@ -1179,6 +1859,186 @@ func _A2ANode_SubscribeThread_Handler(srv interface{}, stream grpc.ServerStream)
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type A2ANode_SubscribeThreadServer = grpc.ServerStreamingServer[ThreadEntryWithPos]
+
+func _A2ANode_GetThreadCatchupState_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ThreadID)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(A2ANodeServer).GetThreadCatchupState(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: A2ANode_GetThreadCatchupState_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(A2ANodeServer).GetThreadCatchupState(ctx, req.(*ThreadID))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _A2ANode_AddThreadReplica_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ThreadReplicaRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(A2ANodeServer).AddThreadReplica(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: A2ANode_AddThreadReplica_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(A2ANodeServer).AddThreadReplica(ctx, req.(*ThreadReplicaRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _A2ANode_InviteThreadMember_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(InviteThreadMemberRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(A2ANodeServer).InviteThreadMember(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: A2ANode_InviteThreadMember_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(A2ANodeServer).InviteThreadMember(ctx, req.(*InviteThreadMemberRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _A2ANode_AcceptThreadInvite_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AcceptThreadInviteRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(A2ANodeServer).AcceptThreadInvite(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: A2ANode_AcceptThreadInvite_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(A2ANodeServer).AcceptThreadInvite(ctx, req.(*AcceptThreadInviteRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _A2ANode_PromoteThreadMember_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PromoteThreadMemberRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(A2ANodeServer).PromoteThreadMember(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: A2ANode_PromoteThreadMember_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(A2ANodeServer).PromoteThreadMember(ctx, req.(*PromoteThreadMemberRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _A2ANode_RemoveThreadMember_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RemoveThreadMemberRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(A2ANodeServer).RemoveThreadMember(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: A2ANode_RemoveThreadMember_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(A2ANodeServer).RemoveThreadMember(ctx, req.(*RemoveThreadMemberRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _A2ANode_LeaveThread_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ThreadID)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(A2ANodeServer).LeaveThread(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: A2ANode_LeaveThread_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(A2ANodeServer).LeaveThread(ctx, req.(*ThreadID))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _A2ANode_ListThreadMembers_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ThreadID)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(A2ANodeServer).ListThreadMembers(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: A2ANode_ListThreadMembers_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(A2ANodeServer).ListThreadMembers(ctx, req.(*ThreadID))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _A2ANode_RecoverThread_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ThreadID)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(A2ANodeServer).RecoverThread(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: A2ANode_RecoverThread_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(A2ANodeServer).RecoverThread(ctx, req.(*ThreadID))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _A2ANode_RecoverThreadWithHandle_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RecoverThreadRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(A2ANodeServer).RecoverThreadWithHandle(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: A2ANode_RecoverThreadWithHandle_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(A2ANodeServer).RecoverThreadWithHandle(ctx, req.(*RecoverThreadRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
 
 func _A2ANode_Ping_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(PingRequest)
@@ -1520,6 +2380,26 @@ var A2ANode_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _A2ANode_GetIdentity_Handler,
 		},
 		{
+			MethodName: "GetNodeIdentity",
+			Handler:    _A2ANode_GetNodeIdentity_Handler,
+		},
+		{
+			MethodName: "GetAgentIdentity",
+			Handler:    _A2ANode_GetAgentIdentity_Handler,
+		},
+		{
+			MethodName: "BeginAgentSession",
+			Handler:    _A2ANode_BeginAgentSession_Handler,
+		},
+		{
+			MethodName: "CompleteAgentSession",
+			Handler:    _A2ANode_CompleteAgentSession_Handler,
+		},
+		{
+			MethodName: "CloseAgentSession",
+			Handler:    _A2ANode_CloseAgentSession_Handler,
+		},
+		{
 			MethodName: "PublishAgentCard",
 			Handler:    _A2ANode_PublishAgentCard_Handler,
 		},
@@ -1556,6 +2436,26 @@ var A2ANode_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _A2ANode_PublishTaskEvent_Handler,
 		},
 		{
+			MethodName: "SendTaskResult",
+			Handler:    _A2ANode_SendTaskResult_Handler,
+		},
+		{
+			MethodName: "ClaimTask",
+			Handler:    _A2ANode_ClaimTask_Handler,
+		},
+		{
+			MethodName: "RenewTaskLease",
+			Handler:    _A2ANode_RenewTaskLease_Handler,
+		},
+		{
+			MethodName: "CompleteTask",
+			Handler:    _A2ANode_CompleteTask_Handler,
+		},
+		{
+			MethodName: "FailTask",
+			Handler:    _A2ANode_FailTask_Handler,
+		},
+		{
 			MethodName: "SendFile",
 			Handler:    _A2ANode_SendFile_Handler,
 		},
@@ -1564,12 +2464,68 @@ var A2ANode_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _A2ANode_CreateThread_Handler,
 		},
 		{
+			MethodName: "CreateThreadWithRecovery",
+			Handler:    _A2ANode_CreateThreadWithRecovery_Handler,
+		},
+		{
 			MethodName: "GetThread",
 			Handler:    _A2ANode_GetThread_Handler,
 		},
 		{
 			MethodName: "AppendEntry",
 			Handler:    _A2ANode_AppendEntry_Handler,
+		},
+		{
+			MethodName: "PutThreadKeyEnvelope",
+			Handler:    _A2ANode_PutThreadKeyEnvelope_Handler,
+		},
+		{
+			MethodName: "GetThreadKeyEnvelopes",
+			Handler:    _A2ANode_GetThreadKeyEnvelopes_Handler,
+		},
+		{
+			MethodName: "GetRecoveryThreadKeyEnvelopes",
+			Handler:    _A2ANode_GetRecoveryThreadKeyEnvelopes_Handler,
+		},
+		{
+			MethodName: "GetThreadCatchupState",
+			Handler:    _A2ANode_GetThreadCatchupState_Handler,
+		},
+		{
+			MethodName: "AddThreadReplica",
+			Handler:    _A2ANode_AddThreadReplica_Handler,
+		},
+		{
+			MethodName: "InviteThreadMember",
+			Handler:    _A2ANode_InviteThreadMember_Handler,
+		},
+		{
+			MethodName: "AcceptThreadInvite",
+			Handler:    _A2ANode_AcceptThreadInvite_Handler,
+		},
+		{
+			MethodName: "PromoteThreadMember",
+			Handler:    _A2ANode_PromoteThreadMember_Handler,
+		},
+		{
+			MethodName: "RemoveThreadMember",
+			Handler:    _A2ANode_RemoveThreadMember_Handler,
+		},
+		{
+			MethodName: "LeaveThread",
+			Handler:    _A2ANode_LeaveThread_Handler,
+		},
+		{
+			MethodName: "ListThreadMembers",
+			Handler:    _A2ANode_ListThreadMembers_Handler,
+		},
+		{
+			MethodName: "RecoverThread",
+			Handler:    _A2ANode_RecoverThread_Handler,
+		},
+		{
+			MethodName: "RecoverThreadWithHandle",
+			Handler:    _A2ANode_RecoverThreadWithHandle_Handler,
 		},
 		{
 			MethodName: "Ping",
@@ -1664,6 +2620,11 @@ var A2ANode_ServiceDesc = grpc.ServiceDesc{
 		{
 			StreamName:    "SubscribeTaskEvents",
 			Handler:       _A2ANode_SubscribeTaskEvents_Handler,
+			ServerStreams: true,
+		},
+		{
+			StreamName:    "SubscribeTasks",
+			Handler:       _A2ANode_SubscribeTasks_Handler,
 			ServerStreams: true,
 		},
 		{

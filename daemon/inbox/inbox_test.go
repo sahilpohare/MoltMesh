@@ -1,10 +1,13 @@
 package inbox
 
 import (
+	"database/sql"
+	"path/filepath"
 	"testing"
 	"time"
 
 	pb "github.com/sahilpohare/p2p-a2a/gen/a2a/v1"
+	"github.com/sahilpohare/p2p-a2a/pkg/sqlite"
 )
 
 func newTestInbox(t *testing.T) *Inbox {
@@ -15,6 +18,30 @@ func newTestInbox(t *testing.T) *Inbox {
 	}
 	t.Cleanup(func() { ib.Close() })
 	return ib
+}
+
+func TestMigratesLegacyInboxBeforeOwnerIndex(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "legacy.db")
+	db, err := sqlite.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = db.Exec(`CREATE TABLE inbox (id TEXT PRIMARY KEY, from_did TEXT NOT NULL, thread_id TEXT NOT NULL DEFAULT '', task_id TEXT NOT NULL DEFAULT '', payload BLOB NOT NULL, received_at INTEGER NOT NULL, read_at INTEGER)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	ib, err := New(path)
+	if err != nil {
+		t.Fatalf("legacy migration: %v", err)
+	}
+	defer ib.Close()
+	var owner string
+	if err := ib.db.QueryRow(`SELECT owner_did FROM inbox LIMIT 1`).Scan(&owner); err != sql.ErrNoRows {
+		t.Fatalf("owner column query = %v", err)
+	}
 }
 
 func makeMsg(id, from, thread, task string) *pb.Message {
@@ -137,5 +164,30 @@ func TestGetSince(t *testing.T) {
 	msgs, _ := ib.Get("", "", false, 0, ts)
 	if len(msgs) != 1 || msgs[0].Id != "new" {
 		t.Errorf("since filter failed: got %+v", msgs)
+	}
+}
+
+func TestOwnerNamespacesDoNotLeakMessagesOrAcknowledgements(t *testing.T) {
+	ib := newTestInbox(t)
+	if err := ib.PutForOwner("did:key:zAgentA", makeMsg("a", "did:key:zRemote", "", "")); err != nil {
+		t.Fatal(err)
+	}
+	if err := ib.PutForOwner("did:key:zAgentB", makeMsg("b", "did:key:zRemote", "", "")); err != nil {
+		t.Fatal(err)
+	}
+	a, err := ib.GetForOwner("did:key:zAgentA", "", "", false, 0, 0)
+	if err != nil || len(a) != 1 || a[0].Id != "a" {
+		t.Fatalf("agent A inbox = %#v, %v", a, err)
+	}
+	b, err := ib.GetForOwner("did:key:zAgentB", "", "", false, 0, 0)
+	if err != nil || len(b) != 1 || b[0].Id != "b" {
+		t.Fatalf("agent B inbox = %#v, %v", b, err)
+	}
+	if err := ib.AckForOwner("did:key:zAgentA", "b"); err != nil {
+		t.Fatal(err)
+	}
+	unread, err := ib.GetForOwner("did:key:zAgentB", "", "", true, 0, 0)
+	if err != nil || len(unread) != 1 || unread[0].Id != "b" {
+		t.Fatalf("cross-owner acknowledgement leaked: %#v, %v", unread, err)
 	}
 }

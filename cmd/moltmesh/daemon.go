@@ -16,7 +16,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
-	pb "github.com/sahilpohare/p2p-a2a/gen/a2a/v1"
+	"github.com/sahilpohare/p2p-a2a/daemon/actors"
 	"github.com/sahilpohare/p2p-a2a/daemon/deliver"
 	"github.com/sahilpohare/p2p-a2a/daemon/gossip"
 	"github.com/sahilpohare/p2p-a2a/daemon/identity"
@@ -30,6 +30,7 @@ import (
 	"github.com/sahilpohare/p2p-a2a/daemon/tasks"
 	"github.com/sahilpohare/p2p-a2a/daemon/thread"
 	"github.com/sahilpohare/p2p-a2a/daemon/webhook"
+	pb "github.com/sahilpohare/p2p-a2a/gen/a2a/v1"
 	"github.com/sahilpohare/p2p-a2a/pkg/config"
 	"github.com/sahilpohare/p2p-a2a/pkg/format"
 )
@@ -43,12 +44,19 @@ func defaultDataDir() (string, error) {
 	return filepath.Join(home, ".moltmesh"), nil
 }
 
-// resolveDataDir fills in dataDir if empty.
+// resolveDataDir fills in dataDir if empty, and always returns an absolute
+// path — a relative dataDir would otherwise produce a relative default
+// Unix socket path ("<dataDir>/a2a.sock"), which net.Listen("unix", ...)
+// cannot distinguish from a TCP host:port.
 func resolveDataDir(dataDir string) (string, error) {
-	if dataDir != "" {
-		return dataDir, nil
+	if dataDir == "" {
+		var err error
+		dataDir, err = defaultDataDir()
+		if err != nil {
+			return "", err
+		}
 	}
-	return defaultDataDir()
+	return filepath.Abs(dataDir)
 }
 
 // resolveGRPCAddr fills in grpcAddr based on dataDir if empty.
@@ -61,11 +69,12 @@ func resolveGRPCAddr(grpcAddr, dataDir string) string {
 
 func cmdStart(args []string) error {
 	fs := flag.NewFlagSet("start", flag.ExitOnError)
-	dataDir  := fs.String("data-dir",  "", "Data directory")
-	port     := fs.String("port",      "", "Network port")
+	dataDir := fs.String("data-dir", "", "Data directory")
+	port := fs.String("port", "", "Network port")
+	listenHost := fs.String("listen-host", "", "IP to bind libp2p listeners to (default: 0.0.0.0 = all interfaces). Set to a LAN IP to avoid VPN/utun interfaces interfering with mDNS discovery.")
 	grpcAddr := fs.String("grpc-addr", "", "gRPC server address")
-	verbose  := fs.Bool("verbose",  false, "Enable verbose logging")
-	cfgPath  := fs.String("config",    "", "Path to moltbook.toml")
+	verbose := fs.Bool("verbose", false, "Enable verbose logging")
+	cfgPath := fs.String("config", "", "Path to moltbook.toml")
 	fs.Parse(args)
 
 	cfg, err := config.Load(*cfgPath)
@@ -73,10 +82,21 @@ func cmdStart(args []string) error {
 		return fmt.Errorf("load config: %w", err)
 	}
 
-	if *dataDir  != "" { cfg.Daemon.DataDir  = *dataDir }
-	if *port     != "" { cfg.Network.Port     = *port }
-	if *grpcAddr != "" { cfg.Daemon.GRPCAddr  = *grpcAddr }
-	if *verbose           { cfg.Daemon.Verbose  = true }
+	if *dataDir != "" {
+		cfg.Daemon.DataDir = *dataDir
+	}
+	if *port != "" {
+		cfg.Network.Port = *port
+	}
+	if *listenHost != "" {
+		cfg.Network.ListenHost = *listenHost
+	}
+	if *grpcAddr != "" {
+		cfg.Daemon.GRPCAddr = *grpcAddr
+	}
+	if *verbose {
+		cfg.Daemon.Verbose = true
+	}
 
 	dir, err := resolveDataDir(cfg.Daemon.DataDir)
 	if err != nil {
@@ -173,8 +193,12 @@ func runDaemon(cfg *config.Config) error {
 }
 
 func run(cfg *config.Config, log *zap.Logger) error {
-	dataDir  := cfg.Daemon.DataDir
-	port     := cfg.Network.Port
+	dataDir := cfg.Daemon.DataDir
+	port := cfg.Network.Port
+	listenHost := cfg.Network.ListenHost
+	if listenHost == "" {
+		listenHost = "0.0.0.0"
+	}
 	grpcAddr := cfg.Daemon.GRPCAddr
 	_ = port
 
@@ -204,11 +228,14 @@ func run(cfg *config.Config, log *zap.Logger) error {
 	defer cancel()
 
 	// ── libp2p node ──────────────────────────────────────────────────────────
-	listenAddrs := []string{"/ip4/0.0.0.0/udp/0/quic-v1", "/ip4/0.0.0.0/tcp/0"}
+	listenAddrs := []string{
+		fmt.Sprintf("/ip4/%s/udp/0/quic-v1", listenHost),
+		fmt.Sprintf("/ip4/%s/tcp/0", listenHost),
+	}
 	if port != "" {
 		listenAddrs = []string{
-			fmt.Sprintf("/ip4/0.0.0.0/udp/%s/quic-v1", port),
-			fmt.Sprintf("/ip4/0.0.0.0/tcp/%s", port),
+			fmt.Sprintf("/ip4/%s/udp/%s/quic-v1", listenHost, port),
+			fmt.Sprintf("/ip4/%s/tcp/%s", listenHost, port),
 		}
 	}
 
@@ -235,24 +262,43 @@ func run(cfg *config.Config, log *zap.Logger) error {
 		return fmt.Errorf("tasks: %w", err)
 	}
 	defer ts.Close()
+	actorSystem, err := actors.NewSystem(ctx, log)
+	if err != nil {
+		return fmt.Errorf("actor system: %w", err)
+	}
+	hierarchy, err := actorSystem.NewHierarchy(ctx)
+	if err != nil {
+		return err
+	}
+	if err := ib.EnableActor(ctx, hierarchy); err != nil {
+		return err
+	}
+	if err := ts.EnableActor(ctx, hierarchy); err != nil {
+		return err
+	}
 
 	// ── registry ─────────────────────────────────────────────────────────────
 	reg := registry.New(n.DHT, id, log)
-	go reg.RunRepublish(ctx)
+	if err := reg.EnableActor(ctx, hierarchy); err != nil {
+		return err
+	}
 
 	// ── name registry ─────────────────────────────────────────────────────────
 	nameReg := names.New(n.DHT, id, log)
+	if err := nameReg.EnableActor(ctx, hierarchy); err != nil {
+		return err
+	}
 	if cfg.Agent.Name != "" {
 		claimCtx, claimCancel := context.WithTimeout(ctx, 15*time.Second)
 		if _, err := nameReg.Claim(claimCtx, cfg.Agent.Name); err != nil {
 			log.Warn("name claim failed", zap.String("name", cfg.Agent.Name), zap.Error(err))
 		}
 		claimCancel()
-		go nameReg.RunRepublish(ctx)
 	}
 
 	if cfg.Agent.Name != "" || cfg.Agent.Description != "" || len(cfg.Agent.Capabilities) > 0 {
 		card := agentCardFromConfig(cfg)
+		card.Multiaddrs = n.P2PAddrs()
 		cardCtx, cardCancel := context.WithTimeout(ctx, 15*time.Second)
 		if err := reg.Publish(cardCtx, card); err != nil {
 			log.Warn("auto-publish agent card", zap.Error(err))
@@ -269,21 +315,39 @@ func run(cfg *config.Config, log *zap.Logger) error {
 
 	// ── gossip ───────────────────────────────────────────────────────────────
 	gm := gossip.New(n.PubSub, log)
+	if err := gm.EnableActor(ctx, hierarchy); err != nil {
+		return err
+	}
 
-	// ── thread manager ────────────────────────────────────────────────────────
+	// ── thread manager (GoAkt actor path — see ADR-0015) ─────────────────────
 	threadStore, err := thread.NewStore(filepath.Join(dataDir, "threads.db"))
 	if err != nil {
 		return fmt.Errorf("thread store: %w", err)
 	}
 	defer threadStore.Close()
 
-	tm := thread.NewManager(ctx, threadStore, id, n.PubSub, log)
-	if err := tm.StartAll(); err != nil {
+	// Publishes committed blocks to Bitswap/DHT so threads stay fetchable
+	// after every replica goes offline (ADR-0015's "stays on the network").
+	durability := thread.NewPublisher(n.DHT, n.Blockstore, n.Bitswap, log)
+	if err := durability.EnableActor(ctx, hierarchy); err != nil {
+		return err
+	}
+	go thread.NewArchiveWorker(n.DHT, n.Host, n.PubSub, n.Blockstore, n.Bitswap, threadStore, id, log).Run(ctx, time.Minute)
+
+	tm := thread.NewActorManager(ctx, actorSystem, threadStore, id, n.PubSub, durability, log)
+	tm.SetPassivationAfter(cfg.ThreadPassivationAfter())
+	if err := tm.UseHierarchy(hierarchy); err != nil {
+		return err
+	}
+	if err := tm.StartAll(ctx); err != nil {
 		log.Warn("thread: start all on boot", zap.Error(err))
 	}
 
 	// ── delivery ─────────────────────────────────────────────────────────────
 	dlv := deliver.New(n.Host, reg, ib, tm, log)
+	if err := dlv.EnableActor(hierarchy); err != nil {
+		return err
+	}
 
 	// ── outbox ───────────────────────────────────────────────────────────────
 	ob, err := outbox.New(
@@ -295,7 +359,9 @@ func run(cfg *config.Config, log *zap.Logger) error {
 		return fmt.Errorf("outbox: %w", err)
 	}
 	defer ob.Close()
-	go ob.Run(ctx)
+	if err := ob.EnableActor(ctx, hierarchy); err != nil {
+		return err
+	}
 
 	// ── network manager ───────────────────────────────────────────────────────
 	netStore, err := network.New(filepath.Join(dataDir, "networks.db"))
@@ -303,10 +369,17 @@ func run(cfg *config.Config, log *zap.Logger) error {
 		return fmt.Errorf("network store: %w", err)
 	}
 	defer netStore.Close()
+	if err := netStore.EnableActor(ctx, hierarchy); err != nil {
+		return err
+	}
 	nm := network.NewManager(netStore, gm)
 
 	// ── webhook ───────────────────────────────────────────────────────────────
 	wh := webhook.New(log)
+	if err := wh.EnableActor(ctx, hierarchy); err != nil {
+		return err
+	}
+	defer actorSystem.Stop(context.Background())
 
 	// ── gRPC server ───────────────────────────────────────────────────────────
 	if grpcAddr == "" {
@@ -315,6 +388,7 @@ func run(cfg *config.Config, log *zap.Logger) error {
 
 	rpc.SetVersion(version)
 	srv := rpc.New(id, ib, ob, ts, reg, gm, dlv, tm, nm, wh, nameReg, n, n.P2PAddrs(), log)
+	dlv.SetMessageHandler(srv.HandleIncoming)
 	grpcServer := grpc.NewServer()
 	pb.RegisterA2ANodeServer(grpcServer, srv)
 
@@ -430,7 +504,7 @@ func cmdStop(args []string) error {
 // dialClient parses --data-dir and --grpc-addr, then connects.
 func dialClient(args []string, cmdName string) (*grpc.ClientConn, pb.A2ANodeClient, string, error) {
 	fs := flag.NewFlagSet(cmdName, flag.ExitOnError)
-	dataDir  := fs.String("data-dir",  "", "Data directory")
+	dataDir := fs.String("data-dir", "", "Data directory")
 	grpcAddr := fs.String("grpc-addr", "", "gRPC server address")
 	fs.Parse(args)
 

@@ -216,6 +216,25 @@ for e in client.subscribe_thread(thread.id):
 # get thread metadata
 meta = client.get_thread(thread.id)
 print(meta.replica_dids, meta.f, meta.n)
+
+# a late participant is a non-voting observer; this never changes quorum
+client.add_thread_observer(thread.id, "did:key:zObserver")
+
+# a fresh daemon can retrieve and verify the history from only its thread ID
+recovered = client.recover_thread(thread.id)
+```
+
+### Durable task handoff
+
+Workers should return terminal results to the initiator with `send_task_result`.
+The daemon persists and retries the message while the initiator is offline, and
+the initiator applies the result idempotently to the associated task and thread.
+
+```python
+client.send_task_result(
+    "did:key:zInitiator", task.id, thread_id=task.thread_id,
+    data=b"4", status=client.STATUS_COMPLETED,
+)
 ```
 
 **Backend reference:**

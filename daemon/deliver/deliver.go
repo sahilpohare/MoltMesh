@@ -30,11 +30,13 @@ import (
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/sahilpohare/p2p-a2a/pkg/p2putil"
-	pb "github.com/sahilpohare/p2p-a2a/gen/a2a/v1"
-	"github.com/sahilpohare/p2p-a2a/daemon/inbox"
+	appactors "github.com/sahilpohare/p2p-a2a/daemon/actors"
 	"github.com/sahilpohare/p2p-a2a/daemon/identity"
+	"github.com/sahilpohare/p2p-a2a/daemon/inbox"
 	"github.com/sahilpohare/p2p-a2a/daemon/registry"
+	threadpkg "github.com/sahilpohare/p2p-a2a/daemon/thread"
+	pb "github.com/sahilpohare/p2p-a2a/gen/a2a/v1"
+	"github.com/sahilpohare/p2p-a2a/pkg/p2putil"
 )
 
 // marshalBufPool reduces GC pressure by reusing marshal buffers on the
@@ -62,17 +64,80 @@ type ThreadInviter interface {
 }
 
 type Deliverer struct {
-	host     host.Host
-	registry *registry.Registry
-	threads  ThreadInviter
-	log      *zap.Logger
+	host       host.Host
+	registry   *registry.Registry
+	threads    ThreadInviter
+	log        *zap.Logger
+	hierarchy  *appactors.Hierarchy
+	peerMu     sync.Mutex
+	peerExec   map[peer.ID]*peerExecutor
+	supervisor *appactors.Executor
+	onMessage  func(*pb.Message) error
+}
+
+// SetMessageHandler installs an application-level handler invoked after an
+// incoming message is durably stored and before it is acknowledged.
+func (d *Deliverer) SetMessageHandler(handler func(*pb.Message) error) { d.onMessage = handler }
+
+type peerExecutor struct {
+	exec *appactors.Executor
+	refs int
 }
 
 // New creates a Deliverer and registers the receive handler on the host.
 func New(h host.Host, reg *registry.Registry, ib *inbox.Inbox, tm ThreadInviter, log *zap.Logger) *Deliverer {
-	d := &Deliverer{host: h, registry: reg, threads: tm, log: log}
+	d := &Deliverer{host: h, registry: reg, threads: tm, log: log, peerExec: make(map[peer.ID]*peerExecutor)}
 	h.SetStreamHandler(Protocol, d.receiveHandler(ib))
 	return d
+}
+
+func (d *Deliverer) EnableActor(h *appactors.Hierarchy) error {
+	exec, err := appactors.NewExecutor(context.Background(), h, "delivery")
+	if err != nil {
+		return err
+	}
+	d.hierarchy, d.supervisor = h, exec
+	return nil
+}
+
+func (d *Deliverer) executor(ctx context.Context, id peer.ID) (*appactors.Executor, error) {
+	d.peerMu.Lock()
+	defer d.peerMu.Unlock()
+	if entry := d.peerExec[id]; entry != nil && entry.exec.PID().IsRunning() {
+		entry.refs++
+		return entry.exec, nil
+	}
+	exec, err := appactors.NewExecutorUnder(ctx, d.hierarchy, d.supervisor.PID(), "peer-"+id.String())
+	if err != nil {
+		return nil, err
+	}
+	d.peerExec[id] = &peerExecutor{exec: exec, refs: 1}
+	appactors.Metrics.PeerActivated()
+	return exec, nil
+}
+
+func (d *Deliverer) releaseExecutor(id peer.ID, exec *appactors.Executor) {
+	d.peerMu.Lock()
+	entry := d.peerExec[id]
+	if entry == nil || entry.exec != exec {
+		d.peerMu.Unlock()
+		return
+	}
+	entry.refs--
+	if entry.refs > 0 {
+		d.peerMu.Unlock()
+		return
+	}
+	delete(d.peerExec, id)
+	d.peerMu.Unlock()
+	_ = exec.Stop(context.Background())
+	appactors.Metrics.PeerPassivated()
+}
+
+func (d *Deliverer) ActivePeerActors() int {
+	d.peerMu.Lock()
+	defer d.peerMu.Unlock()
+	return len(d.peerExec)
 }
 
 // DeliverFunc returns an outbox.DeliverFunc that sends messages via libp2p streams.
@@ -121,6 +186,18 @@ func (d *Deliverer) Send(ctx context.Context, msg *pb.Message) error {
 
 // sendToPeer opens a stream to peerID and writes the message.
 func (d *Deliverer) sendToPeer(ctx context.Context, peerID peer.ID, msg *pb.Message) error {
+	if d.hierarchy != nil {
+		exec, err := d.executor(ctx, peerID)
+		if err != nil {
+			return err
+		}
+		defer d.releaseExecutor(peerID, exec)
+		_, err = exec.Call(ctx, func() (any, error) { return nil, d.sendToPeerRaw(ctx, peerID, msg) })
+		return err
+	}
+	return d.sendToPeerRaw(ctx, peerID, msg)
+}
+func (d *Deliverer) sendToPeerRaw(ctx context.Context, peerID peer.ID, msg *pb.Message) error {
 	streamCtx, cancel := context.WithTimeout(ctx, streamTimeout)
 	defer cancel()
 	s, err := d.host.NewStream(streamCtx, peerID, Protocol)
@@ -163,6 +240,23 @@ func (d *Deliverer) sendToPeer(ctx context.Context, peerID peer.ID, msg *pb.Mess
 // ─── receive handler ──────────────────────────────────────────────────────────
 
 func (d *Deliverer) receiveHandler(ib *inbox.Inbox) network.StreamHandler {
+	raw := d.receiveHandlerRaw(ib)
+	return func(s network.Stream) {
+		if d.hierarchy == nil {
+			raw(s)
+			return
+		}
+		exec, err := d.executor(context.Background(), s.Conn().RemotePeer())
+		if err != nil {
+			_ = s.Reset()
+			return
+		}
+		defer d.releaseExecutor(s.Conn().RemotePeer(), exec)
+		_, _ = exec.Call(context.Background(), func() (any, error) { raw(s); return nil, nil })
+	}
+}
+
+func (d *Deliverer) receiveHandlerRaw(ib *inbox.Inbox) network.StreamHandler {
 	return func(s network.Stream) {
 		defer s.Close()
 		s.SetDeadline(time.Now().Add(streamTimeout)) //nolint:errcheck
@@ -209,6 +303,17 @@ func (d *Deliverer) receiveHandler(ib *inbox.Inbox) network.StreamHandler {
 			s.Write([]byte{0x00}) //nolint:errcheck
 			return
 		}
+		localPubKey, err := s.Conn().LocalPeer().ExtractPublicKey()
+		if err != nil {
+			s.Write([]byte{0x00}) //nolint:errcheck
+			return
+		}
+		localRaw, err := localPubKey.Raw()
+		if err != nil || msg.ToDid != identity.DIDFromPubBytes(localRaw) {
+			d.log.Warn("recipient DID mismatch", zap.String("claimed", msg.ToDid))
+			s.Write([]byte{0x00}) //nolint:errcheck
+			return
+		}
 
 		// Handle thread invites before hitting the inbox.
 		if msg.Kind == pb.MessageKind_MESSAGE_KIND_THREAD_INVITE {
@@ -218,13 +323,29 @@ func (d *Deliverer) receiveHandler(ib *inbox.Inbox) network.StreamHandler {
 				s.Write([]byte{0x00}) //nolint:errcheck
 				return
 			}
-			if d.threads != nil {
-				if err := d.threads.InviteReceived(&thread); err != nil {
-					d.log.Warn("thread invite", zap.String("thread", thread.Id), zap.Error(err))
-				} else {
-					d.log.Info("thread invite accepted", zap.String("thread", thread.Id))
+			if d.threads == nil {
+				d.log.Warn("thread invite rejected: thread manager unavailable", zap.String("thread", thread.Id))
+				s.Write([]byte{0x00}) //nolint:errcheck
+				return
+			}
+			member := false
+			for _, did := range thread.ReplicaDids {
+				if did == msg.ToDid {
+					member = true
+					break
 				}
 			}
+			if threadpkg.VerifyDescriptor(&thread) != nil || !member {
+				d.log.Warn("unauthorized thread invite", zap.String("thread", thread.Id), zap.String("from", msg.FromDid))
+				s.Write([]byte{0x00}) //nolint:errcheck
+				return
+			}
+			if err := d.threads.InviteReceived(&thread); err != nil {
+				d.log.Warn("thread invite", zap.String("thread", thread.Id), zap.Error(err))
+				s.Write([]byte{0x00}) //nolint:errcheck
+				return
+			}
+			d.log.Info("thread invite accepted", zap.String("thread", thread.Id))
 			s.Write([]byte{ackOK}) //nolint:errcheck
 			return
 		}
@@ -233,6 +354,13 @@ func (d *Deliverer) receiveHandler(ib *inbox.Inbox) network.StreamHandler {
 			d.log.Warn("inbox put", zap.String("msg_id", msg.Id), zap.Error(err))
 			s.Write([]byte{0x00}) //nolint:errcheck
 			return
+		}
+		if d.onMessage != nil {
+			if err := d.onMessage(&msg); err != nil {
+				d.log.Warn("handle incoming message", zap.String("msg_id", msg.Id), zap.Error(err))
+				s.Write([]byte{0x00}) //nolint:errcheck
+				return
+			}
 		}
 
 		d.log.Info("message received",
@@ -244,4 +372,3 @@ func (d *Deliverer) receiveHandler(ib *inbox.Inbox) network.StreamHandler {
 }
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
-

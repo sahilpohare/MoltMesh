@@ -39,6 +39,31 @@ class A2ANodeStub(object):
                 request_serializer=a2a__pb2.Empty.SerializeToString,
                 response_deserializer=a2a__pb2.AgentIdentity.FromString,
                 _registered_method=True)
+        self.GetNodeIdentity = channel.unary_unary(
+                '/a2a.v1.A2ANode/GetNodeIdentity',
+                request_serializer=a2a__pb2.Empty.SerializeToString,
+                response_deserializer=a2a__pb2.NodeIdentity.FromString,
+                _registered_method=True)
+        self.GetAgentIdentity = channel.unary_unary(
+                '/a2a.v1.A2ANode/GetAgentIdentity',
+                request_serializer=a2a__pb2.Empty.SerializeToString,
+                response_deserializer=a2a__pb2.AgentIdentity.FromString,
+                _registered_method=True)
+        self.BeginAgentSession = channel.unary_unary(
+                '/a2a.v1.A2ANode/BeginAgentSession',
+                request_serializer=a2a__pb2.BeginAgentSessionRequest.SerializeToString,
+                response_deserializer=a2a__pb2.AgentChallenge.FromString,
+                _registered_method=True)
+        self.CompleteAgentSession = channel.unary_unary(
+                '/a2a.v1.A2ANode/CompleteAgentSession',
+                request_serializer=a2a__pb2.CompleteAgentSessionRequest.SerializeToString,
+                response_deserializer=a2a__pb2.AgentSession.FromString,
+                _registered_method=True)
+        self.CloseAgentSession = channel.unary_unary(
+                '/a2a.v1.A2ANode/CloseAgentSession',
+                request_serializer=a2a__pb2.Empty.SerializeToString,
+                response_deserializer=a2a__pb2.Empty.FromString,
+                _registered_method=True)
         self.PublishAgentCard = channel.unary_unary(
                 '/a2a.v1.A2ANode/PublishAgentCard',
                 request_serializer=a2a__pb2.AgentCard.SerializeToString,
@@ -109,6 +134,36 @@ class A2ANodeStub(object):
                 request_serializer=a2a__pb2.TaskID.SerializeToString,
                 response_deserializer=a2a__pb2.TaskEvent.FromString,
                 _registered_method=True)
+        self.SendTaskResult = channel.unary_unary(
+                '/a2a.v1.A2ANode/SendTaskResult',
+                request_serializer=a2a__pb2.SendTaskResultRequest.SerializeToString,
+                response_deserializer=a2a__pb2.SendResult.FromString,
+                _registered_method=True)
+        self.SubscribeTasks = channel.unary_stream(
+                '/a2a.v1.A2ANode/SubscribeTasks',
+                request_serializer=a2a__pb2.WorkerSubscription.SerializeToString,
+                response_deserializer=a2a__pb2.TaskDelivery.FromString,
+                _registered_method=True)
+        self.ClaimTask = channel.unary_unary(
+                '/a2a.v1.A2ANode/ClaimTask',
+                request_serializer=a2a__pb2.ClaimTaskRequest.SerializeToString,
+                response_deserializer=a2a__pb2.TaskLease.FromString,
+                _registered_method=True)
+        self.RenewTaskLease = channel.unary_unary(
+                '/a2a.v1.A2ANode/RenewTaskLease',
+                request_serializer=a2a__pb2.RenewTaskLeaseRequest.SerializeToString,
+                response_deserializer=a2a__pb2.TaskLease.FromString,
+                _registered_method=True)
+        self.CompleteTask = channel.unary_unary(
+                '/a2a.v1.A2ANode/CompleteTask',
+                request_serializer=a2a__pb2.CompleteTaskRequest.SerializeToString,
+                response_deserializer=a2a__pb2.Task.FromString,
+                _registered_method=True)
+        self.FailTask = channel.unary_unary(
+                '/a2a.v1.A2ANode/FailTask',
+                request_serializer=a2a__pb2.FailTaskRequest.SerializeToString,
+                response_deserializer=a2a__pb2.Task.FromString,
+                _registered_method=True)
         self.SendFile = channel.unary_unary(
                 '/a2a.v1.A2ANode/SendFile',
                 request_serializer=a2a__pb2.SendFileRequest.SerializeToString,
@@ -124,6 +179,11 @@ class A2ANodeStub(object):
                 request_serializer=a2a__pb2.CreateThreadRequest.SerializeToString,
                 response_deserializer=a2a__pb2.Thread.FromString,
                 _registered_method=True)
+        self.CreateThreadWithRecovery = channel.unary_unary(
+                '/a2a.v1.A2ANode/CreateThreadWithRecovery',
+                request_serializer=a2a__pb2.CreateThreadRequest.SerializeToString,
+                response_deserializer=a2a__pb2.CreateThreadResponse.FromString,
+                _registered_method=True)
         self.GetThread = channel.unary_unary(
                 '/a2a.v1.A2ANode/GetThread',
                 request_serializer=a2a__pb2.ThreadID.SerializeToString,
@@ -134,6 +194,21 @@ class A2ANodeStub(object):
                 request_serializer=a2a__pb2.AppendEntryRequest.SerializeToString,
                 response_deserializer=a2a__pb2.AppendEntryResult.FromString,
                 _registered_method=True)
+        self.PutThreadKeyEnvelope = channel.unary_unary(
+                '/a2a.v1.A2ANode/PutThreadKeyEnvelope',
+                request_serializer=a2a__pb2.ThreadKeyEnvelope.SerializeToString,
+                response_deserializer=a2a__pb2.Empty.FromString,
+                _registered_method=True)
+        self.GetThreadKeyEnvelopes = channel.unary_unary(
+                '/a2a.v1.A2ANode/GetThreadKeyEnvelopes',
+                request_serializer=a2a__pb2.ThreadKeyEnvelopeQuery.SerializeToString,
+                response_deserializer=a2a__pb2.ThreadKeyEnvelopes.FromString,
+                _registered_method=True)
+        self.GetRecoveryThreadKeyEnvelopes = channel.unary_unary(
+                '/a2a.v1.A2ANode/GetRecoveryThreadKeyEnvelopes',
+                request_serializer=a2a__pb2.RecoverThreadRequest.SerializeToString,
+                response_deserializer=a2a__pb2.ThreadKeyEnvelopes.FromString,
+                _registered_method=True)
         self.GetThreadEntries = channel.unary_stream(
                 '/a2a.v1.A2ANode/GetThreadEntries',
                 request_serializer=a2a__pb2.GetThreadEntriesRequest.SerializeToString,
@@ -143,6 +218,56 @@ class A2ANodeStub(object):
                 '/a2a.v1.A2ANode/SubscribeThread',
                 request_serializer=a2a__pb2.SubscribeThreadRequest.SerializeToString,
                 response_deserializer=a2a__pb2.ThreadEntryWithPos.FromString,
+                _registered_method=True)
+        self.GetThreadCatchupState = channel.unary_unary(
+                '/a2a.v1.A2ANode/GetThreadCatchupState',
+                request_serializer=a2a__pb2.ThreadID.SerializeToString,
+                response_deserializer=a2a__pb2.ThreadCatchupState.FromString,
+                _registered_method=True)
+        self.AddThreadReplica = channel.unary_unary(
+                '/a2a.v1.A2ANode/AddThreadReplica',
+                request_serializer=a2a__pb2.ThreadReplicaRequest.SerializeToString,
+                response_deserializer=a2a__pb2.Thread.FromString,
+                _registered_method=True)
+        self.InviteThreadMember = channel.unary_unary(
+                '/a2a.v1.A2ANode/InviteThreadMember',
+                request_serializer=a2a__pb2.InviteThreadMemberRequest.SerializeToString,
+                response_deserializer=a2a__pb2.ThreadMembershipChange.FromString,
+                _registered_method=True)
+        self.AcceptThreadInvite = channel.unary_unary(
+                '/a2a.v1.A2ANode/AcceptThreadInvite',
+                request_serializer=a2a__pb2.AcceptThreadInviteRequest.SerializeToString,
+                response_deserializer=a2a__pb2.Thread.FromString,
+                _registered_method=True)
+        self.PromoteThreadMember = channel.unary_unary(
+                '/a2a.v1.A2ANode/PromoteThreadMember',
+                request_serializer=a2a__pb2.PromoteThreadMemberRequest.SerializeToString,
+                response_deserializer=a2a__pb2.ThreadMembershipChange.FromString,
+                _registered_method=True)
+        self.RemoveThreadMember = channel.unary_unary(
+                '/a2a.v1.A2ANode/RemoveThreadMember',
+                request_serializer=a2a__pb2.RemoveThreadMemberRequest.SerializeToString,
+                response_deserializer=a2a__pb2.ThreadMembershipChange.FromString,
+                _registered_method=True)
+        self.LeaveThread = channel.unary_unary(
+                '/a2a.v1.A2ANode/LeaveThread',
+                request_serializer=a2a__pb2.ThreadID.SerializeToString,
+                response_deserializer=a2a__pb2.ThreadMembershipChange.FromString,
+                _registered_method=True)
+        self.ListThreadMembers = channel.unary_unary(
+                '/a2a.v1.A2ANode/ListThreadMembers',
+                request_serializer=a2a__pb2.ThreadID.SerializeToString,
+                response_deserializer=a2a__pb2.ThreadMembers.FromString,
+                _registered_method=True)
+        self.RecoverThread = channel.unary_unary(
+                '/a2a.v1.A2ANode/RecoverThread',
+                request_serializer=a2a__pb2.ThreadID.SerializeToString,
+                response_deserializer=a2a__pb2.Thread.FromString,
+                _registered_method=True)
+        self.RecoverThreadWithHandle = channel.unary_unary(
+                '/a2a.v1.A2ANode/RecoverThreadWithHandle',
+                request_serializer=a2a__pb2.RecoverThreadRequest.SerializeToString,
+                response_deserializer=a2a__pb2.RecoverThreadResponse.FromString,
                 _registered_method=True)
         self.Ping = channel.unary_unary(
                 '/a2a.v1.A2ANode/Ping',
@@ -229,6 +354,16 @@ class A2ANodeStub(object):
                 request_serializer=a2a__pb2.ResolveNameRequest.SerializeToString,
                 response_deserializer=a2a__pb2.NameClaimResponse.FromString,
                 _registered_method=True)
+        self.ConnectPeer = channel.unary_unary(
+                '/a2a.v1.A2ANode/ConnectPeer',
+                request_serializer=a2a__pb2.ConnectPeerRequest.SerializeToString,
+                response_deserializer=a2a__pb2.ConnectPeerResponse.FromString,
+                _registered_method=True)
+        self.DisconnectPeer = channel.unary_unary(
+                '/a2a.v1.A2ANode/DisconnectPeer',
+                request_serializer=a2a__pb2.ConnectPeerRequest.SerializeToString,
+                response_deserializer=a2a__pb2.Empty.FromString,
+                _registered_method=True)
 
 
 class A2ANodeServicer(object):
@@ -237,6 +372,36 @@ class A2ANodeServicer(object):
     def GetIdentity(self, request, context):
         """Identity
         """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetNodeIdentity(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetAgentIdentity(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def BeginAgentSession(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def CompleteAgentSession(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def CloseAgentSession(self, request, context):
+        """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
@@ -328,6 +493,42 @@ class A2ANodeServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def SendTaskResult(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def SubscribeTasks(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ClaimTask(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def RenewTaskLease(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def CompleteTask(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def FailTask(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
     def SendFile(self, request, context):
         """Files
         """
@@ -348,6 +549,12 @@ class A2ANodeServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def CreateThreadWithRecovery(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
     def GetThread(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
@@ -360,6 +567,26 @@ class A2ANodeServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def PutThreadKeyEnvelope(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetThreadKeyEnvelopes(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetRecoveryThreadKeyEnvelopes(self, request, context):
+        """Recovery envelopes are readable only with the complete bearer recovery
+        capability, never with a normal member session.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
     def GetThreadEntries(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
@@ -367,6 +594,68 @@ class A2ANodeServicer(object):
         raise NotImplementedError('Method not implemented!')
 
     def SubscribeThread(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetThreadCatchupState(self, request, context):
+        """An observer obtains its local committed state then signs it as a
+        catch-up attestation for the creator's promotion request.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def AddThreadReplica(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def InviteThreadMember(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def AcceptThreadInvite(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def PromoteThreadMember(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def RemoveThreadMember(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def LeaveThread(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ListThreadMembers(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def RecoverThread(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def RecoverThreadWithHandle(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -479,6 +768,19 @@ class A2ANodeServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def ConnectPeer(self, request, context):
+        """Peer connections
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def DisconnectPeer(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_A2ANodeServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -486,6 +788,31 @@ def add_A2ANodeServicer_to_server(servicer, server):
                     servicer.GetIdentity,
                     request_deserializer=a2a__pb2.Empty.FromString,
                     response_serializer=a2a__pb2.AgentIdentity.SerializeToString,
+            ),
+            'GetNodeIdentity': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetNodeIdentity,
+                    request_deserializer=a2a__pb2.Empty.FromString,
+                    response_serializer=a2a__pb2.NodeIdentity.SerializeToString,
+            ),
+            'GetAgentIdentity': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetAgentIdentity,
+                    request_deserializer=a2a__pb2.Empty.FromString,
+                    response_serializer=a2a__pb2.AgentIdentity.SerializeToString,
+            ),
+            'BeginAgentSession': grpc.unary_unary_rpc_method_handler(
+                    servicer.BeginAgentSession,
+                    request_deserializer=a2a__pb2.BeginAgentSessionRequest.FromString,
+                    response_serializer=a2a__pb2.AgentChallenge.SerializeToString,
+            ),
+            'CompleteAgentSession': grpc.unary_unary_rpc_method_handler(
+                    servicer.CompleteAgentSession,
+                    request_deserializer=a2a__pb2.CompleteAgentSessionRequest.FromString,
+                    response_serializer=a2a__pb2.AgentSession.SerializeToString,
+            ),
+            'CloseAgentSession': grpc.unary_unary_rpc_method_handler(
+                    servicer.CloseAgentSession,
+                    request_deserializer=a2a__pb2.Empty.FromString,
+                    response_serializer=a2a__pb2.Empty.SerializeToString,
             ),
             'PublishAgentCard': grpc.unary_unary_rpc_method_handler(
                     servicer.PublishAgentCard,
@@ -557,6 +884,36 @@ def add_A2ANodeServicer_to_server(servicer, server):
                     request_deserializer=a2a__pb2.TaskID.FromString,
                     response_serializer=a2a__pb2.TaskEvent.SerializeToString,
             ),
+            'SendTaskResult': grpc.unary_unary_rpc_method_handler(
+                    servicer.SendTaskResult,
+                    request_deserializer=a2a__pb2.SendTaskResultRequest.FromString,
+                    response_serializer=a2a__pb2.SendResult.SerializeToString,
+            ),
+            'SubscribeTasks': grpc.unary_stream_rpc_method_handler(
+                    servicer.SubscribeTasks,
+                    request_deserializer=a2a__pb2.WorkerSubscription.FromString,
+                    response_serializer=a2a__pb2.TaskDelivery.SerializeToString,
+            ),
+            'ClaimTask': grpc.unary_unary_rpc_method_handler(
+                    servicer.ClaimTask,
+                    request_deserializer=a2a__pb2.ClaimTaskRequest.FromString,
+                    response_serializer=a2a__pb2.TaskLease.SerializeToString,
+            ),
+            'RenewTaskLease': grpc.unary_unary_rpc_method_handler(
+                    servicer.RenewTaskLease,
+                    request_deserializer=a2a__pb2.RenewTaskLeaseRequest.FromString,
+                    response_serializer=a2a__pb2.TaskLease.SerializeToString,
+            ),
+            'CompleteTask': grpc.unary_unary_rpc_method_handler(
+                    servicer.CompleteTask,
+                    request_deserializer=a2a__pb2.CompleteTaskRequest.FromString,
+                    response_serializer=a2a__pb2.Task.SerializeToString,
+            ),
+            'FailTask': grpc.unary_unary_rpc_method_handler(
+                    servicer.FailTask,
+                    request_deserializer=a2a__pb2.FailTaskRequest.FromString,
+                    response_serializer=a2a__pb2.Task.SerializeToString,
+            ),
             'SendFile': grpc.unary_unary_rpc_method_handler(
                     servicer.SendFile,
                     request_deserializer=a2a__pb2.SendFileRequest.FromString,
@@ -572,6 +929,11 @@ def add_A2ANodeServicer_to_server(servicer, server):
                     request_deserializer=a2a__pb2.CreateThreadRequest.FromString,
                     response_serializer=a2a__pb2.Thread.SerializeToString,
             ),
+            'CreateThreadWithRecovery': grpc.unary_unary_rpc_method_handler(
+                    servicer.CreateThreadWithRecovery,
+                    request_deserializer=a2a__pb2.CreateThreadRequest.FromString,
+                    response_serializer=a2a__pb2.CreateThreadResponse.SerializeToString,
+            ),
             'GetThread': grpc.unary_unary_rpc_method_handler(
                     servicer.GetThread,
                     request_deserializer=a2a__pb2.ThreadID.FromString,
@@ -582,6 +944,21 @@ def add_A2ANodeServicer_to_server(servicer, server):
                     request_deserializer=a2a__pb2.AppendEntryRequest.FromString,
                     response_serializer=a2a__pb2.AppendEntryResult.SerializeToString,
             ),
+            'PutThreadKeyEnvelope': grpc.unary_unary_rpc_method_handler(
+                    servicer.PutThreadKeyEnvelope,
+                    request_deserializer=a2a__pb2.ThreadKeyEnvelope.FromString,
+                    response_serializer=a2a__pb2.Empty.SerializeToString,
+            ),
+            'GetThreadKeyEnvelopes': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetThreadKeyEnvelopes,
+                    request_deserializer=a2a__pb2.ThreadKeyEnvelopeQuery.FromString,
+                    response_serializer=a2a__pb2.ThreadKeyEnvelopes.SerializeToString,
+            ),
+            'GetRecoveryThreadKeyEnvelopes': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetRecoveryThreadKeyEnvelopes,
+                    request_deserializer=a2a__pb2.RecoverThreadRequest.FromString,
+                    response_serializer=a2a__pb2.ThreadKeyEnvelopes.SerializeToString,
+            ),
             'GetThreadEntries': grpc.unary_stream_rpc_method_handler(
                     servicer.GetThreadEntries,
                     request_deserializer=a2a__pb2.GetThreadEntriesRequest.FromString,
@@ -591,6 +968,56 @@ def add_A2ANodeServicer_to_server(servicer, server):
                     servicer.SubscribeThread,
                     request_deserializer=a2a__pb2.SubscribeThreadRequest.FromString,
                     response_serializer=a2a__pb2.ThreadEntryWithPos.SerializeToString,
+            ),
+            'GetThreadCatchupState': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetThreadCatchupState,
+                    request_deserializer=a2a__pb2.ThreadID.FromString,
+                    response_serializer=a2a__pb2.ThreadCatchupState.SerializeToString,
+            ),
+            'AddThreadReplica': grpc.unary_unary_rpc_method_handler(
+                    servicer.AddThreadReplica,
+                    request_deserializer=a2a__pb2.ThreadReplicaRequest.FromString,
+                    response_serializer=a2a__pb2.Thread.SerializeToString,
+            ),
+            'InviteThreadMember': grpc.unary_unary_rpc_method_handler(
+                    servicer.InviteThreadMember,
+                    request_deserializer=a2a__pb2.InviteThreadMemberRequest.FromString,
+                    response_serializer=a2a__pb2.ThreadMembershipChange.SerializeToString,
+            ),
+            'AcceptThreadInvite': grpc.unary_unary_rpc_method_handler(
+                    servicer.AcceptThreadInvite,
+                    request_deserializer=a2a__pb2.AcceptThreadInviteRequest.FromString,
+                    response_serializer=a2a__pb2.Thread.SerializeToString,
+            ),
+            'PromoteThreadMember': grpc.unary_unary_rpc_method_handler(
+                    servicer.PromoteThreadMember,
+                    request_deserializer=a2a__pb2.PromoteThreadMemberRequest.FromString,
+                    response_serializer=a2a__pb2.ThreadMembershipChange.SerializeToString,
+            ),
+            'RemoveThreadMember': grpc.unary_unary_rpc_method_handler(
+                    servicer.RemoveThreadMember,
+                    request_deserializer=a2a__pb2.RemoveThreadMemberRequest.FromString,
+                    response_serializer=a2a__pb2.ThreadMembershipChange.SerializeToString,
+            ),
+            'LeaveThread': grpc.unary_unary_rpc_method_handler(
+                    servicer.LeaveThread,
+                    request_deserializer=a2a__pb2.ThreadID.FromString,
+                    response_serializer=a2a__pb2.ThreadMembershipChange.SerializeToString,
+            ),
+            'ListThreadMembers': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListThreadMembers,
+                    request_deserializer=a2a__pb2.ThreadID.FromString,
+                    response_serializer=a2a__pb2.ThreadMembers.SerializeToString,
+            ),
+            'RecoverThread': grpc.unary_unary_rpc_method_handler(
+                    servicer.RecoverThread,
+                    request_deserializer=a2a__pb2.ThreadID.FromString,
+                    response_serializer=a2a__pb2.Thread.SerializeToString,
+            ),
+            'RecoverThreadWithHandle': grpc.unary_unary_rpc_method_handler(
+                    servicer.RecoverThreadWithHandle,
+                    request_deserializer=a2a__pb2.RecoverThreadRequest.FromString,
+                    response_serializer=a2a__pb2.RecoverThreadResponse.SerializeToString,
             ),
             'Ping': grpc.unary_unary_rpc_method_handler(
                     servicer.Ping,
@@ -677,6 +1104,16 @@ def add_A2ANodeServicer_to_server(servicer, server):
                     request_deserializer=a2a__pb2.ResolveNameRequest.FromString,
                     response_serializer=a2a__pb2.NameClaimResponse.SerializeToString,
             ),
+            'ConnectPeer': grpc.unary_unary_rpc_method_handler(
+                    servicer.ConnectPeer,
+                    request_deserializer=a2a__pb2.ConnectPeerRequest.FromString,
+                    response_serializer=a2a__pb2.ConnectPeerResponse.SerializeToString,
+            ),
+            'DisconnectPeer': grpc.unary_unary_rpc_method_handler(
+                    servicer.DisconnectPeer,
+                    request_deserializer=a2a__pb2.ConnectPeerRequest.FromString,
+                    response_serializer=a2a__pb2.Empty.SerializeToString,
+            ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
             'a2a.v1.A2ANode', rpc_method_handlers)
@@ -705,6 +1142,141 @@ class A2ANode(object):
             '/a2a.v1.A2ANode/GetIdentity',
             a2a__pb2.Empty.SerializeToString,
             a2a__pb2.AgentIdentity.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetNodeIdentity(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/a2a.v1.A2ANode/GetNodeIdentity',
+            a2a__pb2.Empty.SerializeToString,
+            a2a__pb2.NodeIdentity.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetAgentIdentity(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/a2a.v1.A2ANode/GetAgentIdentity',
+            a2a__pb2.Empty.SerializeToString,
+            a2a__pb2.AgentIdentity.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def BeginAgentSession(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/a2a.v1.A2ANode/BeginAgentSession',
+            a2a__pb2.BeginAgentSessionRequest.SerializeToString,
+            a2a__pb2.AgentChallenge.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def CompleteAgentSession(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/a2a.v1.A2ANode/CompleteAgentSession',
+            a2a__pb2.CompleteAgentSessionRequest.SerializeToString,
+            a2a__pb2.AgentSession.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def CloseAgentSession(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/a2a.v1.A2ANode/CloseAgentSession',
+            a2a__pb2.Empty.SerializeToString,
+            a2a__pb2.Empty.FromString,
             options,
             channel_credentials,
             insecure,
@@ -1094,6 +1666,168 @@ class A2ANode(object):
             _registered_method=True)
 
     @staticmethod
+    def SendTaskResult(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/a2a.v1.A2ANode/SendTaskResult',
+            a2a__pb2.SendTaskResultRequest.SerializeToString,
+            a2a__pb2.SendResult.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def SubscribeTasks(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_stream(
+            request,
+            target,
+            '/a2a.v1.A2ANode/SubscribeTasks',
+            a2a__pb2.WorkerSubscription.SerializeToString,
+            a2a__pb2.TaskDelivery.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ClaimTask(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/a2a.v1.A2ANode/ClaimTask',
+            a2a__pb2.ClaimTaskRequest.SerializeToString,
+            a2a__pb2.TaskLease.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def RenewTaskLease(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/a2a.v1.A2ANode/RenewTaskLease',
+            a2a__pb2.RenewTaskLeaseRequest.SerializeToString,
+            a2a__pb2.TaskLease.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def CompleteTask(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/a2a.v1.A2ANode/CompleteTask',
+            a2a__pb2.CompleteTaskRequest.SerializeToString,
+            a2a__pb2.Task.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def FailTask(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/a2a.v1.A2ANode/FailTask',
+            a2a__pb2.FailTaskRequest.SerializeToString,
+            a2a__pb2.Task.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
     def SendFile(request,
             target,
             options=(),
@@ -1175,6 +1909,33 @@ class A2ANode(object):
             _registered_method=True)
 
     @staticmethod
+    def CreateThreadWithRecovery(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/a2a.v1.A2ANode/CreateThreadWithRecovery',
+            a2a__pb2.CreateThreadRequest.SerializeToString,
+            a2a__pb2.CreateThreadResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
     def GetThread(request,
             target,
             options=(),
@@ -1229,6 +1990,87 @@ class A2ANode(object):
             _registered_method=True)
 
     @staticmethod
+    def PutThreadKeyEnvelope(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/a2a.v1.A2ANode/PutThreadKeyEnvelope',
+            a2a__pb2.ThreadKeyEnvelope.SerializeToString,
+            a2a__pb2.Empty.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetThreadKeyEnvelopes(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/a2a.v1.A2ANode/GetThreadKeyEnvelopes',
+            a2a__pb2.ThreadKeyEnvelopeQuery.SerializeToString,
+            a2a__pb2.ThreadKeyEnvelopes.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetRecoveryThreadKeyEnvelopes(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/a2a.v1.A2ANode/GetRecoveryThreadKeyEnvelopes',
+            a2a__pb2.RecoverThreadRequest.SerializeToString,
+            a2a__pb2.ThreadKeyEnvelopes.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
     def GetThreadEntries(request,
             target,
             options=(),
@@ -1272,6 +2114,276 @@ class A2ANode(object):
             '/a2a.v1.A2ANode/SubscribeThread',
             a2a__pb2.SubscribeThreadRequest.SerializeToString,
             a2a__pb2.ThreadEntryWithPos.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetThreadCatchupState(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/a2a.v1.A2ANode/GetThreadCatchupState',
+            a2a__pb2.ThreadID.SerializeToString,
+            a2a__pb2.ThreadCatchupState.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def AddThreadReplica(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/a2a.v1.A2ANode/AddThreadReplica',
+            a2a__pb2.ThreadReplicaRequest.SerializeToString,
+            a2a__pb2.Thread.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def InviteThreadMember(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/a2a.v1.A2ANode/InviteThreadMember',
+            a2a__pb2.InviteThreadMemberRequest.SerializeToString,
+            a2a__pb2.ThreadMembershipChange.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def AcceptThreadInvite(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/a2a.v1.A2ANode/AcceptThreadInvite',
+            a2a__pb2.AcceptThreadInviteRequest.SerializeToString,
+            a2a__pb2.Thread.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def PromoteThreadMember(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/a2a.v1.A2ANode/PromoteThreadMember',
+            a2a__pb2.PromoteThreadMemberRequest.SerializeToString,
+            a2a__pb2.ThreadMembershipChange.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def RemoveThreadMember(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/a2a.v1.A2ANode/RemoveThreadMember',
+            a2a__pb2.RemoveThreadMemberRequest.SerializeToString,
+            a2a__pb2.ThreadMembershipChange.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def LeaveThread(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/a2a.v1.A2ANode/LeaveThread',
+            a2a__pb2.ThreadID.SerializeToString,
+            a2a__pb2.ThreadMembershipChange.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListThreadMembers(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/a2a.v1.A2ANode/ListThreadMembers',
+            a2a__pb2.ThreadID.SerializeToString,
+            a2a__pb2.ThreadMembers.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def RecoverThread(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/a2a.v1.A2ANode/RecoverThread',
+            a2a__pb2.ThreadID.SerializeToString,
+            a2a__pb2.Thread.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def RecoverThreadWithHandle(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/a2a.v1.A2ANode/RecoverThreadWithHandle',
+            a2a__pb2.RecoverThreadRequest.SerializeToString,
+            a2a__pb2.RecoverThreadResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -1731,6 +2843,60 @@ class A2ANode(object):
             '/a2a.v1.A2ANode/ResolveName',
             a2a__pb2.ResolveNameRequest.SerializeToString,
             a2a__pb2.NameClaimResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ConnectPeer(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/a2a.v1.A2ANode/ConnectPeer',
+            a2a__pb2.ConnectPeerRequest.SerializeToString,
+            a2a__pb2.ConnectPeerResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def DisconnectPeer(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/a2a.v1.A2ANode/DisconnectPeer',
+            a2a__pb2.ConnectPeerRequest.SerializeToString,
+            a2a__pb2.Empty.FromString,
             options,
             channel_credentials,
             insecure,

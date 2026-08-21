@@ -9,19 +9,19 @@ import (
 	bsnet "github.com/ipfs/boxo/bitswap/network/bsnet"
 	"github.com/ipfs/boxo/blockstore"
 	flatfs "github.com/ipfs/go-ds-flatfs"
-	dht "github.com/libp2p/go-libp2p-kad-dht"
-	record "github.com/libp2p/go-libp2p-record"
-	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	"github.com/libp2p/go-libp2p"
+	dht "github.com/libp2p/go-libp2p-kad-dht"
+	pubsub "github.com/libp2p/go-libp2p-pubsub"
+	record "github.com/libp2p/go-libp2p-record"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/routing"
-	"github.com/libp2p/go-libp2p/p2p/net/connmgr"
 	"github.com/libp2p/go-libp2p/p2p/discovery/mdns"
 	drouting "github.com/libp2p/go-libp2p/p2p/discovery/routing"
 	dutil "github.com/libp2p/go-libp2p/p2p/discovery/util"
-	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
+	"github.com/libp2p/go-libp2p/p2p/net/connmgr"
 	libp2pquic "github.com/libp2p/go-libp2p/p2p/transport/quic"
+	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
 	"github.com/multiformats/go-multiaddr"
 	"go.uber.org/zap"
 
@@ -47,6 +47,7 @@ type Node struct {
 	Identity   *identity.Identity
 	Blockstore blockstore.Blockstore
 	Bitswap    *bitswap.Bitswap
+	blocks     *flatfs.Datastore
 	mdns       mdns.Service
 	log        *zap.Logger
 }
@@ -55,11 +56,14 @@ type Node struct {
 type mdnsNotifee struct {
 	h   host.Host
 	log *zap.Logger
+	ctx context.Context
 }
 
 func (n *mdnsNotifee) HandlePeerFound(pi peer.AddrInfo) {
 	n.log.Debug("mdns peer found", zap.String("peer", pi.ID.String()))
-	if err := n.h.Connect(context.Background(), pi); err != nil {
+	connectCtx, cancel := context.WithTimeout(n.ctx, 10*time.Second)
+	defer cancel()
+	if err := n.h.Connect(connectCtx, pi); err != nil {
 		n.log.Debug("mdns connect failed", zap.String("peer", pi.ID.String()), zap.Error(err))
 	}
 }
@@ -104,8 +108,9 @@ func New(ctx context.Context, id *identity.Identity, cfg Config, log *zap.Logger
 				dht.Mode(dht.ModeAutoServer),
 				dht.ProtocolPrefix("/a2a"),
 				dht.Validator(record.NamespacedValidator{
-					"agents": a2avalidator.AgentCardValidator{},
-					"names":  a2avalidator.AgentCardValidator{},
+					"agents":  a2avalidator.AgentCardValidator{},
+					"names":   a2avalidator.NameClaimValidator{},
+					"threads": a2avalidator.ThreadHeadValidator{},
 				}),
 			)
 			return kadDHT, err
@@ -133,7 +138,17 @@ func New(ctx context.Context, id *identity.Identity, cfg Config, log *zap.Logger
 		h.Close()
 		return nil, fmt.Errorf("open flatfs blockstore at %q: %w", blocksDir, err)
 	}
-	bs := blockstore.NewBlockstore(fds)
+	// NoPrefix: flatfs itself is already rooted at blocksDir, so a further
+	// "/blocks" datastore-key namespace prefix is redundant — and actively
+	// breaks flatfs, which only accepts keys matching [0-9A-Z+-_=] (see
+	// go-ds-flatfs's keyIsValid). The lowercase letters in the literal
+	// string "blocks" fail that check on every single Put, so the default
+	// NewBlockstore(fds) here always errored with "key not supported by
+	// flatfs" — this went undetected because nothing previously exercised
+	// SendFile/FetchFile against a real daemon process (see
+	// two_agent.integration.test.ts and the repoRoot() path fix in
+	// client.integration.test.ts, which is what surfaced this).
+	bs := blockstore.NewBlockstoreNoPrefix(fds)
 
 	// ── Bitswap ───────────────────────────────────────────────────────────────
 	// kadDHT implements routing.ContentDiscovery — used for provider routing.
@@ -147,11 +162,12 @@ func New(ctx context.Context, id *identity.Identity, cfg Config, log *zap.Logger
 		Identity:   id,
 		Blockstore: bs,
 		Bitswap:    bswap,
+		blocks:     fds,
 		log:        log,
 	}
 
 	// ── mDNS discovery ────────────────────────────────────────────────────────
-	mdnsSvc := mdns.NewMdnsService(h, "moltmesh", &mdnsNotifee{h: h, log: log})
+	mdnsSvc := mdns.NewMdnsService(h, "moltmesh", &mdnsNotifee{h: h, log: log, ctx: ctx})
 	if err := mdnsSvc.Start(); err != nil {
 		log.Warn("mdns start", zap.Error(err))
 	}
@@ -164,7 +180,16 @@ func New(ctx context.Context, id *identity.Identity, cfg Config, log *zap.Logger
 		for {
 			peers, err := routingDiscovery.FindPeers(ctx, "moltmesh")
 			if err != nil {
-				return
+				if ctx.Err() != nil {
+					return
+				}
+				log.Debug("routing discovery failed", zap.Error(err))
+				select {
+				case <-ctx.Done():
+					return
+				case <-time.After(30 * time.Second):
+					continue
+				}
 			}
 			for p := range peers {
 				if p.ID == h.ID() || len(p.Addrs) == 0 {
@@ -173,6 +198,7 @@ func New(ctx context.Context, id *identity.Identity, cfg Config, log *zap.Logger
 				if err := h.Connect(ctx, p); err != nil {
 					log.Debug("routing discovery connect failed", zap.String("peer", p.ID.String()), zap.Error(err))
 				}
+				log.Debug("Found Peer")
 			}
 			select {
 			case <-ctx.Done():
@@ -204,7 +230,11 @@ func (n *Node) Close() error {
 	if err := n.DHT.Close(); err != nil {
 		n.log.Warn("dht close error", zap.Error(err))
 	}
-	return n.Host.Close()
+	hostErr := n.Host.Close()
+	if err := n.blocks.Close(); err != nil && hostErr == nil {
+		return err
+	}
+	return hostErr
 }
 
 // PeerID returns the libp2p peer ID as a string.
@@ -231,14 +261,7 @@ func (n *Node) bootstrap(ctx context.Context, cfg Config) error {
 	var bootstrapPeers []peer.AddrInfo
 
 	if cfg.IPFSBootstrap {
-		for _, ma := range dht.DefaultBootstrapPeers {
-			ai, err := peer.AddrInfoFromP2pAddr(ma)
-			if err != nil {
-				n.log.Debug("skip ipfs bootstrap peer", zap.Error(err))
-				continue
-			}
-			bootstrapPeers = append(bootstrapPeers, *ai)
-		}
+		n.log.Warn("IPFS bootstrap peers ignored: the /a2a DHT requires bootstrap peers that support its custom protocol")
 	}
 
 	for _, p := range cfg.BootstrapPeers {

@@ -8,10 +8,10 @@ import (
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 
-	pb "github.com/sahilpohare/p2p-a2a/gen/a2a/v1"
-	"github.com/sahilpohare/p2p-a2a/daemon/network"
 	"github.com/sahilpohare/p2p-a2a/daemon/names"
+	"github.com/sahilpohare/p2p-a2a/daemon/network"
 	"github.com/sahilpohare/p2p-a2a/daemon/webhook"
+	pb "github.com/sahilpohare/p2p-a2a/gen/a2a/v1"
 )
 
 // ── PubSub ────────────────────────────────────────────────────────────────────
@@ -61,7 +61,11 @@ func (s *Server) SetWebhook(ctx context.Context, req *pb.SetWebhookRequest) (*pb
 	if req.Url == "" {
 		return nil, fmt.Errorf("url is required")
 	}
-	if err := s.webhooks.Set(req.Url, req.Secret); err != nil {
+	owner, err := s.scopedOwner(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.webhooks.SetForOwner(owner, req.Url, req.Secret); err != nil {
 		return nil, err
 	}
 	s.log.Info("webhook configured", zap.String("url", req.Url))
@@ -69,12 +73,20 @@ func (s *Server) SetWebhook(ctx context.Context, req *pb.SetWebhookRequest) (*pb
 }
 
 func (s *Server) ClearWebhook(ctx context.Context, _ *pb.Empty) (*pb.Empty, error) {
-	s.webhooks.Clear()
+	owner, err := s.scopedOwner(ctx)
+	if err != nil {
+		return nil, err
+	}
+	s.webhooks.ClearForOwner(owner)
 	return &pb.Empty{}, nil
 }
 
 func (s *Server) GetWebhook(ctx context.Context, _ *pb.Empty) (*pb.WebhookResponse, error) {
-	return &pb.WebhookResponse{Url: s.webhooks.URL()}, nil
+	owner, err := s.scopedOwner(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &pb.WebhookResponse{Url: s.webhooks.URLForOwner(owner)}, nil
 }
 
 // ── Networks ──────────────────────────────────────────────────────────────────
@@ -152,7 +164,7 @@ func (s *Server) BroadcastNetwork(ctx context.Context, req *pb.BroadcastRequest)
 	if !ok {
 		return nil, fmt.Errorf("not a member of network %q", req.NetworkId)
 	}
-	if err := s.networks.Broadcast(ctx, req.NetworkId, req.Payload); err != nil {
+	if err := s.networks.Broadcast(ctx, req.NetworkId, s.id.DID, req.Payload); err != nil {
 		return nil, err
 	}
 	s.webhooks.Send(webhook.EventPubSub, map[string]interface{}{
@@ -166,7 +178,14 @@ func (s *Server) SubscribeNetwork(req *pb.NetworkIDRequest, stream grpc.ServerSt
 	if req.NetworkId == "" {
 		return fmt.Errorf("network_id is required")
 	}
-	ch, cancel, err := s.networks.SubscribeBroadcast(stream.Context(), req.NetworkId)
+	ok, err := s.networks.Store().IsMember(req.NetworkId, s.id.DID)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return fmt.Errorf("not a member of network %q", req.NetworkId)
+	}
+	ch, cancel, err := s.networks.SubscribeBroadcast(stream.Context(), req.NetworkId, s.id.DID)
 	if err != nil {
 		return err
 	}

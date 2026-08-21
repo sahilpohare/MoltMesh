@@ -15,12 +15,22 @@
 | [0011](./0011-store-and-forward-offline-delivery.md) | Store-and-Forward Offline Delivery via Persistent Outbox | Accepted |
 | [0012](./0012-proto-as-canonical-standard.md) | proto/a2a.proto as the Single Canonical Standard | Accepted |
 | [0013](./0013-content-addressed-blob-store.md) | Content-Addressed Blob Store with Always-Persist Semantics | Accepted |
+| [0014](./0014-encrypted-thread-payloads.md) | End-to-end encrypted thread payloads | Accepted |
+| [0015](./0015-goakt-actor-model-for-threads.md) | Durable, Virtualized GoAkt Actors | Accepted and implemented |
+| [0016](./0016-distributed-tasks-membership-and-recovery.md) | Distributed Tasks, Late Observers, and Thread Recovery | Accepted and implemented |
+| [0017](./0017-versioned-thread-key-envelopes-and-capability-recovery.md) | Versioned Thread Key Envelopes and Capability Recovery | Accepted and implemented |
+| [0018](./0018-explicit-membership-lifecycle-and-raft-joint-consensus.md) | Explicit Membership Lifecycle and Raft Joint Consensus | Accepted and implemented |
+| [0019](./0019-verified-archive-replication-and-recovery-discovery.md) | Verified Archive Replication and Recovery Discovery | Accepted and implemented |
+| [0020](./0020-sdk-agent-session-authentication.md) | SDK Agent Session Authentication, Separate from Daemon Identity | Accepted and implemented |
+| [0021](./0021-sybil-resistant-name-claims-via-dht-quorum-reads.md) | Sybil/Eclipse-Resistant Name Claims via DHT Quorum Reads | Accepted and implemented |
+| [0022](./0022-lease-based-task-claiming-for-sdk-workers.md) | Lease-Based Task Claiming and Bounded Retry for SDK Workers | Accepted and implemented |
+| [0023](./0023-terminal-ui-for-daemon-inspection.md) | A Terminal UI for Daemon Inspection | Accepted and implemented |
+| [0024](./0024-canonical-daemon-entrypoint.md) | `cmd/moltmesh` as the Canonical Daemon Entrypoint | Accepted |
 
 ## Open Questions (Future ADRs)
 
-- ADR-0014: Thread encryption model (per-thread key derivation, Signal ratchet vs ECIES)
-- ADR-0015: Trust and delegation model (capability attenuation, confused deputy)
-- ADR-0016: DID key rotation under active sessions
-- ADR-0017: IPFS/Ceramic integration for thread persistence (v2)
-- ADR-0018: Economic primitives (cost expression, quota, receipts)
-- ADR-0019: Sybil resistance and reputation model
+- Trust and delegation model (capability attenuation, confused deputy)
+- DID key rotation under active sessions
+- IPFS/Ceramic integration for thread persistence (v2)
+- Economic primitives (cost expression, quota, receipts)
+- Sybil resistance and reputation model

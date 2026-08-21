@@ -167,9 +167,10 @@ ipfs_bootstrap  = true                 # use IPFS bootstrap peers (default: true
 bootstrap_peers = []                   # additional multiaddrs
 
 [daemon]
-data_dir  = "~/.moltmesh"
-grpc_addr = ""                         # empty = unix socket at data_dir/a2a.sock
-verbose   = false
+data_dir                  = "~/.moltmesh"
+grpc_addr                 = ""         # empty = unix socket at data_dir/a2a.sock
+verbose                   = false
+thread_passivation_seconds = 300       # snapshot and unload an idle thread actor
 ```
 
 CLI flags override config file values when both are provided.
@@ -400,7 +401,7 @@ await client.leaveNetwork(net.id);
 ### Direct gRPC (any language)
 
 ```bash
-protoc --go_out=. --go-grpc_out=. proto/a2a.proto
+make proto
 ```
 
 `proto/a2a.proto` is the single canonical contract — every RPC and message type is defined there. Generate clients for any language.
