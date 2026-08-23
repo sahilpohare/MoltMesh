@@ -60,3 +60,6 @@ e2e/manual-thread/runtime/
 
 # ── local agent tooling (worktrees, machine-local settings) ───────────────────
 .claude/
+
+# installed agent skills (pinned by skills-lock.json)
+.agents/
