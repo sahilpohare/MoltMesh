@@ -31,6 +31,8 @@ type actorGossipBridge struct {
 	log      *zap.Logger
 	threadID string
 	publish  *appactors.Executor
+	// publishSlots bounds in-flight publishes for this thread alone.
+	publishSlots chan struct{}
 }
 
 // newActorGossipBridge joins the thread's consensus topic. Call Run(ctx) to
@@ -40,7 +42,7 @@ func newActorGossipBridge(ctx context.Context, ps *pubsub.PubSub, system goakt.A
 	if err != nil {
 		return nil, err
 	}
-	g := &actorGossipBridge{ps: ps, system: system, topic: t, log: log, threadID: th.Id}
+	g := &actorGossipBridge{ps: ps, system: system, topic: t, log: log, threadID: th.Id, publishSlots: newPublishSlots()}
 	if h != nil && parent != nil {
 		g.publish, err = appactors.NewExecutorUnder(ctx, h, parent, "thread-gossip-"+th.Id, goakt.WithLongLived())
 		if err != nil {
@@ -77,8 +79,8 @@ func (g *actorGossipBridge) PublishFunc() func(*pb.ConsensusMsg) {
 		// Tests may construct the supervisor without the daemon hierarchy. Keep
 		// that compatibility path bounded; production always uses the executor.
 		select {
-		case consensusPublishSlots <- struct{}{}:
-			go func() { defer func() { <-consensusPublishSlots }(); _, _ = work() }()
+		case g.publishSlots <- struct{}{}:
+			go func() { defer func() { <-g.publishSlots }(); _, _ = work() }()
 		default:
 			g.log.Warn("actors: publish queue full", zap.String("thread", g.threadID))
 		}

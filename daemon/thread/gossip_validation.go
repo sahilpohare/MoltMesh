@@ -15,7 +15,31 @@ import (
 
 const maxConsensusMessageSize = 1 << 20
 
-var consensusPublishSlots = make(chan struct{}, 128)
+// maxInFlightPublishesPerThread bounds how many consensus messages one thread
+// may have in flight on GossipSub at once.
+//
+// This budget is deliberately per thread. It used to be a single package-level
+// channel of 128 slots shared by every thread on every daemon in the process,
+// which coupled unrelated threads to each other: a burst on one thread, or a
+// torn-down thread whose publish goroutines were still waiting out their five
+// second timeout, could exhaust the shared budget and make every other thread
+// silently drop consensus messages. Dropped votes and appends do not surface
+// as errors, they just prevent a quorum forming, so the visible symptom was a
+// cluster that never elected a leader. That is also why the failure only
+// appeared once several threads ran in one process. ADR-0015 targets nodes
+// holding hundreds of thousands of threads, where one shared 128-slot budget
+// across all of them would drop consensus traffic continuously.
+//
+// A single thread only ever needs a few concurrent publishes (roughly one per
+// peer per tick), so a small per-thread budget still bounds memory while
+// removing the cross-thread coupling.
+const maxInFlightPublishesPerThread = 32
+
+// newPublishSlots returns a per-thread publish budget. Each GossipBridge and
+// actorGossipBridge owns one.
+func newPublishSlots() chan struct{} {
+	return make(chan struct{}, maxInFlightPublishesPerThread)
+}
 
 // joinConsensusTopic joins a thread's GossipSub consensus topic and installs
 // its replica-set validator — the identical setup step both GossipBridge

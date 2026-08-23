@@ -28,6 +28,8 @@ type GossipBridge struct {
 	id       *identity.Identity
 	log      *zap.Logger
 	threadID string
+	// publishSlots bounds in-flight publishes for this thread alone.
+	publishSlots chan struct{}
 }
 
 // NewGossipBridge creates a GossipBridge but does not start it.
@@ -44,12 +46,13 @@ func NewGossipBridge(
 		return nil, err
 	}
 	return &GossipBridge{
-		ps:       ps,
-		engine:   engine,
-		topic:    t,
-		id:       id,
-		log:      log,
-		threadID: threadID,
+		ps:           ps,
+		engine:       engine,
+		topic:        t,
+		id:           id,
+		log:          log,
+		threadID:     threadID,
+		publishSlots: newPublishSlots(),
 	}, nil
 }
 
@@ -70,13 +73,13 @@ func (g *GossipBridge) BroadcastFunc() func(*pb.ConsensusMsg) {
 			return
 		}
 		select {
-		case consensusPublishSlots <- struct{}{}:
+		case g.publishSlots <- struct{}{}:
 		default:
 			g.log.Warn("thread: publish queue full", zap.String("thread", g.threadID))
 			return
 		}
 		go func() {
-			defer func() { <-consensusPublishSlots }()
+			defer func() { <-g.publishSlots }()
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
 			if err := g.topic.Publish(ctx, data); err != nil {

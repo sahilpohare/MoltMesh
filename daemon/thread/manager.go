@@ -62,6 +62,20 @@ func NewManager(
 	}
 }
 
+// maxTolerableFailures inverts the validator-set sizing rule: given a replica
+// count, how many failures can that many nodes actually survive under the
+// chosen backend. Raft needs 2f+1 voters, Tendermint 3f+1, so the answers are
+// (n-1)/2 and (n-1)/3 respectively.
+func maxTolerableFailures(backend BackendKind, replicas int) int {
+	if replicas < 1 {
+		return 0
+	}
+	if backend == BackendTendermint {
+		return (replicas - 1) / 3
+	}
+	return (replicas - 1) / 2
+}
+
 // NewThreadFromRequest validates a CreateThreadRequest and builds the
 // *pb.Thread to persist — the pure, side-effect-free part of thread
 // creation shared by Manager.CreateThread (Engine/GossipBridge path) and
@@ -106,26 +120,66 @@ func newThreadFromRequest(selfDID string, req *pb.CreateThreadRequest, requested
 		replicas = append([]string{selfDID}, replicas...)
 	}
 
-	f := req.F
-	n := int32(3*f + 1)
-	if f == 0 {
-		n = 1 // single-validator mode
-	}
-	if int32(len(replicas)) < n {
-		return nil, fmt.Errorf("need at least %d replicas for f=%d, got %d (hint: for single-validator use f=0)", n, f, len(replicas))
-	}
-
-	epochMs := req.EpochMs
-	if epochMs == 0 {
-		epochMs = defaultEpochMs
-	}
-
 	meta := req.Metadata
 	if meta == nil {
 		meta = map[string]string{}
 	}
 	if _, ok := meta["backend"]; !ok {
 		meta["backend"] = string(BackendRaft) // default
+	}
+
+	// The required validator-set size depends on the failure model the chosen
+	// backend defends against, so it has to be computed after the backend is
+	// known.
+	//
+	// Tendermint is Byzantine-fault-tolerant and needs n = 3f+1: its quorum is
+	// 2f+1 (see TendermintBackend.quorum) and the safety argument requires
+	// that any two quorums intersect in at least one honest validator, which
+	// only holds when the validator set is 3f+1.
+	//
+	// Raft is crash-fault-tolerant. It needs only n = 2f+1, because a majority
+	// of 2f+1 is f+1 and any two majorities intersect. Requiring 3f+1 for Raft
+	// bought no extra fault tolerance: with f=1, four voters still tolerate
+	// exactly one failure, the same as three, while demanding an extra node
+	// and producing an even-sized voter set, which raises the quorum to 3 and
+	// makes split votes more likely. thread.N is the voter-set size (see
+	// newRaftBackend, which takes the first N replicas as voters and treats
+	// the remainder as non-voting observers), so lowering it here narrows the
+	// quorum rather than weakening it.
+	f := req.F
+	var n int32
+	switch BackendKind(meta["backend"]) {
+	case BackendTendermint:
+		n = 3*f + 1
+	default: // BackendRaft
+		n = 2*f + 1
+	}
+	if f == 0 {
+		n = 1 // single-validator mode
+	}
+	if int32(len(replicas)) < n {
+		// Reject rather than silently lowering f. f is a promise about how
+		// many failures the thread survives, and quietly downgrading it would
+		// leave the caller believing in fault tolerance they do not have.
+		// Report the largest f this replica count can actually support so the
+		// caller can choose deliberately.
+		//
+		// No consensus algorithm can do better here. Tolerating a failure
+		// requires a surviving majority to distinguish "peer crashed" from
+		// "peer unreachable"; with two nodes each side of a partition sees one
+		// of two and cannot tell, so allowing both to proceed would permit
+		// split-brain. Two nodes therefore cannot tolerate one failure under
+		// any algorithm, only under a weaker guarantee.
+		return nil, fmt.Errorf(
+			"backend %q with f=%d needs at least %d replicas, got %d: %d replicas supports at most f=%d (use f=0 for a single voter plus %d read-only observers)",
+			meta["backend"], f, n, len(replicas),
+			len(replicas), maxTolerableFailures(BackendKind(meta["backend"]), len(replicas)),
+			len(replicas)-1)
+	}
+
+	epochMs := req.EpochMs
+	if epochMs == 0 {
+		epochMs = defaultEpochMs
 	}
 
 	if requestedID == "" {

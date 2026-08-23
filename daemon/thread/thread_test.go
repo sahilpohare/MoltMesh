@@ -418,7 +418,9 @@ func TestManager_CreateThread(t *testing.T) {
 
 	tm, id := newManager(t)
 
-	// Need 3f+1 = 4 replicas for f=1
+	// Raft needs 2f+1 = 3 voters for f=1. A fourth replica is supplied to
+	// confirm the surplus becomes a non-voting observer rather than inflating
+	// the voter set (see the sizing rule in newThreadFromRequest).
 	replicas := []string{
 		id.DID,
 		"did:key:zReplica1Aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -440,8 +442,11 @@ func TestManager_CreateThread(t *testing.T) {
 	if th.CreatorDid != id.DID {
 		t.Errorf("creator DID mismatch: %q", th.CreatorDid)
 	}
-	if th.N != 4 {
-		t.Errorf("N should be 4, got %d", th.N)
+	if th.N != 3 {
+		t.Errorf("N should be 3 (2f+1 for Raft), got %d", th.N)
+	}
+	if len(th.ReplicaDids) != 4 {
+		t.Errorf("all 4 replicas should be retained, got %d", len(th.ReplicaDids))
 	}
 	members, err := tm.ListMembers(th.Id)
 	if err != nil || len(members) != 1 || members[0].Did != id.DID || members[0].Role != pb.ThreadMemberRole_THREAD_MEMBER_ROLE_ADMIN {

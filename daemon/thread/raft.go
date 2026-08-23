@@ -587,6 +587,22 @@ func (r *RaftBackend) handleInbound(ctx context.Context, msg *pb.ConsensusMsg) {
 		r.log.Debug("raft: decode message", zap.Error(err))
 		return
 	}
+	// Raft messages are point-to-point, but the transport underneath is
+	// GossipSub, so every replica receives every message regardless of who it
+	// was addressed to. Step must therefore see only the messages actually
+	// meant for this node.
+	//
+	// Without this filter a three-voter cluster cannot elect a leader: node 3
+	// broadcasts MsgVote{To:1}, and nodes 1, 2 and 3 all Step it. etcd/raft
+	// does not check the To field itself, so node 2 processes a vote request
+	// addressed to node 1 and node 3 processes its own request, each mutating
+	// term and vote state they should never have touched. The cluster then
+	// churns terms without any node accumulating a majority of responses.
+	// A single-voter thread is unaffected, which is why every existing test
+	// passes: they all run f=0 with quorum 1.
+	if rm.To != 0 && rm.To != r.selfID {
+		return
+	}
 	if err := r.node.Step(ctx, rm); err != nil {
 		r.log.Debug("raft: step", zap.Error(err))
 	}
