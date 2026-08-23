@@ -1,0 +1,3 @@
+scenario,n,min_ms,p50_ms,p90_ms,p95_ms,p99_ms,max_ms,mean_ms,stddev_ms
+raft/1-node (f=0 fast path) (640.0 entries/sec),3200,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,1.5625,0.0000
+"raft/3-node (f=1, CFT) (1993.8 entries/sec)",9969,0.0000,0.0000,0.0000,0.0000,0.0000,0.0000,0.5016,0.0000

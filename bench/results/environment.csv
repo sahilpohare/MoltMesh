@@ -1,0 +1,9 @@
+key,value
+go_version,go1.26.5
+goos,darwin
+goarch,arm64
+num_cpu,8
+git_commit,44ee2f7-dirty
+captured_at_utc,2026-08-23T05:24:51Z
+storage,in-memory SQLite
+transport,libp2p TCP over loopback
