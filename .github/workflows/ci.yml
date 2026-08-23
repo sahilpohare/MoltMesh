@@ -79,6 +79,9 @@ jobs:
         run: bun test
 
       # ai-sdk declares no test script; type-checking it is still worth doing.
+      # It must build after openclaw-plugin: it imports that package's emitted
+      # declarations, not its source, because a .ts import from outside its own
+      # rootDir is rejected by tsc while a .d.ts import is not.
       - name: Build (ai-sdk)
         working-directory: sdk/typescript/ai-sdk
         run: |

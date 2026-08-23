@@ -16,7 +16,7 @@ export {
   CORE_CAPABILITY_PREFIX,
   CoreCapabilities,
   AgentIdentity,
-} from "../../openclaw-plugin/src/client.js";
+} from "../../openclaw-plugin/dist/client.js";
 
 export type {
   GrpcClient,
@@ -37,4 +37,4 @@ export type {
   CapabilityId,
   CapabilityTag,
   CoreCapability,
-} from "../../openclaw-plugin/src/client.js";
+} from "../../openclaw-plugin/dist/client.js";
