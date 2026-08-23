@@ -440,7 +440,6 @@ func measureThroughput(t *testing.T, backend string, nodes int, f int32) (int, t
 		}(a)
 	}
 
-
 	// Count only commits observed inside the window, so ramp-up before the
 	// window and drain after it are both excluded.
 	time.Sleep(500 * time.Millisecond) // let the rate settle after first commit

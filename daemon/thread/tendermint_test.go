@@ -9,8 +9,8 @@ import (
 
 	"go.uber.org/zap"
 
-	pb "github.com/sahilpohare/p2p-a2a/gen/a2a/v1"
 	"github.com/sahilpohare/p2p-a2a/daemon/identity"
+	pb "github.com/sahilpohare/p2p-a2a/gen/a2a/v1"
 )
 
 // ─── helpers ──────────────────────────────────────────────────────────────────

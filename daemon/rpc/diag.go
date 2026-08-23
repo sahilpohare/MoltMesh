@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"time"
 
-	"go.uber.org/zap"
 	"github.com/libp2p/go-libp2p/core/network"
-	"github.com/sahilpohare/p2p-a2a/pkg/p2putil"
 	pb "github.com/sahilpohare/p2p-a2a/gen/a2a/v1"
+	"github.com/sahilpohare/p2p-a2a/pkg/p2putil"
+	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )

@@ -8,9 +8,9 @@ import (
 	"fmt"
 	"os"
 
+	crypto "github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/mr-tron/base58"
 	"github.com/multiformats/go-multiaddr"
-	crypto "github.com/libp2p/go-libp2p/core/crypto"
 )
 
 const (

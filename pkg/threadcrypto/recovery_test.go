@@ -1,6 +1,9 @@
 package threadcrypto
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestRecoveryHandleRoundTripAndChecksum(t *testing.T) {
 	h, err := NewRecoveryHandle("thread-1")
@@ -15,12 +18,35 @@ func TestRecoveryHandleRoundTripAndChecksum(t *testing.T) {
 	if err != nil || got.ThreadID != h.ThreadID || string(got.Secret) != string(h.Secret) {
 		t.Fatalf("round trip = %#v, %v", got, err)
 	}
-	last := "A"
-	if encoded[len(encoded)-1:] == "A" {
-		last = "B"
+	// Tamper inside the secret rather than at the very end of the string. The
+	// checksum is four bytes rendered as six base64 characters, so its final
+	// character carries two significant bits and four slack bits: substituting
+	// it decodes to the same four bytes roughly a quarter of the time, which
+	// made the original form of this assertion flaky.
+	parts := strings.Split(encoded, ":")
+	secretPart := []byte(parts[2])
+	if secretPart[0] == 'A' {
+		secretPart[0] = 'B'
+	} else {
+		secretPart[0] = 'A'
 	}
-	if _, err := ParseRecoveryHandle(encoded[:len(encoded)-1] + last); err == nil {
+	parts[2] = string(secretPart)
+	if _, err := ParseRecoveryHandle(strings.Join(parts, ":")); err == nil {
 		t.Fatal("tampered handle accepted")
+	}
+
+	// A corrupted checksum must also be rejected. Use the first checksum
+	// character, where all six bits are significant.
+	parts = strings.Split(encoded, ":")
+	sumPart := []byte(parts[3])
+	if sumPart[0] == 'A' {
+		sumPart[0] = 'B'
+	} else {
+		sumPart[0] = 'A'
+	}
+	parts[3] = string(sumPart)
+	if _, err := ParseRecoveryHandle(strings.Join(parts, ":")); err == nil {
+		t.Fatal("handle with corrupted checksum accepted")
 	}
 }
 

@@ -177,7 +177,7 @@ func TestLeave_NonMember_NoError(t *testing.T) {
 func TestMembers_OrderedByJoinedAt(t *testing.T) {
 	s := newTestStore(t)
 	n, _ := s.Create("net5", "did:key:zA", nil)
-	s.Join(n.ID, "did:key:zBob") //nolint:errcheck
+	s.Join(n.ID, "did:key:zBob")   //nolint:errcheck
 	s.Join(n.ID, "did:key:zCarol") //nolint:errcheck
 
 	members, err := s.Members(n.ID)

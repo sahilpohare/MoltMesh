@@ -1,11 +1,12 @@
 // Tendermint BFT backend for thread consensus.
 //
 // Phases per (height, round):
-//   PROPOSE   – leader sends Proposal; others wait timeoutPropose then prevote nil
-//   PREVOTE   – on 2f+1 prevotes for B: lock(B,r), precommit B
-//              on 2f+1 prevotes for nil (or timeout): precommit nil
-//   PRECOMMIT – on 2f+1 precommits for B: commit B, advance height
-//              on 2f+1 precommits for nil (or timeout): next round
+//
+//	PROPOSE   – leader sends Proposal; others wait timeoutPropose then prevote nil
+//	PREVOTE   – on 2f+1 prevotes for B: lock(B,r), precommit B
+//	           on 2f+1 prevotes for nil (or timeout): precommit nil
+//	PRECOMMIT – on 2f+1 precommits for B: commit B, advance height
+//	           on 2f+1 precommits for nil (or timeout): next round
 //
 // Hoare-triple invariants are stated inline as {P} / assert / {Q} comments.
 // Spec: https://github.com/cometbft/cometbft/blob/main/spec/consensus/consensus.md
@@ -23,8 +24,8 @@ import (
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/proto"
 
-	pb "github.com/sahilpohare/p2p-a2a/gen/a2a/v1"
 	"github.com/sahilpohare/p2p-a2a/daemon/identity"
+	pb "github.com/sahilpohare/p2p-a2a/gen/a2a/v1"
 )
 
 const (
@@ -92,7 +93,7 @@ func (e *TendermintBackend) Deliver(msg *pb.ConsensusMsg) {
 }
 
 // Subscribe and Unsubscribe are handled by Engine; not implemented here.
-func (e *TendermintBackend) Subscribe() <-chan *pb.ThreadEntryWithPos   { return nil }
+func (e *TendermintBackend) Subscribe() <-chan *pb.ThreadEntryWithPos    { return nil }
 func (e *TendermintBackend) Unsubscribe(_ <-chan *pb.ThreadEntryWithPos) {}
 
 func (e *TendermintBackend) Run(ctx context.Context, broadcast func(*pb.ConsensusMsg)) {

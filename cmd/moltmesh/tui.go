@@ -10,11 +10,11 @@ import (
 	"strings"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -25,15 +25,15 @@ import (
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
 var (
-	colorPrimary  = lipgloss.Color("#7C3AED")
-	colorAccent   = lipgloss.Color("#A78BFA")
-	colorMuted    = lipgloss.Color("#6B7280")
-	colorSuccess  = lipgloss.Color("#10B981")
-	colorWarning  = lipgloss.Color("#F59E0B")
-	colorDanger   = lipgloss.Color("#EF4444")
-	colorText     = lipgloss.Color("#F3F4F6")
-	colorBg       = lipgloss.Color("#111827")
-	colorBorder   = lipgloss.Color("#374151")
+	colorPrimary = lipgloss.Color("#7C3AED")
+	colorAccent  = lipgloss.Color("#A78BFA")
+	colorMuted   = lipgloss.Color("#6B7280")
+	colorSuccess = lipgloss.Color("#10B981")
+	colorWarning = lipgloss.Color("#F59E0B")
+	colorDanger  = lipgloss.Color("#EF4444")
+	colorText    = lipgloss.Color("#F3F4F6")
+	colorBg      = lipgloss.Color("#111827")
+	colorBorder  = lipgloss.Color("#374151")
 
 	styleTab = lipgloss.NewStyle().
 			Padding(0, 2).
@@ -80,10 +80,10 @@ var (
 			Foreground(colorMuted).
 			Padding(0, 1)
 
-	styleSuccess2  = lipgloss.NewStyle().Foreground(colorSuccess)
-	styleWarning2  = lipgloss.NewStyle().Foreground(colorWarning)
-	styleDanger2   = lipgloss.NewStyle().Foreground(colorDanger)
-	styleMuted2    = lipgloss.NewStyle().Foreground(colorMuted)
+	styleSuccess2 = lipgloss.NewStyle().Foreground(colorSuccess)
+	styleWarning2 = lipgloss.NewStyle().Foreground(colorWarning)
+	styleDanger2  = lipgloss.NewStyle().Foreground(colorDanger)
+	styleMuted2   = lipgloss.NewStyle().Foreground(colorMuted)
 
 	styleInput = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
@@ -175,8 +175,10 @@ func (i taskItem) FilterValue() string { return i.t.Id + i.t.Skill }
 
 type peerItem struct{ p *pb.PeerInfo }
 
-func (i peerItem) Title() string       { return shortPeer(i.p.PeerId) }
-func (i peerItem) Description() string { return fmt.Sprintf("latency: %dms  addrs: %d", i.p.LatencyMs, len(i.p.Addrs)) }
+func (i peerItem) Title() string { return shortPeer(i.p.PeerId) }
+func (i peerItem) Description() string {
+	return fmt.Sprintf("latency: %dms  addrs: %d", i.p.LatencyMs, len(i.p.Addrs))
+}
 func (i peerItem) FilterValue() string { return i.p.PeerId }
 
 // ─── Root model ───────────────────────────────────────────────────────────────
@@ -1149,7 +1151,7 @@ func fmtDuration(d time.Duration) string {
 
 func cmdTUI(args []string) error {
 	fs := flag.NewFlagSet("tui", flag.ExitOnError)
-	dataDir  := fs.String("data-dir",  "", "Data directory (default: ~/.moltmesh)")
+	dataDir := fs.String("data-dir", "", "Data directory (default: ~/.moltmesh)")
 	grpcAddr := fs.String("grpc-addr", "", "gRPC address (default: unix socket in data-dir)")
 	fs.Parse(args)
 

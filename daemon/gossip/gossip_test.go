@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	"github.com/libp2p/go-libp2p"
+	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"go.uber.org/zap"
@@ -89,9 +89,9 @@ func TestPublishTaskEvent_RoundTrip(t *testing.T) {
 	}
 
 	var (
-		mu      sync.Mutex
+		mu       sync.Mutex
 		received []*pb.TaskEvent
-		done    = make(chan struct{})
+		done     = make(chan struct{})
 	)
 
 	if err := m2.SubscribeTaskEvents(ctx, taskID, func(ev *pb.TaskEvent) {

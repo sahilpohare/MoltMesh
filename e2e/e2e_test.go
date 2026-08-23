@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	"github.com/libp2p/go-libp2p"
+	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
@@ -21,7 +21,6 @@ import (
 	"github.com/ipfs/boxo/blockstore"
 	datastore "github.com/ipfs/go-datastore"
 	dssync "github.com/ipfs/go-datastore/sync"
-	pb "github.com/sahilpohare/p2p-a2a/gen/a2a/v1"
 	"github.com/sahilpohare/p2p-a2a/daemon/deliver"
 	"github.com/sahilpohare/p2p-a2a/daemon/gossip"
 	"github.com/sahilpohare/p2p-a2a/daemon/identity"
@@ -31,6 +30,7 @@ import (
 	"github.com/sahilpohare/p2p-a2a/daemon/rpc"
 	"github.com/sahilpohare/p2p-a2a/daemon/tasks"
 	"github.com/sahilpohare/p2p-a2a/daemon/thread"
+	pb "github.com/sahilpohare/p2p-a2a/gen/a2a/v1"
 
 	_ "github.com/mattn/go-sqlite3"
 )

@@ -16,7 +16,8 @@ import (
 // ── DID ───────────────────────────────────────────────────────────────────────
 
 // DID returns a short display form of a DID.
-//   "did:key:z6MkhaX…r2jP"
+//
+//	"did:key:z6MkhaX…r2jP"
 func DID(d string) string { return did.Short(d) }
 
 // ── Capability ────────────────────────────────────────────────────────────────

@@ -56,7 +56,8 @@ func KeyMaterial(s string) string {
 }
 
 // Short returns a shortened display form suitable for terminal output:
-//   "did:key:z6MkhaX…r2jP"  (prefix + 6 chars + … + 4 chars)
+//
+//	"did:key:z6MkhaX…r2jP"  (prefix + 6 chars + … + 4 chars)
 //
 // If s is shorter than the threshold, it is returned unchanged.
 func Short(s string) string {

@@ -2,9 +2,10 @@
 //
 // Canonical format:  a2a:v<version>:cap:<name>
 // Examples:
-//   a2a:v1:cap:text-generation
-//   a2a:v1:cap:code-execution
-//   a2a:v1:cap:image-analysis
+//
+//	a2a:v1:cap:text-generation
+//	a2a:v1:cap:code-execution
+//	a2a:v1:cap:image-analysis
 package capability
 
 import (
