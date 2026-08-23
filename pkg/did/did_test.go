@@ -55,12 +55,3 @@ func TestShort(t *testing.T) {
 		t.Error("Short should not truncate strings that are already short")
 	}
 }
-
-func TestEqual(t *testing.T) {
-	if !did.Equal(exampleDID, exampleDID) {
-		t.Error("Equal(same, same) should be true")
-	}
-	if did.Equal(exampleDID, exampleDID+"X") {
-		t.Error("Equal(a, a+X) should be false")
-	}
-}

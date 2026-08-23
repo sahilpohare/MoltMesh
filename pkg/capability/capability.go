@@ -66,9 +66,6 @@ func Validate(capID string) error {
 	return validateName(parts[3])
 }
 
-// IsValid reports whether capID is a valid capability ID.
-func IsValid(capID string) bool { return Validate(capID) == nil }
-
 // Parse breaks a capability ID into its components.
 // Returns scheme, version, name and an error if malformed.
 func Parse(capID string) (scheme, version, name string, err error) {

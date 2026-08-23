@@ -34,12 +34,9 @@ type Outbox struct {
 }
 
 func (o *Outbox) EnableActor(ctx context.Context, h *appactors.Hierarchy) error {
-	exec, err := appactors.NewExecutor(ctx, h, "outbox")
-	if err != nil {
-		return err
-	}
-	o.exec = exec
-	return exec.Schedule(ctx, "outbox-flush", 10*time.Second, func() (any, error) { o.flush(ctx); return nil, nil })
+	return appactors.EnableSerialActor(ctx, h, "outbox", func(e *appactors.Executor) { o.exec = e }, func(e *appactors.Executor) error {
+		return e.Schedule(ctx, "outbox-flush", 10*time.Second, func() (any, error) { o.flush(ctx); return nil, nil })
+	})
 }
 
 // New opens (or creates) the outbox database at the given path.
@@ -98,11 +95,7 @@ func (o *Outbox) enqueue(ownerDID string, msg *pb.Message) error {
 
 // MarkDelivered marks a message as delivered.
 func (o *Outbox) MarkDelivered(messageID string) error {
-	if o.exec != nil {
-		_, err := o.exec.Call(context.Background(), func() (any, error) { return nil, o.markDelivered(messageID) })
-		return err
-	}
-	return o.markDelivered(messageID)
+	return appactors.DispatchErr(o.exec, func() error { return o.markDelivered(messageID) })
 }
 func (o *Outbox) markDelivered(messageID string) error {
 	_, err := o.db.Exec(`UPDATE outbox SET status = 'delivered' WHERE id = ?`, messageID)
@@ -115,14 +108,7 @@ func (o *Outbox) List(status string, limit int) ([]*pb.Message, error) {
 }
 
 func (o *Outbox) ListForOwner(ownerDID, status string, limit int) ([]*pb.Message, error) {
-	if o.exec != nil {
-		value, err := o.exec.Call(context.Background(), func() (any, error) { return o.list(ownerDID, status, limit) })
-		if err != nil {
-			return nil, err
-		}
-		return value.([]*pb.Message), nil
-	}
-	return o.list(ownerDID, status, limit)
+	return appactors.Dispatch(o.exec, func() ([]*pb.Message, error) { return o.list(ownerDID, status, limit) })
 }
 
 func (o *Outbox) list(ownerDID, status string, limit int) ([]*pb.Message, error) {
@@ -240,8 +226,10 @@ func (o *Outbox) flush(ctx context.Context) {
 		attempts := item.attempts + 1
 		finishNow := time.Now().UnixMilli()
 		if err == nil {
-			o.db.Exec(`UPDATE outbox SET status = 'delivered', attempts = ?, last_attempt = ? WHERE id = ?`,
-				attempts, finishNow, item.id)
+			if _, updateErr := o.db.Exec(`UPDATE outbox SET status = 'delivered', attempts = ?, last_attempt = ? WHERE id = ?`,
+				attempts, finishNow, item.id); updateErr != nil {
+				o.log.Warn("outbox mark delivered", zap.String("id", item.id), zap.Error(updateErr))
+			}
 			o.log.Debug("outbox delivered", zap.String("id", item.id))
 		} else {
 			status := "pending"
@@ -251,8 +239,10 @@ func (o *Outbox) flush(ctx context.Context) {
 			} else {
 				o.log.Warn("outbox delivery failed", zap.String("id", item.id), zap.Int("attempts", attempts), zap.Error(err))
 			}
-			o.db.Exec(`UPDATE outbox SET status = ?, attempts = ?, last_attempt = ? WHERE id = ?`,
-				status, attempts, finishNow, item.id)
+			if _, updateErr := o.db.Exec(`UPDATE outbox SET status = ?, attempts = ?, last_attempt = ? WHERE id = ?`,
+				status, attempts, finishNow, item.id); updateErr != nil {
+				o.log.Warn("outbox update status", zap.String("id", item.id), zap.Error(updateErr))
+			}
 		}
 	}
 }

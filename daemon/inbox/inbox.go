@@ -31,12 +31,7 @@ type subscriber struct {
 // EnableActor moves all inbox persistence and subscriber mutation behind a
 // supervised serial actor while preserving the existing Inbox API.
 func (b *Inbox) EnableActor(ctx context.Context, h *appactors.Hierarchy) error {
-	exec, err := appactors.NewExecutor(ctx, h, "inbox")
-	if err != nil {
-		return err
-	}
-	b.exec = exec
-	return nil
+	return appactors.EnableSerialActor(ctx, h, "inbox", func(e *appactors.Executor) { b.exec = e }, nil)
 }
 
 // New opens (or creates) the inbox database at the given path.
@@ -51,21 +46,13 @@ func New(path string) (*Inbox, error) {
 	return &Inbox{db: db}, nil
 }
 
-// Put stores an incoming message and notifies live subscribers.
-// The DB write is synchronous (so we never ACK before persisting),
-// but subscriber fan-out is async to unblock the network stream.
-func (b *Inbox) Put(msg *pb.Message) error {
-	return b.PutForOwner(msg.ToDid, msg)
-}
-
-// PutForOwner durably assigns a message to its local SDK-agent namespace.
-// The legacy Put path derives this from Message.ToDid.
+// PutForOwner durably assigns an incoming message to its local SDK-agent
+// namespace and notifies live subscribers. The DB write is synchronous (so
+// we never ACK before persisting), but subscriber fan-out is async to
+// unblock the network stream. Callers that don't need per-owner scoping
+// (a single-agent daemon) can just pass msg.ToDid, its natural owner.
 func (b *Inbox) PutForOwner(ownerDID string, msg *pb.Message) error {
-	if b.exec != nil {
-		_, err := b.exec.Call(context.Background(), func() (any, error) { return nil, b.put(ownerDID, msg) })
-		return err
-	}
-	return b.put(ownerDID, msg)
+	return appactors.DispatchErr(b.exec, func() error { return b.put(ownerDID, msg) })
 }
 
 func (b *Inbox) put(ownerDID string, msg *pb.Message) error {
@@ -85,23 +72,12 @@ func (b *Inbox) put(ownerDID string, msg *pb.Message) error {
 	return nil
 }
 
-// Subscribe registers a channel to receive new messages as they arrive.
-// The caller must call Unsubscribe when done to avoid a goroutine leak.
-func (b *Inbox) Subscribe() chan *pb.Message {
-	return b.SubscribeForOwner("")
-}
-
-// SubscribeForOwner only receives messages belonging to ownerDID. An empty
-// owner preserves the legacy all-inbox subscription behavior.
+// SubscribeForOwner registers a channel to receive new messages as they
+// arrive, scoped to ownerDID ("" for all of them). The caller must call
+// Unsubscribe when done to avoid a goroutine leak.
 func (b *Inbox) SubscribeForOwner(ownerDID string) chan *pb.Message {
-	if b.exec != nil {
-		value, err := b.exec.Call(context.Background(), func() (any, error) { return b.subscribe(ownerDID), nil })
-		if err == nil {
-			return value.(chan *pb.Message)
-		}
-		return nil
-	}
-	return b.subscribe(ownerDID)
+	ch, _ := appactors.Dispatch(b.exec, func() (chan *pb.Message, error) { return b.subscribe(ownerDID), nil })
+	return ch
 }
 
 func (b *Inbox) subscribe(ownerDID string) chan *pb.Message {
@@ -114,11 +90,7 @@ func (b *Inbox) subscribe(ownerDID string) chan *pb.Message {
 
 // Unsubscribe removes and closes a previously subscribed channel.
 func (b *Inbox) Unsubscribe(ch chan *pb.Message) {
-	if b.exec != nil {
-		_, _ = b.exec.Call(context.Background(), func() (any, error) { b.unsubscribe(ch); return nil, nil })
-		return
-	}
-	b.unsubscribe(ch)
+	appactors.DispatchVoid(b.exec, func() { b.unsubscribe(ch) })
 }
 
 func (b *Inbox) unsubscribe(ch chan *pb.Message) {
@@ -147,20 +119,12 @@ func (b *Inbox) notify(ownerDID string, msg *pb.Message) {
 	}
 }
 
-// Get retrieves messages matching the query.
-func (b *Inbox) Get(threadID, taskID string, unreadOnly bool, limit int, since int64) ([]*pb.Message, error) {
-	return b.GetForOwner("", threadID, taskID, unreadOnly, limit, since)
-}
-
+// GetForOwner retrieves messages matching the query, scoped to ownerDID
+// ("" for all of them).
 func (b *Inbox) GetForOwner(ownerDID, threadID, taskID string, unreadOnly bool, limit int, since int64) ([]*pb.Message, error) {
-	if b.exec != nil {
-		value, err := b.exec.Call(context.Background(), func() (any, error) { return b.get(ownerDID, threadID, taskID, unreadOnly, limit, since) })
-		if err != nil {
-			return nil, err
-		}
-		return value.([]*pb.Message), nil
-	}
-	return b.get(ownerDID, threadID, taskID, unreadOnly, limit, since)
+	return appactors.Dispatch(b.exec, func() ([]*pb.Message, error) {
+		return b.get(ownerDID, threadID, taskID, unreadOnly, limit, since)
+	})
 }
 
 func (b *Inbox) get(ownerDID, threadID, taskID string, unreadOnly bool, limit int, since int64) ([]*pb.Message, error) {
@@ -199,17 +163,9 @@ func (b *Inbox) get(ownerDID, threadID, taskID string, unreadOnly bool, limit in
 	return sqlite.ScanProtos(rows, func() *pb.Message { return &pb.Message{} })
 }
 
-// Ack marks a message as read.
-func (b *Inbox) Ack(messageID string) error {
-	return b.AckForOwner("", messageID)
-}
-
+// AckForOwner marks a message as read, scoped to ownerDID ("" for any owner).
 func (b *Inbox) AckForOwner(ownerDID, messageID string) error {
-	if b.exec != nil {
-		_, err := b.exec.Call(context.Background(), func() (any, error) { return nil, b.ack(ownerDID, messageID) })
-		return err
-	}
-	return b.ack(ownerDID, messageID)
+	return appactors.DispatchErr(b.exec, func() error { return b.ack(ownerDID, messageID) })
 }
 
 func (b *Inbox) ack(ownerDID, messageID string) error {

@@ -69,23 +69,39 @@ export class AgentIdentity {
 
   /** Fill the identity-bound fields and sign deterministic AgentCard bytes. */
   signAgentCard(card: Record<string, unknown>, nodePeerId = ""): Record<string, unknown> {
-    const now = String(Date.now());
+    // This module's own `protobuf.loadSync` instance (unlike client.ts's
+    // grpc stub, loaded with `longs: String` for JSON-safe wire transport)
+    // uses protobufjs's default int64 representation, whose verify()/encode()
+    // reject a stringified timestamp for an `integer|Long` field — publishedAt
+    // and expiresAt must stay plain numbers here, not the wire-safe strings
+    // client.ts's AgentCard type otherwise uses.
+    const now = Date.now();
     const metadata = Object.fromEntries(Object.entries((card["metadata"] as Record<string, string> | undefined) ?? {}).sort(([a], [b]) => a.localeCompare(b)));
-    const signed = {
+    // No `signature` key here at all — not even "". The daemon computes its
+    // verification canonical by proto.Clone-ing the received card, zeroing
+    // Signature, and deterministically marshaling: Go's protobuf marshaler
+    // omits a singular string field left at its zero value ("") entirely
+    // from the wire. protobufjs does not: encoding an object that HAS a
+    // `signature: ""` property still emits the field-9 tag with a
+    // zero-length value (2 extra wire bytes vs Go's omission). Signing over
+    // those 2 extra bytes produced a signature that could never verify
+    // against the daemon's own canonical bytes — this is why every
+    // SDK-signed agent card failed `PublishSigned` with "signature
+    // verification failed" regardless of payload.
+    const unsigned = {
       ...card,
       did: this.did,
       publicKey: Buffer.from(this.signingPublicKey).toString("base64"),
       encryptionPublicKey: this.encryptionPublicKey,
       nodePeerId,
       publishedAt: now,
-      expiresAt: String(Date.now() + 60 * 60 * 1000),
-      signature: "",
+      expiresAt: now + 60 * 60 * 1000,
       metadata,
     };
-    const err = agentCardType.verify(signed);
+    const err = agentCardType.verify(unsigned);
     if (err) throw new Error(`invalid agent card: ${err}`);
-    const canonical = agentCardType.encode(agentCardType.create(signed)).finish();
-    return { ...signed, signature: Buffer.from(this.sign(canonical)).toString("base64") };
+    const canonical = agentCardType.encode(agentCardType.create(unsigned)).finish();
+    return { ...unsigned, signature: Buffer.from(this.sign(canonical)).toString("base64") };
   }
 
   /** Sign a canonical Thread descriptor without its creator_signature field. */

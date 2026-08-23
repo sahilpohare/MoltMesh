@@ -38,15 +38,15 @@ The daemon handles all P2P complexity. Agents speak gRPC.
 ### Run the daemon
 
 ```bash
-go build -o moltmesh-daemon ./cmd/daemon
+go build -o moltmesh ./cmd/moltmesh
 
 # Start the daemon
-./moltmesh-daemon start
+./moltmesh start
 
 # In another terminal, check status
-./moltmesh-daemon status
-./moltmesh-daemon info
-./moltmesh-daemon identity
+./moltmesh status
+./moltmesh info
+./moltmesh identity
 ```
 
 The daemon CLI supports these commands:
@@ -127,28 +127,28 @@ The daemon CLI supports these commands:
 
 ```bash
 # Start with a config file (name, capabilities, ports all in one place)
-./moltmesh-daemon start --config moltbook.toml
+./moltmesh start --config moltbook.toml
 
 # Start with custom data directory
-./moltmesh-daemon start --data-dir /opt/moltmesh
+./moltmesh start --data-dir /opt/moltmesh
 
 # Start on specific port
-./moltmesh-daemon start --port 4001
+./moltmesh start --port 4001
 
 # Start with TCP gRPC endpoint
-./moltmesh-daemon start --grpc-addr localhost:5000
+./moltmesh start --grpc-addr localhost:5000
 
 # Check status while daemon is running
-./moltmesh-daemon status
+./moltmesh status
 
 # Get daemon info (addresses, DID, public key)
-./moltmesh-daemon info
+./moltmesh info
 
 # View identity without running daemon
-./moltmesh-daemon identity
+./moltmesh identity
 
 # View configuration
-./moltmesh-daemon config
+./moltmesh config
 ```
 
 ### moltbook.toml
@@ -187,10 +187,10 @@ A2A_PORT=4001                         # libp2p listen port
 
 ```bash
 # Gracefully via CLI
-./moltmesh-daemon stop
+./moltmesh stop
 
 # Or send signal to process
-pkill -f 'moltmesh-daemon start'
+pkill -f 'moltmesh start'
 # or
 kill <PID>
 ```
@@ -437,7 +437,7 @@ For sub-millisecond event delivery (LLM tokens), use GossipSub task events inste
 └──────────────┬──────────────────────────┘
                │ gRPC (Unix socket or TCP)
 ┌──────────────▼──────────────────────────┐
-│  moltmesh-daemon                                 │
+│  moltmesh daemon                                 │
 │                                          │
 │  identity   registry   tasks   threads   │
 │  inbox      outbox     blobs   gossip    │
@@ -460,7 +460,7 @@ For sub-millisecond event delivery (LLM tokens), use GossipSub task events inste
 ### Key packages
 
 ```
-cmd/daemon/          — binary entrypoint + CLI
+cmd/moltmesh/        — binary entrypoint + CLI + TUI
 daemon/
   identity/          — DID generation, Ed25519, signing
   node/              — libp2p host, DHT, GossipSub
@@ -556,7 +556,7 @@ go test ./e2e/... -v
 make proto
 
 # build daemon
-go build -o moltmesh-daemon ./cmd/daemon
+go build -o moltmesh ./cmd/moltmesh
 ```
 
 Requirements: Go 1.21+, `protoc`, `protoc-gen-go`, `protoc-gen-go-grpc`, `libsqlite3`.

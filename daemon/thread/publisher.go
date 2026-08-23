@@ -83,12 +83,7 @@ type Publisher struct {
 }
 
 func (p *Publisher) EnableActor(ctx context.Context, h *appactors.Hierarchy) error {
-	exec, err := appactors.NewExecutor(ctx, h, "thread-durability")
-	if err != nil {
-		return err
-	}
-	p.exec = exec
-	return nil
+	return appactors.EnableSerialActor(ctx, h, "thread-durability", func(e *appactors.Executor) { p.exec = e }, nil)
 }
 
 // NewPublisher creates a Publisher. Any of d, bs, bsw may be nil to disable
@@ -108,14 +103,7 @@ func (p *Publisher) PublishBlock(ctx context.Context, thread *pb.Thread, block *
 	if p == nil {
 		return
 	}
-	if p.exec != nil {
-		_ = p.exec.Cast(ctx, func() (any, error) {
-			p.publishBlock(ctx, thread, block)
-			return nil, nil
-		})
-		return
-	}
-	p.publishBlock(ctx, thread, block)
+	appactors.DispatchCast(p.exec, func() { p.publishBlock(ctx, thread, block) })
 }
 
 func (p *Publisher) publishBlock(ctx context.Context, thread *pb.Thread, block *pb.ThreadBlock) {

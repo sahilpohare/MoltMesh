@@ -3,24 +3,21 @@ package main
 import (
 	"fmt"
 	"os"
+	"strings"
 )
 
-// All top-level commands — keep in sync with main.go switch.
-var allCommands = []string{
-	"start", "stop", "status", "info", "tui", "version", "help",
-	"identity", "config",
-	"get-identity", "get-agent-card", "publish-agent-card", "find-agents",
-	"send-message", "get-inbox", "get-outbox", "subscribe-inbox", "ack-message",
-	"create-task", "get-task", "update-task", "cancel-task",
-	"publish-task-event", "subscribe-task-events",
-	"send-file", "fetch-file",
-	"create-thread", "get-thread", "append-entry", "get-thread-entries", "subscribe-thread",
-	"ping", "health", "peers",
-	"publish", "subscribe-topic",
-	"set-webhook", "clear-webhook", "get-webhook",
-	"network", "name",
-	"format",
-	"completion",
+// allCommands lists every top-level command, generated from cliCommands
+// (main.go) so it can't drift from the actual dispatch table the way the
+// old hand-maintained copy did. A function, not a package-level var: it's
+// referenced from within cliCommands (as cmdCompletion), so a var initializer
+// here would create an initialization cycle.
+func allCommands() []string {
+	cmds := cliCommands()
+	names := make([]string, len(cmds))
+	for i, c := range cmds {
+		names[i] = c.name
+	}
+	return names
 }
 
 func cmdCompletion(args []string) error {
@@ -28,13 +25,14 @@ func cmdCompletion(args []string) error {
 	if len(args) > 0 {
 		shell = args[0]
 	}
+	commands := strings.Join(allCommands(), " ")
 	switch shell {
 	case "bash":
-		fmt.Print(bashCompletion)
+		fmt.Print(strings.Replace(bashCompletion, "{{COMMANDS}}", commands, 1))
 	case "zsh":
 		fmt.Print(zshCompletion)
 	case "fish":
-		fmt.Print(fishCompletion)
+		fmt.Print(strings.Replace(fishCompletion, "{{COMMANDS}}", commands, 1))
 	default:
 		fmt.Fprintf(os.Stderr, "unknown shell %q; valid: bash, zsh, fish\n", shell)
 		return fmt.Errorf("unknown shell")
@@ -49,17 +47,7 @@ _moltmesh_complete() {
     local cur prev words cword
     _init_completion || return
 
-    local commands="start stop status info tui version help identity config
-        get-identity get-agent-card publish-agent-card find-agents
-        send-message get-inbox get-outbox subscribe-inbox ack-message
-        create-task get-task update-task cancel-task
-        publish-task-event subscribe-task-events
-        send-file fetch-file
-        create-thread get-thread append-entry get-thread-entries subscribe-thread
-        ping health peers
-        publish subscribe-topic
-        set-webhook clear-webhook get-webhook
-        network name format completion"
+    local commands="{{COMMANDS}}"
 
     local global_flags="--data-dir --grpc-addr --json"
 
@@ -131,8 +119,13 @@ _moltmesh() {
 
     case $state in
         command)
+            # Descriptions make this list unrenderable from allCommands (a
+            # plain name list) — keep it in sync with cliCommands in main.go
+            # by hand; bash/fish derive their name-only lists from
+            # allCommands directly and can't drift.
             local commands=(
                 'start:Start daemon in background'
+                'init:Scaffold a new agent'
                 'stop:Stop running daemon'
                 'status:Check daemon status'
                 'info:Show node info'
@@ -151,6 +144,7 @@ _moltmesh() {
                 'subscribe-inbox:Stream incoming messages'
                 'ack-message:Acknowledge a message'
                 'create-task:Create a task'
+                'send-task-result:Send a terminal result to a task initiator'
                 'get-task:Get task by ID'
                 'update-task:Update task status'
                 'cancel-task:Cancel a task'
@@ -163,6 +157,8 @@ _moltmesh() {
                 'append-entry:Append thread entry'
                 'get-thread-entries:List thread entries'
                 'subscribe-thread:Stream thread entries'
+                'add-thread-replica:Add an observer DID as a replica'
+                'recover-thread:Recover verified history'
                 'ping:Ping a peer'
                 'health:Show daemon health'
                 'peers:List connected peers'
@@ -223,16 +219,7 @@ const fishCompletion = `# moltmesh fish completion
 # Add to ~/.config/fish/completions/moltmesh.fish  or:
 #   moltmesh completion fish > ~/.config/fish/completions/moltmesh.fish
 
-set -l commands start stop status info tui version help identity config \
-    get-identity get-agent-card publish-agent-card find-agents \
-    send-message get-inbox get-outbox subscribe-inbox ack-message \
-    create-task get-task update-task cancel-task publish-task-event subscribe-task-events \
-    send-file fetch-file \
-    create-thread get-thread append-entry get-thread-entries subscribe-thread \
-    ping health peers \
-    publish subscribe-topic \
-    set-webhook clear-webhook get-webhook \
-    network name format completion
+set -l commands {{COMMANDS}}
 
 # Top-level commands
 complete -c moltmesh -f -n '__fish_use_subcommand' -a "$commands"

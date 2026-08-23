@@ -19,9 +19,6 @@ import (
 //   "did:key:z6MkhaX…r2jP"
 func DID(d string) string { return did.Short(d) }
 
-// DIDFull returns the full DID unchanged.
-func DIDFull(d string) string { return d }
-
 // ── Capability ────────────────────────────────────────────────────────────────
 
 // Capability returns the short name for display (e.g. "text-generation").
@@ -249,10 +246,19 @@ func Table(header []string, rows [][]string) string {
 
 // ── Message / Task display ────────────────────────────────────────────────────
 
+// shortID truncates an ID to 8 characters for display, returning it
+// unchanged if it's already shorter (avoids panicking on IDs under 8 chars).
+func shortID(id string) string {
+	if len(id) <= 8 {
+		return id
+	}
+	return id[:8]
+}
+
 // Message returns a single-line summary of a message.
 func Message(m *pb.Message) string {
 	return fmt.Sprintf("[%s]  %s → %s  %-12s  %s",
-		m.Id[:8],
+		shortID(m.Id),
 		DID(m.FromDid),
 		DID(m.ToDid),
 		MessageKind(m.Kind),
@@ -263,7 +269,7 @@ func Message(m *pb.Message) string {
 // Task returns a single-line summary of a task.
 func Task(t *pb.Task) string {
 	return fmt.Sprintf("[%s]  %-10s  %-18s  %s → %s  %s",
-		t.Id[:8],
+		shortID(t.Id),
 		TaskStatus(t.Status),
 		Capability(t.Skill),
 		DID(t.Initiator),

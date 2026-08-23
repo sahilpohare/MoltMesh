@@ -73,18 +73,15 @@ type Registry struct {
 }
 
 func (r *Registry) EnableActor(ctx context.Context, h *appactors.Hierarchy) error {
-	exec, err := appactors.NewExecutor(ctx, h, "names")
-	if err != nil {
-		return err
-	}
-	r.exec = exec
-	return exec.Schedule(ctx, "names-republish", republishEvery, func() (any, error) {
-		for _, name := range r.claims {
-			if _, err := r.claim(ctx, name); err != nil {
-				r.log.Warn("republish name claim", zap.String("name", name), zap.Error(err))
+	return appactors.EnableSerialActor(ctx, h, "names", func(e *appactors.Executor) { r.exec = e }, func(e *appactors.Executor) error {
+		return e.Schedule(ctx, "names-republish", republishEvery, func() (any, error) {
+			for _, name := range r.claims {
+				if _, err := r.claim(ctx, name); err != nil {
+					r.log.Warn("republish name claim", zap.String("name", name), zap.Error(err))
+				}
 			}
-		}
-		return nil, nil
+			return nil, nil
+		})
 	})
 }
 
@@ -130,14 +127,7 @@ func Validate(name string) error {
 // DID the write is refused. This requires the current holder's claim to expire
 // before another agent may take the name.
 func (r *Registry) Claim(ctx context.Context, name string) (*Claim, error) {
-	if r.exec != nil {
-		value, err := r.exec.Call(ctx, func() (any, error) { return r.claim(ctx, name) })
-		if err != nil {
-			return nil, err
-		}
-		return value.(*Claim), nil
-	}
-	return r.claim(ctx, name)
+	return appactors.Dispatch(r.exec, func() (*Claim, error) { return r.claim(ctx, name) })
 }
 func (r *Registry) claim(ctx context.Context, name string) (*Claim, error) {
 	name = Normalize(name)
@@ -187,14 +177,7 @@ func (r *Registry) claim(ctx context.Context, name string) (*Claim, error) {
 // Resolve looks up a name in the DHT using a quorum search and returns the
 // most-recent valid claim. Invalid or unsigned records are silently skipped.
 func (r *Registry) Resolve(ctx context.Context, name string) (*Claim, error) {
-	if r.exec != nil {
-		value, err := r.exec.Call(ctx, func() (any, error) { return r.resolve(ctx, name) })
-		if err != nil {
-			return nil, err
-		}
-		return value.(*Claim), nil
-	}
-	return r.resolve(ctx, name)
+	return appactors.Dispatch(r.exec, func() (*Claim, error) { return r.resolve(ctx, name) })
 }
 func (r *Registry) resolve(ctx context.Context, name string) (*Claim, error) {
 	name = Normalize(name)

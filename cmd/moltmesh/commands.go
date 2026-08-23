@@ -8,9 +8,12 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 
+	"github.com/sahilpohare/p2p-a2a/daemon/identity"
 	pb "github.com/sahilpohare/p2p-a2a/gen/a2a/v1"
+	"github.com/sahilpohare/p2p-a2a/pkg/capability"
 	"github.com/sahilpohare/p2p-a2a/pkg/format"
 )
 
@@ -452,6 +455,53 @@ func cmdCreateTask(args []string) error {
 
 	data, _ := json.MarshalIndent(task, "", "  ")
 	fmt.Println(string(data))
+	return nil
+}
+
+// cmdSendTaskResult sends a terminal task result back to a task's initiator.
+// Ported from cmd/daemon's send-task-result command (retired) so cmd/moltmesh
+// remains a strict superset of it.
+func cmdSendTaskResult(args []string) error {
+	fs := flag.NewFlagSet("send-task-result", flag.ExitOnError)
+	dataDir := fs.String("data-dir", "", "Data directory")
+	grpcAddr := fs.String("grpc-addr", "", "gRPC server address")
+	to := fs.String("to", "", "Task initiator DID")
+	taskID := fs.String("task-id", "", "Task ID")
+	threadID := fs.String("thread-id", "", "Associated thread ID")
+	result := fs.String("result", "", "UTF-8 result")
+	errMsg := fs.String("error", "", "Failure text")
+	fs.Parse(args)
+	if *to == "" || *taskID == "" {
+		return fmt.Errorf("--to and --task-id are required")
+	}
+	status := pb.TaskStatus_TASK_STATUS_COMPLETED
+	if *errMsg != "" {
+		status = pb.TaskStatus_TASK_STATUS_FAILED
+	}
+	dir, err := resolveDataDir(*dataDir)
+	if err != nil {
+		return err
+	}
+	conn, err := dialGRPC(resolveGRPCAddr(*grpcAddr, dir))
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	response, err := pb.NewA2ANodeClient(conn).SendTaskResult(context.Background(), &pb.SendTaskResultRequest{
+		ToDid:    *to,
+		ThreadId: *threadID,
+		Result: &pb.TaskResult{
+			TaskId:          *taskID,
+			Status:          status,
+			Error:           *errMsg,
+			Data:            []byte(*result),
+			OutputArtifacts: []*pb.Artifact{{Name: "result.txt", MimeType: "text/plain", Size: int64(len(*result)), Inline: []byte(*result)}},
+		},
+	})
+	if err != nil {
+		return err
+	}
+	jsonOut(response)
 	return nil
 }
 
@@ -982,6 +1032,36 @@ func cmdSubscribeThread(args []string) error {
 	return nil
 }
 
+// cmdAddThreadReplica adds an observer DID as a replica of a thread. Ported
+// from cmd/daemon's add-thread-replica command (retired) so cmd/moltmesh
+// remains a strict superset of it.
+func cmdAddThreadReplica(args []string) error {
+	fs := flag.NewFlagSet("add-thread-replica", flag.ExitOnError)
+	dataDir := fs.String("data-dir", "", "Data directory")
+	grpcAddr := fs.String("grpc-addr", "", "gRPC server address")
+	threadID := fs.String("thread-id", "", "Thread ID")
+	did := fs.String("did", "", "Observer DID")
+	fs.Parse(args)
+	if *threadID == "" || *did == "" {
+		return fmt.Errorf("--thread-id and --did are required")
+	}
+	dir, err := resolveDataDir(*dataDir)
+	if err != nil {
+		return err
+	}
+	conn, err := dialGRPC(resolveGRPCAddr(*grpcAddr, dir))
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	th, err := pb.NewA2ANodeClient(conn).AddThreadReplica(context.Background(), &pb.ThreadReplicaRequest{ThreadId: *threadID, ReplicaDid: *did})
+	if err != nil {
+		return err
+	}
+	jsonOut(th)
+	return nil
+}
+
 // cmdRecoverThread imports verified read-only history using the complete
 // bearer capability. A public thread ID alone is deliberately insufficient.
 func cmdRecoverThread(args []string) error {
@@ -1160,7 +1240,7 @@ Types: did, capability, multiaddr, bytes, time
 				jsonOut(map[string]string{
 					"input":  v,
 					"short":  format.DID(v),
-					"full":   format.DIDFull(v),
+					"full":   v,
 					"method": didMethod(v),
 					"valid":  boolStr(isDIDValid(v)),
 				})
@@ -1564,7 +1644,7 @@ func cmdNetworkList(_ []string) error {
 	}
 	rows := make([][]string, len(resp.Networks))
 	for i, n := range resp.Networks {
-		rows[i] = []string{n.Id[:8] + "…", n.Name, n.CreatorDid[:20] + "…", format.UnixMs(n.CreatedAt)}
+		rows[i] = []string{truncate(n.Id, 8), n.Name, truncate(n.CreatorDid, 20), format.UnixMs(n.CreatedAt)}
 	}
 	fmt.Print(format.Table([]string{"ID", "NAME", "CREATOR", "CREATED"}, rows))
 	return nil
@@ -1731,4 +1811,163 @@ func cmdNameResolve(args []string) error {
 			resp.Name, resp.Did, format.UnixMs(resp.PublishedAt), format.UnixMs(resp.ExpiresAt))
 	}
 	return nil
+}
+
+// cmdInit scaffolds a new agent: creates the data directory, generates an
+// identity if one doesn't already exist, and writes a starter moltbook.toml
+// if one doesn't already exist at the target path. Safe to re-run; existing
+// identity/config files are left untouched. Ported from cmd/daemon's init
+// command (retired) so cmd/moltmesh remains a strict superset of it.
+func cmdInit(args []string) error {
+	fs := flag.NewFlagSet("init", flag.ExitOnError)
+	dataDir := fs.String("data-dir", "", "Data directory (default: ~/.moltmesh)")
+	name := fs.String("name", "", "Agent name to claim on the network (optional)")
+	description := fs.String("description", "", "Agent description (optional)")
+	capabilities := fs.String("capabilities", "", "Comma-separated capabilities to advertise (optional)")
+	port := fs.String("port", "0", "libp2p TCP/UDP port (default: 0 = OS-assigned)")
+	grpcAddr := fs.String("grpc-addr", "", "gRPC listen address, e.g. 127.0.0.1:21500 (default: unix socket in data-dir)")
+	cfgPath := fs.String("config", "", "Path to write moltbook.toml (default: <data-dir>/moltbook.toml)")
+	force := fs.Bool("force", false, "Overwrite an existing identity/config")
+	fs.Parse(args)
+
+	var capList []string
+	for _, c := range strings.Split(*capabilities, ",") {
+		c = strings.TrimSpace(c)
+		if c != "" {
+			capList = append(capList, c)
+		}
+	}
+
+	dir, err := resolveDataDir(*dataDir)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return fmt.Errorf("create data dir: %w", err)
+	}
+
+	idPath := filepath.Join(dir, "identity.json")
+	var id *identity.Identity
+	identityCreated := false
+	if _, statErr := os.Stat(idPath); statErr == nil && !*force {
+		id, err = identity.Load(idPath)
+		if err != nil {
+			return fmt.Errorf("load existing identity: %w", err)
+		}
+	} else {
+		id, err = identity.Generate()
+		if err != nil {
+			return fmt.Errorf("generate identity: %w", err)
+		}
+		if err := id.Save(idPath); err != nil {
+			return fmt.Errorf("save identity: %w", err)
+		}
+		identityCreated = true
+	}
+
+	// Apply sensible defaults for anything the caller didn't specify, so a
+	// bare `init` never leaves name/description/capabilities blank.
+	if *name == "" {
+		*name = defaultAgentName(id.DID)
+	}
+	if *description == "" {
+		*description = "MoltMesh agent"
+	}
+	if len(capList) == 0 {
+		capList = []string{capability.TaskOrchestrate}
+	}
+
+	if *cfgPath == "" {
+		*cfgPath = filepath.Join(dir, "moltbook.toml")
+	}
+	configCreated := false
+	if _, statErr := os.Stat(*cfgPath); statErr != nil || *force {
+		var b strings.Builder
+		fmt.Fprintf(&b, "# Generated by `moltmesh init`.\n")
+		fmt.Fprintf(&b, "# did: %s (static — derived from %s, do not edit here)\n\n", id.DID, idPath)
+
+		fmt.Fprintf(&b, "[agent]\n")
+		fmt.Fprintf(&b, "# Human-readable name to claim on the network.\n")
+		fmt.Fprintf(&b, "name = %q\n", *name)
+		fmt.Fprintf(&b, "# Short description shown in agent card discovery.\n")
+		fmt.Fprintf(&b, "description = %q\n", *description)
+		fmt.Fprintf(&b, "# Capabilities advertised to the network. Short names are normalized\n")
+		fmt.Fprintf(&b, "# to \"a2a:v1:cap:<name>\" automatically. Well-known capabilities:\n")
+		fmt.Fprintf(&b, "#   text-generation, code-execution, image-analysis, file-processing,\n")
+		fmt.Fprintf(&b, "#   data-retrieval, task-orchestration, voice-synthesis, search\n")
+		fmt.Fprintf(&b, "capabilities = [%s]\n", quotedCSV(capList))
+		fmt.Fprintf(&b, "# Examples:\n")
+		fmt.Fprintf(&b, "# capabilities = [\"text-generation\", \"code-execution\"]\n")
+		fmt.Fprintf(&b, "# capabilities = [\"image-analysis\", \"file-processing\", \"search\"]\n\n")
+
+		fmt.Fprintf(&b, "[network]\n")
+		fmt.Fprintf(&b, "# libp2p TCP/UDP port. \"0\" = OS-assigned (auto-picks a free port).\n")
+		fmt.Fprintf(&b, "port = %q\n\n", *port)
+
+		fmt.Fprintf(&b, "[daemon]\n")
+		fmt.Fprintf(&b, "# Directory for identity.json, databases, and the gRPC socket.\n")
+		fmt.Fprintf(&b, "data_dir = %q\n", dir)
+		fmt.Fprintf(&b, "# gRPC listen address. Empty = unix socket inside data_dir.\n")
+		fmt.Fprintf(&b, "# Set a host:port (e.g. \"127.0.0.1:21500\") to listen on TCP instead —\n")
+		fmt.Fprintf(&b, "# the daemon auto-increments the port if it's already taken, and\n")
+		fmt.Fprintf(&b, "# records the address it actually bound to in <data_dir>/grpc-addr.\n")
+		fmt.Fprintf(&b, "grpc_addr = %q\n", *grpcAddr)
+
+		if err := os.WriteFile(*cfgPath, []byte(b.String()), 0600); err != nil {
+			return fmt.Errorf("write moltbook.toml: %w", err)
+		}
+		configCreated = true
+	}
+
+	if jsonMode {
+		jsonOut(map[string]interface{}{
+			"data_dir":         dir,
+			"did":              id.DID,
+			"name":             *name,
+			"capabilities":     capList,
+			"port":             *port,
+			"grpc_addr":        *grpcAddr,
+			"identity_created": identityCreated,
+			"config_path":      *cfgPath,
+			"config_created":   configCreated,
+		})
+		return nil
+	}
+
+	fmt.Printf("data dir:  %s\n", dir)
+	fmt.Printf("did:       %s\n", id.DID)
+	if identityCreated {
+		fmt.Println("identity:  generated")
+	} else {
+		fmt.Println("identity:  already exists (unchanged)")
+	}
+	if configCreated {
+		fmt.Printf("config:    written to %s\n", *cfgPath)
+	} else {
+		fmt.Printf("config:    already exists at %s (unchanged)\n", *cfgPath)
+	}
+	fmt.Println("\nStart the daemon with:")
+	fmt.Printf("  moltmesh start --config %s\n", *cfgPath)
+	return nil
+}
+
+func defaultAgentName(did string) string {
+	tail := did
+	if i := strings.LastIndex(did, ":"); i >= 0 {
+		tail = did[i+1:]
+	}
+	tail = strings.ToLower(tail)
+	if len(tail) > 8 {
+		tail = tail[len(tail)-8:]
+	}
+	return "agent-" + tail
+}
+
+// quotedCSV renders a string slice as a TOML inline array of quoted strings.
+func quotedCSV(items []string) string {
+	quoted := make([]string, len(items))
+	for i, s := range items {
+		quoted[i] = fmt.Sprintf("%q", s)
+	}
+	return strings.Join(quoted, ", ")
 }

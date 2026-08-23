@@ -34,6 +34,16 @@ Screenshots below are from a real `moltmesh-daemon` running locally (not mocked 
 - **Two independently-maintained *implementations* of that decision is not equally justified**, and this ADR says so plainly rather than let the fork stand undocumented indefinitely. Every visual or behavioral fix applied to one copy (a color tweak, a new field, a bug fix in how a list renders) has to be manually re-applied to the other, or the two diverge further — which is exactly what has already started happening (the `styleSuccess`/`styleSuccess2` divergence above is evidence of independent edits, not a deliberate design difference).
 - **Documenting this now, while the fork is still small enough to read in one `diff`,** is cheaper than documenting it after a third or fourth divergence, which is the same lesson this project's own architecture dissertation draws from the two duplicated daemon-bootstrap entrypoints (ADR-0024).
 
+## Amendment (2026-08-23): `cmd/tui` retired outright
+
+This ADR's original decision kept both entrypoints as a deliberate two-installation-footprint choice. That framing has been superseded: `cmd/tui` has been deleted entirely, not kept alongside `cmd/moltmesh tui` as a lighter-weight alternative.
+
+Before deletion, a feature-parity audit (part of the same bug-sweep-and-refactor pass that also retired `cmd/daemon`, see ADR-0024's amendment) confirmed the tab set was identical between the two forks, but found one real behavioral regression in `cmd/moltmesh/tui.go`'s copy: its `subscribeInbox` opened a brand-new `SubscribeInbox` gRPC stream on every single inbox message (received one message, then discarded the stream), rather than opening the stream once and reusing it the way `cmd/tui/main.go`'s copy did. Since the server replays the whole inbox backlog at stream-open, this meant every new message caused the entire backlog to be re-fetched and re-prepended — an unbounded-duplication bug, not a cosmetic difference. This was fixed by porting `cmd/tui`'s stream-reuse logic (the `inboxStream` field, the `inboxSeen` dedup map, and `newMessageMsg` carrying the stream forward) into `cmd/moltmesh/tui.go` before deleting `cmd/tui`.
+
+This resolves the >600-line fork-divergence problem this ADR documented by elimination rather than by the originally-planned extraction into a shared `internal/tuiapp` package: there is now only one implementation (`cmd/moltmesh/tui.go`), so the "keep both in sync" maintenance burden this ADR flagged no longer applies. The Consequences section's "Follow-up work" (factoring out a shared package) is no longer necessary for that reason.
+
+Anyone who installed the standalone `tui` binary needs to switch to `moltmesh tui`, which is now the only supported terminal UI.
+
 ## Consequences
 
 - Until the two implementations are unified, any change to the TUI's behavior, styling, or the tabs it exposes must be applied to *both* `cmd/tui/main.go` and `cmd/moltmesh/tui.go`, or the two binaries will keep drifting apart. This is flagged explicitly as follow-up work below, not accepted as a permanent state.

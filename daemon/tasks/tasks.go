@@ -168,28 +168,56 @@ func (s *Store) CreateIdempotent(initiator, assignee, threadID, skill string, in
 			return nil, err
 		}
 	}
+	return s.createDispatched("", initiator, assignee, threadID, skill, inputArtifacts, meta, key)
+}
+
+// CreateFromRemote materializes a task on the assignee's own daemon after
+// receiving a TASK_REQUEST message from the initiator's daemon
+// (Server.HandleIncoming) — without it, a task delegated across daemons is
+// never recorded on the assignee's side, so SubscribeTasks/ClaimTask have
+// nothing to find and the task sits in SUBMITTED forever. Unlike
+// CreateIdempotent, id is supplied by the caller and must match the
+// initiator's own record of the same task; returning the existing row for
+// an id already present makes a redelivered TASK_REQUEST (the outbox
+// retries until acked) safe to apply twice.
+func (s *Store) CreateFromRemote(id, initiator, assignee, threadID, skill string, inputArtifacts []*pb.Artifact, meta map[string]string) (*pb.Task, error) {
+	if id == "" {
+		return nil, fmt.Errorf("%w: task id is required", ErrInvalidTask)
+	}
+	if existing, err := s.Get(id); err == nil {
+		return existing, nil
+	}
+	return s.createDispatched(id, initiator, assignee, threadID, skill, inputArtifacts, meta, "")
+}
+
+// createDispatched routes create through the tasks domain actor when one is
+// running (see daemon/actors), keeping every insert serialized the same way
+// regardless of which of the two public constructors above triggered it.
+func (s *Store) createDispatched(id, initiator, assignee, threadID, skill string, inputArtifacts []*pb.Artifact, meta map[string]string, key string) (*pb.Task, error) {
+	task, err := appactors.Dispatch(s.exec, func() (*pb.Task, error) {
+		return s.create(id, initiator, assignee, threadID, skill, inputArtifacts, meta, key)
+	})
+	if err != nil {
+		return nil, err
+	}
 	if s.exec != nil {
-		value, err := s.exec.Call(context.Background(), func() (any, error) { return s.create(initiator, assignee, threadID, skill, inputArtifacts, meta, key) })
-		if err != nil {
-			return nil, err
-		}
-		task := value.(*pb.Task)
 		if _, err := s.taskExecutor(task.Id); err != nil {
 			return nil, err
 		}
-		return task, nil
 	}
-	return s.create(initiator, assignee, threadID, skill, inputArtifacts, meta, key)
+	return task, nil
 }
-func (s *Store) create(initiator, assignee, threadID, skill string, inputArtifacts []*pb.Artifact, meta map[string]string, key string) (*pb.Task, error) {
+
+func (s *Store) create(id, initiator, assignee, threadID, skill string, inputArtifacts []*pb.Artifact, meta map[string]string, key string) (*pb.Task, error) {
 	if skill == "" {
 		return nil, fmt.Errorf("%w: skill is required", ErrInvalidTask)
 	}
 	if initiator != "" && initiator == assignee {
 		return nil, fmt.Errorf("%w: cannot delegate a task to its own initiator", ErrInvalidTask)
 	}
-
-	id := uuid.New().String()
+	if id == "" {
+		id = uuid.New().String()
+	}
 	now := time.Now().UnixMilli()
 
 	artifactsJSON, err := json.Marshal(inputArtifacts)
@@ -239,25 +267,24 @@ func (s *Store) create(initiator, assignee, threadID, skill string, inputArtifac
 
 // Get retrieves a task by ID.
 func (s *Store) Get(id string) (*pb.Task, error) {
-	if s.exec != nil {
-		exec, err := s.taskExecutor(id)
-		if err != nil {
-			return nil, err
-		}
-		value, err := exec.Call(context.Background(), func() (any, error) { return s.get(id) })
-		if err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				s.releaseTaskActor(id, exec)
-			}
-			return nil, err
-		}
-		task := value.(*pb.Task)
-		if terminal(task.Status) {
+	if s.exec == nil {
+		return s.get(id)
+	}
+	exec, err := s.taskExecutor(id)
+	if err != nil {
+		return nil, err
+	}
+	task, err := appactors.Dispatch(exec, func() (*pb.Task, error) { return s.get(id) })
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
 			s.releaseTaskActor(id, exec)
 		}
-		return task, nil
+		return nil, err
 	}
-	return s.get(id)
+	if terminal(task.Status) {
+		s.releaseTaskActor(id, exec)
+	}
+	return task, nil
 }
 func (s *Store) get(id string) (*pb.Task, error) {
 	row := s.db.QueryRow(`
@@ -274,22 +301,21 @@ func (s *Store) get(id string) (*pb.Task, error) {
 // task while a coordinator cancels it) can't race past the guard — the
 // loser gets ErrInvalidTransition instead of silently clobbering state.
 func (s *Store) UpdateStatus(id string, status pb.TaskStatus, errMsg string, outputArtifacts []*pb.Artifact) (*pb.Task, error) {
-	if s.exec != nil {
-		exec, err := s.taskExecutor(id)
-		if err != nil {
-			return nil, err
-		}
-		value, err := exec.Call(context.Background(), func() (any, error) { return s.updateStatus(id, status, errMsg, outputArtifacts) })
-		if err != nil {
-			return nil, err
-		}
-		task := value.(*pb.Task)
-		if terminal(task.Status) {
-			s.releaseTaskActor(id, exec)
-		}
-		return task, nil
+	if s.exec == nil {
+		return s.updateStatus(id, status, errMsg, outputArtifacts)
 	}
-	return s.updateStatus(id, status, errMsg, outputArtifacts)
+	exec, err := s.taskExecutor(id)
+	if err != nil {
+		return nil, err
+	}
+	task, err := appactors.Dispatch(exec, func() (*pb.Task, error) { return s.updateStatus(id, status, errMsg, outputArtifacts) })
+	if err != nil {
+		return nil, err
+	}
+	if terminal(task.Status) {
+		s.releaseTaskActor(id, exec)
+	}
+	return task, nil
 }
 func (s *Store) updateStatus(id string, status pb.TaskStatus, errMsg string, outputArtifacts []*pb.Artifact) (*pb.Task, error) {
 	now := time.Now().UnixMilli()
@@ -591,14 +617,7 @@ func (s *Store) requeueExpired() error {
 
 // List returns tasks filtered by initiator or assignee DID.
 func (s *Store) List(did string, limit int) ([]*pb.Task, error) {
-	if s.exec != nil {
-		value, err := s.exec.Call(context.Background(), func() (any, error) { return s.list(did, limit) })
-		if err != nil {
-			return nil, err
-		}
-		return value.([]*pb.Task), nil
-	}
-	return s.list(did, limit)
+	return appactors.Dispatch(s.exec, func() ([]*pb.Task, error) { return s.list(did, limit) })
 }
 
 // SaveEvent durably records a task event. Duplicate sequence numbers are

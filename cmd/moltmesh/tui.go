@@ -124,7 +124,10 @@ var tabNames = []string{"Identity", "Inbox", "Compose", "Tasks", "Peers", "Files
 
 type identityMsg struct{ id *pb.AgentIdentity }
 type inboxMsg struct{ msgs []*pb.Message }
-type newMessageMsg struct{ msg *pb.Message }
+type newMessageMsg struct {
+	msg    *pb.Message
+	stream pb.A2ANode_SubscribeInboxClient
+}
 type tasksMsg struct{ tasks []*pb.Task }
 type peersMsg struct{ peers []*pb.PeerInfo }
 type healthMsg struct{ h *pb.HealthResponse }
@@ -197,6 +200,8 @@ type tuiModel struct {
 	// inbox screen
 	inboxList   list.Model
 	inboxMsgs   []*pb.Message
+	inboxSeen   map[string]bool
+	inboxStream pb.A2ANode_SubscribeInboxClient
 	selectedMsg *pb.Message
 
 	// compose screen
@@ -372,18 +377,27 @@ func (m tuiModel) fetchInbox() tea.Cmd {
 	}
 }
 
+// subscribeInbox reads the next message off the long-lived inbox stream,
+// opening it once and reusing it thereafter. The server replays the whole
+// backlog at stream-open (see SubscribeInbox in daemon/rpc/server.go), so
+// reopening per-message would re-deliver history as "new" every time and
+// accumulate duplicates forever — the stream must stay open across calls.
 func (m tuiModel) subscribeInbox() tea.Cmd {
+	stream := m.inboxStream
 	return func() tea.Msg {
-		// Uses the long-lived model ctx — cancelled on quit.
-		stream, err := m.client.SubscribeInbox(m.ctx, &pb.SubscribeRequest{})
-		if err != nil {
-			return nil
+		if stream == nil {
+			var err error
+			// Uses the long-lived model ctx — cancelled on quit.
+			stream, err = m.client.SubscribeInbox(m.ctx, &pb.SubscribeRequest{})
+			if err != nil {
+				return nil
+			}
 		}
 		msg, err := stream.Recv()
 		if err != nil {
 			return nil
 		}
-		return newMessageMsg{msg}
+		return newMessageMsg{msg: msg, stream: stream}
 	}
 }
 
@@ -561,20 +575,30 @@ func (m tuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case inboxMsg:
 		m.inboxMsgs = msg.msgs
+		m.inboxSeen = make(map[string]bool, len(msg.msgs))
 		items := make([]list.Item, len(msg.msgs))
 		for i, msg := range msg.msgs {
 			items[i] = msgItem{msg}
+			m.inboxSeen[msg.Id] = true
 		}
 		m.inboxList.SetItems(items)
 
 	case newMessageMsg:
-		m.inboxMsgs = append([]*pb.Message{msg.msg}, m.inboxMsgs...)
-		items := make([]list.Item, len(m.inboxMsgs))
-		for i, msg := range m.inboxMsgs {
-			items[i] = msgItem{msg}
+		m.inboxStream = msg.stream
+		if m.inboxSeen == nil {
+			m.inboxSeen = make(map[string]bool)
 		}
-		m.inboxList.SetItems(items)
-		m.setStatus(styleSuccess2.Render("● New message from " + shortDID(msg.msg.FromDid)))
+		if !m.inboxSeen[msg.msg.Id] {
+			m.inboxSeen[msg.msg.Id] = true
+			m.inboxMsgs = append([]*pb.Message{msg.msg}, m.inboxMsgs...)
+			items := make([]list.Item, len(m.inboxMsgs))
+			for i, im := range m.inboxMsgs {
+				items[i] = msgItem{im}
+			}
+			m.inboxList.SetItems(items)
+			m.setStatus(styleSuccess2.Render("● New message from " + shortDID(msg.msg.FromDid)))
+		}
+		// wait for the next message on the same stream
 		cmds = append(cmds, m.subscribeInbox())
 
 	case tasksMsg:

@@ -26,8 +26,7 @@ type ThreadHeadValidator struct{}
 // chain, not trusting whoever served the DHT record, is what makes the
 // pointer safe to consume — see daemon/thread.VerifyChain).
 func (v ThreadHeadValidator) Validate(key string, value []byte) error {
-	key = strings.TrimPrefix(key, "/")
-	key = strings.TrimPrefix(key, "threads/")
+	key = stripNamespace(key, "threads/")
 	if key == "" {
 		return fmt.Errorf("a2avalidator: empty key")
 	}
@@ -90,31 +89,10 @@ func (v ThreadHeadValidator) Validate(key string, value []byte) error {
 // safety properties) and content addressing means a lower-height pointer is
 // just stale, never a competing fork.
 func (v ThreadHeadValidator) Select(key string, vals [][]byte) (int, error) {
-	if len(vals) == 0 {
-		return 0, fmt.Errorf("a2avalidator: no values to select from")
-	}
 	type head struct {
 		Height int64 `json:"height"`
 	}
-	best := -1
-	var bestHead head
-	for i := 0; i < len(vals); i++ {
-		if err := v.Validate(key, vals[i]); err != nil {
-			continue
-		}
-		var h head
-		if err := json.Unmarshal(vals[i], &h); err != nil {
-			continue
-		}
-		if best < 0 || h.Height > bestHead.Height {
-			best = i
-			bestHead = h
-		}
-	}
-	if best < 0 {
-		return 0, fmt.Errorf("a2avalidator: no valid thread heads")
-	}
-	return best, nil
+	return selectBest(key, vals, v.Validate, func(h head) int64 { return h.Height }, "thread heads")
 }
 
 // Ensure ThreadHeadValidator implements record.Validator.

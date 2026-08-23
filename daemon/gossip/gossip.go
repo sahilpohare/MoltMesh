@@ -44,12 +44,7 @@ type Manager struct {
 }
 
 func (m *Manager) EnableActor(ctx context.Context, h *appactors.Hierarchy) error {
-	exec, err := appactors.NewExecutor(ctx, h, "gossip")
-	if err != nil {
-		return err
-	}
-	m.exec = exec
-	return nil
+	return appactors.EnableSerialActor(ctx, h, "gossip", func(e *appactors.Executor) { m.exec = e }, nil)
 }
 
 type managedTopic struct {
@@ -150,15 +145,18 @@ func (m *Manager) Publish(ctx context.Context, topic string, data []byte) error 
 // SubscribeTopic subscribes to a named topic and returns a channel of raw payloads.
 // The caller must drain or abandon the channel and call the returned cancel func when done.
 func (m *Manager) SubscribeTopic(ctx context.Context, topic string) (<-chan []byte, func(), error) {
-	if m.exec != nil {
-		value, err := m.exec.Call(ctx, func() (any, error) { ch, cancel, err := m.subscribeTopic(ctx, topic); return []any{ch, cancel}, err })
-		if err != nil {
-			return nil, nil, err
-		}
-		pair := value.([]any)
-		return pair[0].(<-chan []byte), pair[1].(func()), nil
+	type result struct {
+		ch     <-chan []byte
+		cancel func()
 	}
-	return m.subscribeTopic(ctx, topic)
+	r, err := appactors.Dispatch(m.exec, func() (result, error) {
+		ch, cancel, err := m.subscribeTopic(ctx, topic)
+		return result{ch, cancel}, err
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	return r.ch, r.cancel, nil
 }
 func (m *Manager) subscribeTopic(ctx context.Context, topic string) (<-chan []byte, func(), error) {
 	if err := validateTopicAndPayload(topic, nil); err != nil {
@@ -234,11 +232,7 @@ func (m *Manager) releaseTopicFunc(name string, topic *pubsub.Topic) func() {
 }
 
 func (m *Manager) publish(ctx context.Context, topicName string, data []byte) error {
-	if m.exec != nil {
-		_, err := m.exec.Call(ctx, func() (any, error) { return nil, m.publishRaw(ctx, topicName, data) })
-		return err
-	}
-	return m.publishRaw(ctx, topicName, data)
+	return appactors.DispatchErr(m.exec, func() error { return m.publishRaw(ctx, topicName, data) })
 }
 func (m *Manager) publishRaw(ctx context.Context, topicName string, data []byte) error {
 	if err := validateTopicAndPayload(topicName, data); err != nil {
@@ -263,11 +257,7 @@ func validateTopicAndPayload(topic string, data []byte) error {
 }
 
 func (m *Manager) subscribe(ctx context.Context, topicName string, handler func([]byte)) error {
-	if m.exec != nil {
-		_, err := m.exec.Call(ctx, func() (any, error) { return nil, m.subscribeRaw(ctx, topicName, handler) })
-		return err
-	}
-	return m.subscribeRaw(ctx, topicName, handler)
+	return appactors.DispatchErr(m.exec, func() error { return m.subscribeRaw(ctx, topicName, handler) })
 }
 func (m *Manager) subscribeRaw(ctx context.Context, topicName string, handler func([]byte)) error {
 	t, release, err := m.acquireTopic(topicName)

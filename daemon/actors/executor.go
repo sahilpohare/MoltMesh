@@ -74,8 +74,14 @@ type Executor struct {
 	pid    *actor.PID
 }
 
+// NewExecutor spawns the one, persistent SerialActor for a whole domain
+// (registry, inbox, outbox, tasks, ...) — it must outlive GoAkt's default
+// 2-minute passivation timeout, since nothing ever re-spawns it on demand
+// the way durable Thread actors do. Per-entity actors that genuinely should
+// passivate when idle (a specific task or peer connection) go through
+// NewExecutorUnder instead, which does not add this option.
 func NewExecutor(ctx context.Context, h *Hierarchy, name string, opts ...actor.SpawnOption) (*Executor, error) {
-	pid, err := h.Spawn(ctx, name, &SerialActor{}, opts...)
+	pid, err := h.Spawn(ctx, name, &SerialActor{}, append(opts, actor.WithLongLived())...)
 	if err != nil {
 		return nil, err
 	}
@@ -88,6 +94,79 @@ func NewExecutorUnder(ctx context.Context, h *Hierarchy, parent *actor.PID, name
 		return nil, err
 	}
 	return &Executor{system: h.system, pid: pid}, nil
+}
+
+// EnableSerialActor is the shape every domain package's EnableActor method
+// reduces to: spawn the one persistent SerialActor for this domain, hand it
+// to the caller via assign (so it can be stored on the domain's own struct),
+// and optionally register periodic work on it via schedule. Domains with
+// nothing to run on a timer (inbox, webhook, networks, gossip) pass a nil
+// schedule; domains that republish or flush periodically (registry, names,
+// outbox) pass one. This is the one place that pattern is written down —
+// every EnableActor body used to hand-copy it.
+func EnableSerialActor(ctx context.Context, h *Hierarchy, name string, assign func(*Executor), schedule func(*Executor) error) error {
+	exec, err := NewExecutor(ctx, h, name)
+	if err != nil {
+		return err
+	}
+	assign(exec)
+	if schedule == nil {
+		return nil
+	}
+	return schedule(exec)
+}
+
+// Dispatch, DispatchErr, and DispatchVoid are the three shapes every domain
+// package's public methods repeated by hand at every call site: "if this
+// actor is running, route the work through it (context.Background(), since
+// these are synchronous SDK-facing calls with no caller deadline to
+// propagate); otherwise just call it directly" — the same fallback NewExecutor
+// itself documents for when no actor system is wired up at all (tests,
+// mostly). exec may be nil, matching Executor.Call's own nil-receiver check.
+
+// Dispatch runs work through exec if present, returning its (value, error).
+func Dispatch[T any](exec *Executor, work func() (T, error)) (T, error) {
+	if exec == nil {
+		return work()
+	}
+	value, err := exec.Call(context.Background(), func() (any, error) { return work() })
+	if err != nil {
+		var zero T
+		return zero, err
+	}
+	return value.(T), nil
+}
+
+// DispatchErr runs work through exec if present, returning only its error.
+func DispatchErr(exec *Executor, work func() error) error {
+	if exec == nil {
+		return work()
+	}
+	_, err := exec.Call(context.Background(), func() (any, error) { return nil, work() })
+	return err
+}
+
+// DispatchVoid runs work through exec if present and waits for it to finish,
+// discarding any error — for fire-and-forget cleanup calls (e.g. unsubscribe)
+// that have never had an error path their callers could act on.
+func DispatchVoid(exec *Executor, work func()) {
+	if exec == nil {
+		work()
+		return
+	}
+	_, _ = exec.Call(context.Background(), func() (any, error) { work(); return nil, nil })
+}
+
+// DispatchCast is DispatchVoid's non-blocking sibling: it queues work on
+// exec via Cast and returns immediately rather than waiting for it to run,
+// for callers (webhook delivery, thread block publishing) that only need
+// ordering against the actor's other queued work, not a synchronous result.
+func DispatchCast(exec *Executor, work func()) {
+	if exec == nil {
+		work()
+		return
+	}
+	_ = exec.Cast(context.Background(), func() (any, error) { work(); return nil, nil })
 }
 
 func (e *Executor) Call(ctx context.Context, work func() (any, error)) (any, error) {

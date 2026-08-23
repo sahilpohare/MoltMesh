@@ -65,9 +65,11 @@ export function unary<Req, Res>(stub: GrpcClient, method: string, req: Req): Pro
   return sessionReady(stub).then(() => new Promise((resolve, reject) => {
     const callback = (err: Error | null, res: Res) => { if (err) reject(err); else resolve(res); };
     const metadata = (stub as SessionStub)[SESSION]?.metadata;
-    const invoke = stub[method] as (req: Req, metadataOrCallback: grpc.Metadata | ((err: Error | null, res: Res) => void), callback?: (err: Error | null, res: Res) => void) => void;
-    if (metadata) invoke(req, metadata, callback);
-    else invoke(req, callback);
+    // Must be called as stub[method](...), not hoisted into a local first —
+    // grpc-js's generated methods read internal state off `this`, and a bare
+    // function reference (`const invoke = stub[method]`) loses that binding.
+    if (metadata) (stub[method] as (req: Req, m: grpc.Metadata, cb: (err: Error | null, res: Res) => void) => void)(req, metadata, callback);
+    else (stub[method] as (req: Req, cb: (err: Error | null, res: Res) => void) => void)(req, callback);
   }));
 }
 
@@ -268,6 +270,11 @@ export class A2AClient {
       threadId: opts.threadId ?? "",
       taskId: opts.taskId ?? "",
     });
+  }
+
+  /** Mark an inbox message read. getInbox({unreadOnly:true}) skips it after. */
+  async ackMessage(messageId: string): Promise<void> {
+    await unary(this.stub, "ackMessage", { messageId });
   }
 
   // ── tasks ─────────────────────────────────────────────────────────────────
@@ -774,17 +781,36 @@ function toAsyncIterable<T>(stream: grpc.ClientReadableStream<T>): AsyncIterable
         done = true;
         if (waiter) { const w = waiter; waiter = null; w({ value: undefined as unknown as T, done: true }); }
       });
+      let rejecter: ((err: Error) => void) | null = null;
       stream.on("error", (err: Error) => {
         error = err;
-        if (waiter) { const w = waiter; waiter = null; w({ value: undefined as unknown as T, done: true }); }
+        // A stream error must surface as a rejection, not a silent `done:
+        // true` — resolving it as a clean end-of-stream is indistinguishable
+        // from the server simply having nothing more to say, which is what
+        // let an immediate auth failure (no session established) masquerade
+        // as an empty subscription and made DurableWorker.run() reconnect in
+        // a zero-backoff loop instead of ever reaching its own retry delay.
+        if (rejecter) { const r = rejecter; rejecter = null; waiter = null; r(err); }
+        else if (waiter) { waiter = null; }
       });
 
       return {
         next(): Promise<IteratorResult<T>> {
           if (queue.length > 0) return Promise.resolve({ value: queue.shift()!, done: false });
-          if (done) return Promise.resolve({ value: undefined as unknown as T, done: true });
           if (error) return Promise.reject(error);
-          return new Promise(resolve => { waiter = resolve; });
+          if (done) return Promise.resolve({ value: undefined as unknown as T, done: true });
+          return new Promise((resolve, reject) => { waiter = resolve; rejecter = reject; });
+        },
+        // Defining return() makes this a well-behaved async iterator: a `for
+        // await` loop that exits early (break, return, or an uncaught throw
+        // in the loop body) calls it automatically, so the underlying gRPC
+        // stream is cancelled instead of being left open server-side for the
+        // lifetime of the process — otherwise every early-exited subscriber
+        // (e.g. a browser client disconnecting from an SSE relay) leaks one
+        // open stream per connection.
+        return(value?: T): Promise<IteratorResult<T>> {
+          stream.cancel();
+          return Promise.resolve({ value: value as T, done: true });
         },
       };
     },

@@ -4,6 +4,13 @@
       "type": "http",
       "url": "https://api.githubcopilot.com/mcp/",
       "headersHelper": "printf '{\"Authorization\":\"Bearer %s\"}' \"$(gh auth token -u 'sahilpohare' 2>/dev/null)\""
+    },
+    "moltmesh": {
+      "command": "node",
+      "args": ["sdk/typescript/openclaw-plugin/bin/moltmesh-mcp.mjs"],
+      "env": {
+        "A2A_GRPC_ADDR": "127.0.0.1:15701"
+      }
     }
   }
 }

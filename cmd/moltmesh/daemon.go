@@ -26,6 +26,7 @@ import (
 	"github.com/sahilpohare/p2p-a2a/daemon/node"
 	"github.com/sahilpohare/p2p-a2a/daemon/outbox"
 	"github.com/sahilpohare/p2p-a2a/daemon/registry"
+	"github.com/sahilpohare/p2p-a2a/daemon/session"
 	"github.com/sahilpohare/p2p-a2a/daemon/rpc"
 	"github.com/sahilpohare/p2p-a2a/daemon/tasks"
 	"github.com/sahilpohare/p2p-a2a/daemon/thread"
@@ -344,7 +345,8 @@ func run(cfg *config.Config, log *zap.Logger) error {
 	}
 
 	// ── delivery ─────────────────────────────────────────────────────────────
-	dlv := deliver.New(n.Host, reg, ib, tm, log)
+	sessions := session.New(id.DID)
+	dlv := deliver.New(n.Host, reg, ib, tm, sessions, log)
 	if err := dlv.EnableActor(hierarchy); err != nil {
 		return err
 	}
@@ -387,7 +389,7 @@ func run(cfg *config.Config, log *zap.Logger) error {
 	}
 
 	rpc.SetVersion(version)
-	srv := rpc.New(id, ib, ob, ts, reg, gm, dlv, tm, nm, wh, nameReg, n, n.P2PAddrs(), log)
+	srv := rpc.New(id, ib, ob, ts, reg, gm, dlv, tm, nm, wh, nameReg, n, n.P2PAddrs(), sessions, log)
 	dlv.SetMessageHandler(srv.HandleIncoming)
 	grpcServer := grpc.NewServer()
 	pb.RegisterA2ANodeServer(grpcServer, srv)

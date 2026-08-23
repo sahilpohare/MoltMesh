@@ -167,7 +167,7 @@ func (s *Server) BroadcastNetwork(ctx context.Context, req *pb.BroadcastRequest)
 	if err := s.networks.Broadcast(ctx, req.NetworkId, s.id.DID, req.Payload); err != nil {
 		return nil, err
 	}
-	s.webhooks.Send(webhook.EventPubSub, map[string]interface{}{
+	s.webhooks.SendForOwner("", webhook.EventPubSub, map[string]interface{}{
 		"network_id": req.NetworkId,
 		"payload":    req.Payload,
 	})

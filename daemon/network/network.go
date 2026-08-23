@@ -39,12 +39,7 @@ type Store struct {
 }
 
 func (s *Store) EnableActor(ctx context.Context, h *appactors.Hierarchy) error {
-	exec, err := appactors.NewExecutor(ctx, h, "networks")
-	if err != nil {
-		return err
-	}
-	s.exec = exec
-	return nil
+	return appactors.EnableSerialActor(ctx, h, "networks", func(e *appactors.Executor) { s.exec = e }, nil)
 }
 
 // New opens (or creates) the network store at the given path.
@@ -61,14 +56,7 @@ func New(path string) (*Store, error) {
 
 // Create creates a new network with the given creator.
 func (s *Store) Create(name, creatorDID string, meta map[string]string) (*Network, error) {
-	if s.exec != nil {
-		value, err := s.exec.Call(context.Background(), func() (any, error) { return s.create(name, creatorDID, meta) })
-		if err != nil {
-			return nil, err
-		}
-		return value.(*Network), nil
-	}
-	return s.create(name, creatorDID, meta)
+	return appactors.Dispatch(s.exec, func() (*Network, error) { return s.create(name, creatorDID, meta) })
 }
 func (s *Store) create(name, creatorDID string, meta map[string]string) (*Network, error) {
 	id := uuid.New().String()
@@ -89,14 +77,7 @@ func (s *Store) create(name, creatorDID string, meta map[string]string) (*Networ
 
 // Get fetches a network by ID.
 func (s *Store) Get(id string) (*Network, error) {
-	if s.exec != nil {
-		value, err := s.exec.Call(context.Background(), func() (any, error) { return s.get(id) })
-		if err != nil {
-			return nil, err
-		}
-		return value.(*Network), nil
-	}
-	return s.get(id)
+	return appactors.Dispatch(s.exec, func() (*Network, error) { return s.get(id) })
 }
 func (s *Store) get(id string) (*Network, error) {
 	row := s.db.QueryRow(
@@ -114,14 +95,7 @@ func (s *Store) get(id string) (*Network, error) {
 
 // GetByName fetches a network by name.
 func (s *Store) GetByName(name string) (*Network, error) {
-	if s.exec != nil {
-		value, err := s.exec.Call(context.Background(), func() (any, error) { return s.getByName(name) })
-		if err != nil {
-			return nil, err
-		}
-		return value.(*Network), nil
-	}
-	return s.getByName(name)
+	return appactors.Dispatch(s.exec, func() (*Network, error) { return s.getByName(name) })
 }
 func (s *Store) getByName(name string) (*Network, error) {
 	row := s.db.QueryRow(
@@ -139,14 +113,7 @@ func (s *Store) getByName(name string) (*Network, error) {
 
 // List returns all networks the given DID is a member of.
 func (s *Store) List(memberDID string) ([]*Network, error) {
-	if s.exec != nil {
-		value, err := s.exec.Call(context.Background(), func() (any, error) { return s.list(memberDID) })
-		if err != nil {
-			return nil, err
-		}
-		return value.([]*Network), nil
-	}
-	return s.list(memberDID)
+	return appactors.Dispatch(s.exec, func() ([]*Network, error) { return s.list(memberDID) })
 }
 func (s *Store) list(memberDID string) ([]*Network, error) {
 	rows, err := s.db.Query(`
@@ -174,28 +141,18 @@ func (s *Store) list(memberDID string) ([]*Network, error) {
 
 // Join adds a DID to a network. Idempotent.
 func (s *Store) Join(networkID, did string) error {
-	if s.exec != nil {
-		_, err := s.exec.Call(context.Background(), func() (any, error) { return nil, s.join(networkID, did) })
-		return err
-	}
-	return s.join(networkID, did)
+	return appactors.DispatchErr(s.exec, func() error { return s.join(networkID, did) })
 }
 func (s *Store) join(networkID, did string) error {
-	net, err := s.get(networkID)
-	if err != nil {
+	if _, err := s.get(networkID); err != nil {
 		return err
 	}
-	_ = net
 	return s.addMember(networkID, did, time.Now().UnixMilli())
 }
 
 // Leave removes a DID from a network.
 func (s *Store) Leave(networkID, did string) error {
-	if s.exec != nil {
-		_, err := s.exec.Call(context.Background(), func() (any, error) { return nil, s.leave(networkID, did) })
-		return err
-	}
-	return s.leave(networkID, did)
+	return appactors.DispatchErr(s.exec, func() error { return s.leave(networkID, did) })
 }
 func (s *Store) leave(networkID, did string) error {
 	_, err := s.db.Exec(
@@ -206,14 +163,7 @@ func (s *Store) leave(networkID, did string) error {
 
 // Members returns all members of a network.
 func (s *Store) Members(networkID string) ([]*Member, error) {
-	if s.exec != nil {
-		value, err := s.exec.Call(context.Background(), func() (any, error) { return s.members(networkID) })
-		if err != nil {
-			return nil, err
-		}
-		return value.([]*Member), nil
-	}
-	return s.members(networkID)
+	return appactors.Dispatch(s.exec, func() ([]*Member, error) { return s.members(networkID) })
 }
 func (s *Store) members(networkID string) ([]*Member, error) {
 	rows, err := s.db.Query(
@@ -238,14 +188,7 @@ func (s *Store) members(networkID string) ([]*Member, error) {
 
 // IsMember reports whether a DID is a member of the network.
 func (s *Store) IsMember(networkID, did string) (bool, error) {
-	if s.exec != nil {
-		value, err := s.exec.Call(context.Background(), func() (any, error) { ok, err := s.isMember(networkID, did); return ok, err })
-		if err != nil {
-			return false, err
-		}
-		return value.(bool), nil
-	}
-	return s.isMember(networkID, did)
+	return appactors.Dispatch(s.exec, func() (bool, error) { return s.isMember(networkID, did) })
 }
 func (s *Store) isMember(networkID, did string) (bool, error) {
 	var count int

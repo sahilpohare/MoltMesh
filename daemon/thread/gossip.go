@@ -39,14 +39,9 @@ func NewGossipBridge(
 	id *identity.Identity,
 	log *zap.Logger,
 ) (*GossipBridge, error) {
-	topicName := ConsensusTopic(threadID)
-	t, err := ps.Join(topicName)
+	t, err := joinConsensusTopic(ps, engine.thread)
 	if err != nil {
-		return nil, fmt.Errorf("join thread topic %q: %w", topicName, err)
-	}
-	if err := registerConsensusValidator(ps, engine.thread); err != nil {
-		_ = t.Close()
-		return nil, fmt.Errorf("register thread validator %q: %w", topicName, err)
+		return nil, err
 	}
 	return &GossipBridge{
 		ps:       ps,
@@ -128,16 +123,16 @@ func (g *GossipBridge) Run(ctx context.Context) {
 			)
 			continue
 		}
-		var cm pb.ConsensusMsg
-		if err := proto.Unmarshal(gmsg.Data, &cm); err != nil {
+		cm, err := decodeConsensusMsg(g.threadID, gmsg.Data)
+		if err != nil {
 			g.log.Warn("thread: unmarshal consensus msg", zap.Error(err))
 			continue
 		}
-		// Filter out our own messages (engine handles self-messages via inboundCh
-		// only when it explicitly sends to itself).
-		if cm.ThreadId != g.threadID {
+		if cm == nil {
+			// Not for this thread; engine handles self-messages via inboundCh
+			// only when it explicitly sends to itself.
 			continue
 		}
-		g.engine.Deliver(&cm)
+		g.engine.Deliver(cm)
 	}
 }

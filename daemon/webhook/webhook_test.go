@@ -101,7 +101,7 @@ func TestSet_ValidURL(t *testing.T) {
 	d.secret = "s3cr3t"
 	d.mu.Unlock()
 
-	if got := d.URL(); got != "https://example.com/hook" {
+	if got := d.URLForOwner(""); got != "https://example.com/hook" {
 		t.Errorf("URL: got %q", got)
 	}
 }
@@ -113,16 +113,16 @@ func TestClear_ResetsURL(t *testing.T) {
 	d.secret = "secret"
 	d.mu.Unlock()
 
-	d.Clear()
-	if d.URL() != "" {
+	d.ClearForOwner("")
+	if d.URLForOwner("") != "" {
 		t.Error("expected empty URL after Clear")
 	}
 }
 
 func TestURL_EmptyByDefault(t *testing.T) {
 	d := newDispatcher(t)
-	if d.URL() != "" {
-		t.Errorf("expected empty URL on fresh Dispatcher, got %q", d.URL())
+	if d.URLForOwner("") != "" {
+		t.Errorf("expected empty URL on fresh Dispatcher, got %q", d.URLForOwner(""))
 	}
 }
 
@@ -151,7 +151,7 @@ func TestSend_DeliveredToServer(t *testing.T) {
 	d.url = ts.URL + "/webhook"
 	d.mu.Unlock()
 
-	d.Send(EventMessage, map[string]string{"text": "hello"})
+	d.SendForOwner("", EventMessage, map[string]string{"text": "hello"})
 
 	// Allow async delivery to complete.
 	deadline := time.Now().Add(3 * time.Second)
@@ -187,7 +187,7 @@ func TestSend_SecretHeader(t *testing.T) {
 	d.secret = "my-secret"
 	d.mu.Unlock()
 
-	d.Send(EventPubSub, "data")
+	d.SendForOwner("", EventPubSub, "data")
 	deadline := time.Now().Add(3 * time.Second)
 	for time.Now().Before(deadline) {
 		if secretHeader != "" {
@@ -214,7 +214,7 @@ func TestSend_EventKindHeader(t *testing.T) {
 	d.url = ts.URL + "/hook"
 	d.mu.Unlock()
 
-	d.Send(EventTaskEvent, nil)
+	d.SendForOwner("", EventTaskEvent, nil)
 	deadline := time.Now().Add(3 * time.Second)
 	for time.Now().Before(deadline) {
 		if kindHeader != "" {
@@ -239,7 +239,7 @@ func TestSend_Disabled_NoRequest(t *testing.T) {
 	d := newDispatcher(t)
 	// Do NOT set a URL — dispatcher is disabled.
 
-	d.Send(EventMessage, "test")
+	d.SendForOwner("", EventMessage, "test")
 	time.Sleep(100 * time.Millisecond)
 
 	if atomic.LoadInt32(&hitCount) != 0 {

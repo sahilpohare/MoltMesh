@@ -35,16 +35,13 @@ type Registry struct {
 }
 
 func (r *Registry) EnableActor(ctx context.Context, h *appactors.Hierarchy) error {
-	exec, err := appactors.NewExecutor(ctx, h, "registry")
-	if err != nil {
-		return err
-	}
-	r.exec = exec
-	return exec.Schedule(ctx, "registry-republish", republishPeriod, func() (any, error) {
-		if r.card == nil {
-			return nil, nil
-		}
-		return nil, r.publish(ctx, r.card)
+	return appactors.EnableSerialActor(ctx, h, "registry", func(e *appactors.Executor) { r.exec = e }, func(e *appactors.Executor) error {
+		return e.Schedule(ctx, "registry-republish", republishPeriod, func() (any, error) {
+			if r.card == nil {
+				return nil, nil
+			}
+			return nil, r.publish(ctx, r.card)
+		})
 	})
 }
 
@@ -57,11 +54,7 @@ func New(d *dht.IpfsDHT, id *identity.Identity, log *zap.Logger) *Registry {
 // signature. It is used only after daemon session authentication has bound the
 // caller to the same DID.
 func (r *Registry) PublishSigned(ctx context.Context, card *pb.AgentCard) error {
-	if r.exec != nil {
-		_, err := r.exec.Call(ctx, func() (any, error) { return nil, r.publishSigned(ctx, card) })
-		return err
-	}
-	return r.publishSigned(ctx, card)
+	return appactors.DispatchErr(r.exec, func() error { return r.publishSigned(ctx, card) })
 }
 
 func (r *Registry) publishSigned(ctx context.Context, card *pb.AgentCard) error {
@@ -89,11 +82,7 @@ func (r *Registry) publishSigned(ctx context.Context, card *pb.AgentCard) error 
 
 // Publish signs and publishes an Agent Card to the DHT.
 func (r *Registry) Publish(ctx context.Context, card *pb.AgentCard) error {
-	if r.exec != nil {
-		_, err := r.exec.Call(ctx, func() (any, error) { return nil, r.publish(ctx, card) })
-		return err
-	}
-	return r.publish(ctx, card)
+	return appactors.DispatchErr(r.exec, func() error { return r.publish(ctx, card) })
 }
 func (r *Registry) publish(ctx context.Context, card *pb.AgentCard) error {
 	card.Did = r.id.DID
@@ -125,14 +114,7 @@ func (r *Registry) publish(ctx context.Context, card *pb.AgentCard) error {
 
 // Resolve fetches an Agent Card by DID from the DHT and verifies its signature.
 func (r *Registry) Resolve(ctx context.Context, did string) (*pb.AgentCard, error) {
-	if r.exec != nil {
-		value, err := r.exec.Call(ctx, func() (any, error) { return r.resolve(ctx, did) })
-		if err != nil {
-			return nil, err
-		}
-		return value.(*pb.AgentCard), nil
-	}
-	return r.resolve(ctx, did)
+	return appactors.Dispatch(r.exec, func() (*pb.AgentCard, error) { return r.resolve(ctx, did) })
 }
 func (r *Registry) resolve(ctx context.Context, did string) (*pb.AgentCard, error) {
 	key := dhtKey(did)
@@ -160,14 +142,7 @@ func (r *Registry) resolve(ctx context.Context, did string) (*pb.AgentCard, erro
 // using FindProviders (the counterpart to Provide/AdvertiseCapability).
 // For each provider found, it resolves their AgentCard from the DHT.
 func (r *Registry) FindByCapability(ctx context.Context, capability string, limit int) ([]*pb.AgentCard, error) {
-	if r.exec != nil {
-		value, err := r.exec.Call(ctx, func() (any, error) { return r.findByCapability(ctx, capability, limit) })
-		if err != nil {
-			return nil, err
-		}
-		return value.([]*pb.AgentCard), nil
-	}
-	return r.findByCapability(ctx, capability, limit)
+	return appactors.Dispatch(r.exec, func() ([]*pb.AgentCard, error) { return r.findByCapability(ctx, capability, limit) })
 }
 func (r *Registry) findByCapability(ctx context.Context, capability string, limit int) ([]*pb.AgentCard, error) {
 	c, err := capabilityCID(capability)
@@ -211,7 +186,7 @@ func (r *Registry) findByCapability(ctx context.Context, capability string, limi
 		}
 		if prov.ID == r.dht.Host().ID() {
 			// skip self
-			if r.card != nil && !seen[r.card.Did] {
+			if r.card != nil && !seen[r.card.Did] && cardHasCapability(r.card, capability) {
 				cards = append(cards, r.card)
 				seen[r.card.Did] = true
 			}
@@ -237,6 +212,15 @@ func (r *Registry) findByCapability(ctx context.Context, capability string, limi
 		if seen[card.Did] {
 			continue
 		}
+		// A peer advertises one DHT provider record per capability for the
+		// whole daemon, so being a provider only means "some agent here does
+		// this" — it does not mean the daemon's *own* card does. Without this
+		// check a daemon that merely hosts a summarization worker is itself
+		// returned as a summarization provider, and a caller that delegates
+		// to that DID gets a task no one can service.
+		if !cardHasCapability(card, capability) {
+			continue
+		}
 		cards = append(cards, card)
 		seen[card.Did] = true
 		if limit > 0 && len(cards) >= limit {
@@ -250,11 +234,7 @@ func (r *Registry) findByCapability(ctx context.Context, capability string, limi
 // DHT Provide. Unlike PutValue (single-writer), Provide allows multiple agents
 // to advertise the same capability without overwriting each other.
 func (r *Registry) AdvertiseCapability(ctx context.Context, capability string) error {
-	if r.exec != nil {
-		_, err := r.exec.Call(ctx, func() (any, error) { return nil, r.advertiseCapability(ctx, capability) })
-		return err
-	}
-	return r.advertiseCapability(ctx, capability)
+	return appactors.DispatchErr(r.exec, func() error { return r.advertiseCapability(ctx, capability) })
 }
 func (r *Registry) advertiseCapability(ctx context.Context, capability string) error {
 	if r.card == nil && len(r.cards) == 0 {

@@ -5,7 +5,7 @@ VERSION    ?= dev
 LDFLAGS    := -s -w -X main.version=$(VERSION)
 BIN_DIR    := bin
 
-BINARIES   := moltmesh daemon tui
+BINARIES   := moltmesh
 
 .PHONY: all build build-all build-linux build-darwin proto clean run test install
 

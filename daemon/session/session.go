@@ -151,6 +151,29 @@ func (m *Manager) Close(token string) {
 	m.mu.Unlock()
 }
 
+// HasSession reports whether an SDK agent authenticated as did currently
+// holds a live session on this daemon. Deliverer uses this to accept an
+// inbound message addressed to a locally-hosted SDK identity (ADR-0020)
+// rather than only ones addressed to the daemon's own libp2p identity —
+// without it, a task delegated across daemons to a specific session-scoped
+// worker can never be delivered: the message is rejected before it reaches
+// any handler, even though ClaimTask would otherwise recognize that worker.
+func (m *Manager) HasSession(did string) bool {
+	if did == "" {
+		return false
+	}
+	now := m.now()
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.pruneLocked(now)
+	for _, s := range m.sessions {
+		if s.agentDID == did {
+			return true
+		}
+	}
+	return false
+}
+
 // MultipleAgents reports whether more than one distinct SDK identity is
 // currently attached. In that case legacy unscoped calls are ambiguous and
 // must be rejected instead of silently selecting daemon-owned state.

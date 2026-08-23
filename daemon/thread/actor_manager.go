@@ -8,12 +8,10 @@ import (
 	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	"github.com/tochemey/goakt/v4/actor"
 	"go.uber.org/zap"
-	"google.golang.org/protobuf/proto"
 
 	"github.com/sahilpohare/p2p-a2a/daemon/actors"
 	"github.com/sahilpohare/p2p-a2a/daemon/identity"
 	pb "github.com/sahilpohare/p2p-a2a/gen/a2a/v1"
-	"github.com/sahilpohare/p2p-a2a/pkg/threadcrypto"
 )
 
 // ActorManager is the GoAkt-actor-path counterpart to Manager: it
@@ -23,8 +21,9 @@ import (
 // interface" adapter from docs/PROPOSAL-goakt-thread-actor.md's sequencing
 // step 2.
 type ActorManager struct {
+	*Store
 	sup   *ThreadSupervisor
-	store *Store
+	store *Store // same pointer as the embedded *Store; kept so internal call sites can keep saying m.store.X
 	id    *identity.Identity
 	log   *zap.Logger
 }
@@ -52,6 +51,7 @@ func NewActorManager(
 	log *zap.Logger,
 ) *ActorManager {
 	return &ActorManager{
+		Store: store,
 		sup:   NewThreadSupervisor(ctx, system, store, id, ps, durability, log),
 		store: store,
 		id:    id,
@@ -61,28 +61,9 @@ func NewActorManager(
 
 // CreateThread persists a new thread and spawns its ThreadActor.
 func (m *ActorManager) CreateThread(ctx context.Context, req *pb.CreateThreadRequest) (*pb.Thread, error) {
-	var (
-		th  *pb.Thread
-		err error
-	)
-	if req != nil && req.CreatorDid != "" {
-		th, err = NewThreadFromSignedRequest(req)
-	} else {
-		th, err = NewThreadFromRequest(m.id.DID, req)
-	}
+	th, err := buildAndPersistThread(m.store, m.id, req)
 	if err != nil {
 		return nil, err
-	}
-	if req == nil || req.CreatorDid == "" {
-		if err := SignDescriptor(th, m.id); err != nil {
-			return nil, err
-		}
-	}
-	if err := m.store.SaveThread(th); err != nil {
-		return nil, fmt.Errorf("save thread: %w", err)
-	}
-	if err := m.store.SaveMember(th.Id, &pb.ThreadMember{Did: th.CreatorDid, Role: pb.ThreadMemberRole_THREAD_MEMBER_ROLE_ADMIN, JoinedEpoch: 1}); err != nil {
-		return nil, fmt.Errorf("save creator membership: %w", err)
 	}
 	if _, err := m.sup.Spawn(ctx, th); err != nil {
 		return nil, fmt.Errorf("spawn thread actor: %w", err)
@@ -108,90 +89,8 @@ func (m *ActorManager) InviteReceived(th *pb.Thread) error {
 	return err
 }
 
-// GetThread loads a thread from the store.
-func (m *ActorManager) GetThread(threadID string) (*pb.Thread, error) {
-	return m.store.GetThread(threadID)
-}
-
-func (m *ActorManager) AuthorizeRecoveryCapability(threadID string, secret []byte) (bool, error) {
-	return m.store.AuthorizeRecoveryCapability(threadID, secret)
-}
-func (m *ActorManager) ListMembers(threadID string) ([]*pb.ThreadMember, error) {
-	return m.store.ListMembers(threadID)
-}
-func (m *ActorManager) MembershipEpoch(threadID string) (uint64, error) {
-	return m.store.MembershipEpoch(threadID)
-}
-func (m *ActorManager) RemoveMember(threadID, did string) error {
-	return m.store.RemoveMember(threadID, did)
-}
-func (m *ActorManager) RemoveMemberWithEpoch(threadID, did string) (uint64, error) {
-	return m.store.RemoveMemberWithEpoch(threadID, did)
-}
-func (m *ActorManager) PromoteMember(threadID, did string) (*pb.ThreadMember, error) {
-	return m.store.PromoteMember(threadID, did)
-}
-func (m *ActorManager) PromoteMemberWithEpoch(threadID, did string) (*pb.ThreadMember, uint64, error) {
-	return m.store.PromoteMemberWithEpoch(threadID, did)
-}
-func (m *ActorManager) SaveInvite(threadID, invitee string, role pb.ThreadMemberRole, nonce []byte, expiresAt int64) error {
-	return m.store.SaveInvite(threadID, invitee, role, nonce, expiresAt)
-}
-func (m *ActorManager) AcceptInvite(threadID, invitee string, nonce []byte) (*pb.ThreadMember, error) {
-	return m.store.AcceptInvite(threadID, invitee, nonce)
-}
-func (m *ActorManager) AcceptInviteWithEpoch(threadID, invitee string, nonce []byte) (*pb.ThreadMember, uint64, error) {
-	return m.store.AcceptInviteWithEpoch(threadID, invitee, nonce)
-}
-func (m *ActorManager) SaveKeyEnvelope(envelope *pb.ThreadKeyEnvelope) error {
-	return m.store.SaveKeyEnvelope(envelope)
-}
-func (m *ActorManager) KeyEnvelopes(threadID string, epoch uint64, recipient string) ([]*pb.ThreadKeyEnvelope, error) {
-	return m.store.KeyEnvelopes(threadID, epoch, recipient)
-}
-func (m *ActorManager) SaveRecoveryKeyEnvelope(envelope *pb.ThreadKeyEnvelope) error {
-	return m.store.SaveRecoveryKeyEnvelope(envelope)
-}
-func (m *ActorManager) RecoveryKeyEnvelopes(threadID string) ([]*pb.ThreadKeyEnvelope, error) {
-	return m.store.RecoveryKeyEnvelopes(threadID)
-}
-
 func (m *ActorManager) CreateThreadWithRecovery(ctx context.Context, req *pb.CreateThreadRequest) (*pb.Thread, *pb.ThreadRecoveryHandle, error) {
-	if req == nil {
-		req = &pb.CreateThreadRequest{}
-	}
-	request := proto.Clone(req).(*pb.CreateThreadRequest)
-	secret := request.RecoverySecret
-	if len(secret) == 0 {
-		h, err := threadcrypto.NewRecoveryHandle("pending")
-		if err != nil {
-			return nil, nil, err
-		}
-		secret = h.Secret
-		request.RecoverySecret = secret
-	}
-	commitment, err := threadcrypto.RecoveryCommitment(secret)
-	if err != nil {
-		return nil, nil, err
-	}
-	if request.CreatorDid != "" {
-		if request.Metadata[threadcrypto.RecoveryCommitmentMetadataKey] != commitment {
-			return nil, nil, fmt.Errorf("signed recovery thread must commit to its recovery secret")
-		}
-	} else {
-		if request.Metadata == nil {
-			request.Metadata = map[string]string{}
-		}
-		request.Metadata[threadcrypto.RecoveryCommitmentMetadataKey] = commitment
-	}
-	th, err := m.CreateThread(ctx, request)
-	if err != nil {
-		return nil, nil, err
-	}
-	if err := m.store.SaveRecoveryCapability(th.Id, secret); err != nil {
-		return nil, nil, err
-	}
-	return th, &pb.ThreadRecoveryHandle{ThreadId: th.Id, RecoverySecret: secret, Version: 1}, nil
+	return createThreadWithRecovery(ctx, req, m.store, m.CreateThread)
 }
 
 // AppendEntry enqueues an entry for the next block proposal on this thread.
@@ -252,14 +151,10 @@ func (m *ActorManager) GetEntries(threadID string, sinceHeight int64, limit int)
 	return out, nil
 }
 
-// ImportHistory installs verified read-only history. It does not activate a
-// consensus actor when this DID is not a replica.
-func (m *ActorManager) ImportHistory(th *pb.Thread, blocks []*pb.ThreadBlock) error {
-	return m.store.ImportHistory(th, blocks)
-}
-func (m *ActorManager) CommittedHead(threadID string) (int64, string, error) {
-	return m.store.CommittedHead(threadID)
-}
+// ImportHistory (installs verified read-only history) and CommittedHead are
+// promoted from the embedded *Store — ActorManager does not activate a
+// consensus actor on import when this DID is not a replica, matching the
+// comment on Manager's equivalent path.
 
 // Engine returns the running ThreadActor for a thread as a
 // ThreadSubscription, or a true nil interface if none is running. Named

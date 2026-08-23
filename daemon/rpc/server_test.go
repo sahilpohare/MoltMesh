@@ -82,7 +82,7 @@ func newTestEnv(t *testing.T) *testEnv {
 	gm := gossip.New(ps, log)
 
 	// Stub registry — nil; methods under test don't call registry.
-	srv := rpc.New(id, ib, ob, ts, nil, gm, nil, nil, nil, nil, nil, nil, []string{"/ip4/127.0.0.1/tcp/0"}, log)
+	srv := rpc.New(id, ib, ob, ts, nil, gm, nil, nil, nil, nil, nil, nil, []string{"/ip4/127.0.0.1/tcp/0"}, nil, log)
 
 	// Start gRPC server on an in-process listener.
 	lis, err := net.Listen("tcp", "127.0.0.1:0")
@@ -193,8 +193,8 @@ func TestGetInbox_WithMessages(t *testing.T) {
 	env := newTestEnv(t)
 
 	// put two messages directly into inbox
-	env.ib.Put(&pb.Message{Id: "m1", FromDid: "did:key:zA", Kind: pb.MessageKind_MESSAGE_KIND_TEXT})
-	env.ib.Put(&pb.Message{Id: "m2", FromDid: "did:key:zB", Kind: pb.MessageKind_MESSAGE_KIND_TEXT})
+	env.ib.PutForOwner("", &pb.Message{Id: "m1", FromDid: "did:key:zA", Kind: pb.MessageKind_MESSAGE_KIND_TEXT})
+	env.ib.PutForOwner("", &pb.Message{Id: "m2", FromDid: "did:key:zB", Kind: pb.MessageKind_MESSAGE_KIND_TEXT})
 
 	stream, err := env.client.GetInbox(context.Background(), &pb.InboxQuery{})
 	if err != nil {
@@ -208,7 +208,7 @@ func TestGetInbox_WithMessages(t *testing.T) {
 
 func TestAckMessage(t *testing.T) {
 	env := newTestEnv(t)
-	env.ib.Put(&pb.Message{Id: "ack-me", FromDid: "did:key:zA", Kind: pb.MessageKind_MESSAGE_KIND_TEXT})
+	env.ib.PutForOwner("", &pb.Message{Id: "ack-me", FromDid: "did:key:zA", Kind: pb.MessageKind_MESSAGE_KIND_TEXT})
 
 	_, err := env.client.AckMessage(context.Background(), &pb.AckRequest{MessageId: "ack-me"})
 	if err != nil {
@@ -389,8 +389,8 @@ func TestIncomingTaskResultCompletesInitiatorTaskAndPersistsEvent(t *testing.T) 
 
 func TestSubscribeInbox_InitialFlush(t *testing.T) {
 	env := newTestEnv(t)
-	env.ib.Put(&pb.Message{Id: "flush-1", FromDid: "did:key:zA", Kind: pb.MessageKind_MESSAGE_KIND_TEXT})
-	env.ib.Put(&pb.Message{Id: "flush-2", FromDid: "did:key:zB", Kind: pb.MessageKind_MESSAGE_KIND_TEXT})
+	env.ib.PutForOwner("", &pb.Message{Id: "flush-1", FromDid: "did:key:zA", Kind: pb.MessageKind_MESSAGE_KIND_TEXT})
+	env.ib.PutForOwner("", &pb.Message{Id: "flush-2", FromDid: "did:key:zB", Kind: pb.MessageKind_MESSAGE_KIND_TEXT})
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()

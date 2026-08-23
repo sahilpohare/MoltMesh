@@ -4,7 +4,7 @@ source "$(dirname "$0")/common.sh"
 
 command -v jq >/dev/null || { echo "jq is required" >&2; exit 1; }
 mkdir -p "$RUNTIME/bin"
-env GOCACHE="${GOCACHE:-/tmp/p2p_a2a-go-cache}" go build -o "$BIN" "$ROOT/cmd/daemon"
+env GOCACHE="${GOCACHE:-/tmp/p2p_a2a-go-cache}" go build -o "$BIN" "$ROOT/cmd/moltmesh"
 
 init_agent() {
   local node=$1 agent=$2 name=$3 caps=$4 port=$5 grpc=$6

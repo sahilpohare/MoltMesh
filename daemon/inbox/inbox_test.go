@@ -58,11 +58,11 @@ func TestPutAndGet(t *testing.T) {
 	ib := newTestInbox(t)
 
 	msg := makeMsg("msg-1", "did:key:zA", "thread-1", "")
-	if err := ib.Put(msg); err != nil {
+	if err := ib.PutForOwner("", msg); err != nil {
 		t.Fatalf("Put: %v", err)
 	}
 
-	msgs, err := ib.Get("", "", false, 0, 0)
+	msgs, err := ib.GetForOwner("", "", "", false, 0, 0)
 	if err != nil {
 		t.Fatalf("Get: %v", err)
 	}
@@ -77,14 +77,14 @@ func TestPutAndGet(t *testing.T) {
 func TestPut_Idempotent(t *testing.T) {
 	ib := newTestInbox(t)
 	msg := makeMsg("msg-dup", "did:key:zA", "thread-1", "")
-	if err := ib.Put(msg); err != nil {
+	if err := ib.PutForOwner("", msg); err != nil {
 		t.Fatal(err)
 	}
 	// second put of same ID must be a no-op (INSERT OR IGNORE)
-	if err := ib.Put(msg); err != nil {
+	if err := ib.PutForOwner("", msg); err != nil {
 		t.Fatalf("second Put: %v", err)
 	}
-	msgs, _ := ib.Get("", "", false, 0, 0)
+	msgs, _ := ib.GetForOwner("", "", "", false, 0, 0)
 	if len(msgs) != 1 {
 		t.Errorf("expected 1 message after duplicate put, got %d", len(msgs))
 	}
@@ -92,11 +92,11 @@ func TestPut_Idempotent(t *testing.T) {
 
 func TestGetByThread(t *testing.T) {
 	ib := newTestInbox(t)
-	ib.Put(makeMsg("a", "did:key:z1", "thread-A", ""))
-	ib.Put(makeMsg("b", "did:key:z1", "thread-B", ""))
-	ib.Put(makeMsg("c", "did:key:z1", "thread-A", ""))
+	ib.PutForOwner("", makeMsg("a", "did:key:z1", "thread-A", ""))
+	ib.PutForOwner("", makeMsg("b", "did:key:z1", "thread-B", ""))
+	ib.PutForOwner("", makeMsg("c", "did:key:z1", "thread-A", ""))
 
-	msgs, err := ib.Get("thread-A", "", false, 0, 0)
+	msgs, err := ib.GetForOwner("", "thread-A", "", false, 0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,10 +107,10 @@ func TestGetByThread(t *testing.T) {
 
 func TestGetByTask(t *testing.T) {
 	ib := newTestInbox(t)
-	ib.Put(makeMsg("a", "did:key:z1", "", "task-1"))
-	ib.Put(makeMsg("b", "did:key:z1", "", "task-2"))
+	ib.PutForOwner("", makeMsg("a", "did:key:z1", "", "task-1"))
+	ib.PutForOwner("", makeMsg("b", "did:key:z1", "", "task-2"))
 
-	msgs, err := ib.Get("", "task-1", false, 0, 0)
+	msgs, err := ib.GetForOwner("", "", "task-1", false, 0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -122,9 +122,9 @@ func TestGetByTask(t *testing.T) {
 func TestGetLimit(t *testing.T) {
 	ib := newTestInbox(t)
 	for i := 0; i < 10; i++ {
-		ib.Put(makeMsg(string(rune('a'+i)), "did:key:z1", "t", ""))
+		ib.PutForOwner("", makeMsg(string(rune('a'+i)), "did:key:z1", "t", ""))
 	}
-	msgs, _ := ib.Get("", "", false, 3, 0)
+	msgs, _ := ib.GetForOwner("", "", "", false, 3, 0)
 	if len(msgs) != 3 {
 		t.Errorf("expected 3 with limit, got %d", len(msgs))
 	}
@@ -132,14 +132,14 @@ func TestGetLimit(t *testing.T) {
 
 func TestAckAndUnreadFilter(t *testing.T) {
 	ib := newTestInbox(t)
-	ib.Put(makeMsg("msg-read", "did:key:z1", "", ""))
-	ib.Put(makeMsg("msg-unread", "did:key:z1", "", ""))
+	ib.PutForOwner("", makeMsg("msg-read", "did:key:z1", "", ""))
+	ib.PutForOwner("", makeMsg("msg-unread", "did:key:z1", "", ""))
 
-	if err := ib.Ack("msg-read"); err != nil {
+	if err := ib.AckForOwner("", "msg-read"); err != nil {
 		t.Fatalf("Ack: %v", err)
 	}
 
-	unread, _ := ib.Get("", "", true, 0, 0)
+	unread, _ := ib.GetForOwner("", "", "", true, 0, 0)
 	if len(unread) != 1 {
 		t.Errorf("expected 1 unread, got %d", len(unread))
 	}
@@ -152,16 +152,16 @@ func TestGetSince(t *testing.T) {
 	ib := newTestInbox(t)
 
 	// put a message, record time, put another
-	ib.Put(makeMsg("old", "did:key:z1", "", ""))
+	ib.PutForOwner("", makeMsg("old", "did:key:z1", "", ""))
 
 	// get timestamp after first message; sleep to ensure "new" gets a later ms
 	var ts int64
 	ib.db.QueryRow(`SELECT received_at FROM inbox WHERE id = 'old'`).Scan(&ts)
 	time.Sleep(2 * time.Millisecond)
 
-	ib.Put(makeMsg("new", "did:key:z1", "", ""))
+	ib.PutForOwner("", makeMsg("new", "did:key:z1", "", ""))
 
-	msgs, _ := ib.Get("", "", false, 0, ts)
+	msgs, _ := ib.GetForOwner("", "", "", false, 0, ts)
 	if len(msgs) != 1 || msgs[0].Id != "new" {
 		t.Errorf("since filter failed: got %+v", msgs)
 	}

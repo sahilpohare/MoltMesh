@@ -74,7 +74,7 @@ func TestAppendEntryEnqueuesDurableReplicaWake(t *testing.T) {
 	mgr := &wakeThreadManager{thread: &pb.Thread{
 		Id: "thread-wake", ReplicaDids: []string{id.DID, "did:key:zRemote"},
 	}}
-	srv := New(id, nil, ob, nil, nil, nil, nil, mgr, nil, nil, nil, nil, nil, log)
+	srv := New(id, nil, ob, nil, nil, nil, nil, mgr, nil, nil, nil, nil, nil, nil, log)
 	if _, err := srv.AppendEntry(context.Background(), &pb.AppendEntryRequest{ThreadId: mgr.thread.Id, Payload: []byte("wake"), Kind: "message"}); err != nil {
 		t.Fatalf("AppendEntry: %v", err)
 	}
@@ -103,7 +103,7 @@ func TestAppendEncryptedEntryRequiresCurrentMemberAndEpoch(t *testing.T) {
 		members: []*pb.ThreadMember{{Did: id.DID, Role: pb.ThreadMemberRole_THREAD_MEMBER_ROLE_ADMIN}},
 		epoch:   3,
 	}
-	srv := New(id, nil, ob, nil, nil, nil, nil, mgr, nil, nil, nil, nil, nil, log)
+	srv := New(id, nil, ob, nil, nil, nil, nil, mgr, nil, nil, nil, nil, nil, nil, log)
 	makeEntry := func(membershipEpoch, encryptionEpoch uint64) *pb.ThreadEntry {
 		t.Helper()
 		entry := &pb.ThreadEntry{AuthorDid: id.DID, Payload: []byte("ciphertext"), Kind: "message", EncodingVersion: 2, Sequence: 1, MembershipEpoch: membershipEpoch, EncryptionEpoch: encryptionEpoch, Nonce: make([]byte, 24)}
@@ -137,7 +137,7 @@ func TestPutThreadKeyEnvelopeRequiresCurrentEpoch(t *testing.T) {
 		members: []*pb.ThreadMember{{Did: id.DID, Role: pb.ThreadMemberRole_THREAD_MEMBER_ROLE_ADMIN}},
 		epoch:   4,
 	}
-	srv := New(id, nil, nil, nil, nil, nil, nil, mgr, nil, nil, nil, nil, nil, zap.NewNop())
+	srv := New(id, nil, nil, nil, nil, nil, nil, mgr, nil, nil, nil, nil, nil, nil, zap.NewNop())
 	valid := &pb.ThreadKeyEnvelope{ThreadId: mgr.thread.Id, EncryptionEpoch: 4, RecipientDid: id.DID, EphemeralPublicKey: make([]byte, 32), Nonce: make([]byte, 24), Ciphertext: []byte("opaque")}
 	if _, err := srv.PutThreadKeyEnvelope(context.Background(), valid); err != nil {
 		t.Fatalf("current envelope was rejected: %v", err)
@@ -159,7 +159,7 @@ func TestRecoveryKeyEnvelopesRequireRecoveryCapability(t *testing.T) {
 	}
 	secret := bytes.Repeat([]byte{7}, 32)
 	mgr := &wakeThreadManager{thread: &pb.Thread{Id: "recovery-thread", CreatorDid: id.DID}, epoch: 1, recoverySecret: secret}
-	srv := New(id, nil, nil, nil, nil, nil, nil, mgr, nil, nil, nil, nil, nil, zap.NewNop())
+	srv := New(id, nil, nil, nil, nil, nil, nil, mgr, nil, nil, nil, nil, nil, nil, zap.NewNop())
 	envelope := &pb.ThreadKeyEnvelope{ThreadId: mgr.thread.Id, EncryptionEpoch: 1, EphemeralPublicKey: make([]byte, 32), Nonce: make([]byte, 24), Ciphertext: []byte("opaque"), RecoveryEnvelope: true}
 	raw, err := proto.MarshalOptions{Deterministic: true}.Marshal(envelope)
 	if err != nil {
@@ -187,7 +187,7 @@ func TestCatchupProofMustMatchSignedCurrentHead(t *testing.T) {
 		t.Fatal(err)
 	}
 	mgr := &wakeThreadManager{thread: &pb.Thread{Id: "catchup-thread", CreatorDid: id.DID}, height: 5, headHash: "head"}
-	srv := New(id, nil, nil, nil, nil, nil, nil, mgr, nil, nil, nil, nil, nil, zap.NewNop())
+	srv := New(id, nil, nil, nil, nil, nil, nil, mgr, nil, nil, nil, nil, nil, nil, zap.NewNop())
 	proof := &pb.ThreadCatchupProof{ThreadId: mgr.thread.Id, ObserverDid: id.DID, CommittedHeight: 5, HeadBlockHash: "head", IssuedAtUnixMs: time.Now().UnixMilli()}
 	data, err := proto.MarshalOptions{Deterministic: true}.Marshal(proof)
 	if err != nil {

@@ -1,0 +1,756 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>OpenMolt Network</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  :root {
+    --bg: #111827;
+    --panel: #1a2333;
+    --border: #374151;
+    --text: #f3f4f6;
+    --muted: #6b7280;
+    --primary: #7c3aed;
+    --accent: #a78bfa;
+    --success: #10b981;
+    --warning: #f59e0b;
+    --danger: #ef4444;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 14px;
+    line-height: 1.5;
+  }
+  header {
+    padding: 16px 28px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .brandline { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+  header h1 { font-size: 16px; margin: 0; color: var(--accent); font-weight: 700; }
+  header .did { color: var(--muted); font-size: 12px; word-break: break-all; }
+  header .dot { color: var(--success); }
+  .healthbar { color: var(--muted); font-size: 12px; margin-top: 4px; }
+  .healthbar b { color: var(--text); font-weight: 600; }
+  nav { display: flex; gap: 4px; margin-top: 14px; flex-wrap: wrap; }
+  nav button {
+    background: transparent; border: 1px solid transparent; border-bottom: none;
+    color: var(--muted); padding: 8px 16px; cursor: pointer;
+    border-radius: 6px 6px 0 0; font-family: inherit; font-size: 13px; font-weight: 600;
+  }
+  nav button:hover { color: var(--text); }
+  nav button.active {
+    color: var(--accent); background: var(--panel);
+    border-color: var(--border); margin-bottom: -1px;
+  }
+  main { max-width: 940px; margin: 0 auto; padding: 24px 28px 60px; }
+  .tab { display: none; flex-direction: column; gap: 20px; }
+  .tab.active { display: flex; }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 18px 20px; }
+  .panel h2 {
+    margin: 0 0 14px; font-size: 13px; text-transform: uppercase;
+    letter-spacing: 0.05em; color: var(--accent);
+  }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .row > input { flex: 1; min-width: 160px; }
+  input, textarea, button, select {
+    font-family: inherit; font-size: 13px; background: var(--bg); color: var(--text);
+    border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px;
+  }
+  textarea { width: 100%; resize: vertical; min-height: 58px; }
+  button { background: var(--primary); border-color: var(--primary); color: #fff; cursor: pointer; font-weight: 600; }
+  button:hover { filter: brightness(1.1); }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  button.secondary { background: transparent; color: var(--accent); border-color: var(--border); }
+  button.danger { background: transparent; color: var(--danger); border-color: var(--border); }
+  button.tiny { padding: 4px 9px; font-size: 11px; }
+  .card {
+    border: 1px solid var(--border); border-radius: 6px; padding: 12px 14px; margin-top: 10px;
+  }
+  .card .name { font-weight: 700; }
+  .card .did { color: var(--muted); font-size: 11px; word-break: break-all; }
+  .card .skills { color: var(--accent); font-size: 12px; margin-top: 4px; }
+  .empty { color: var(--muted); font-style: italic; }
+  .pill {
+    display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px;
+    border-radius: 999px; font-size: 12px; font-weight: 600; border: 1px solid var(--border);
+  }
+  .pill.working { color: var(--warning); border-color: var(--warning); }
+  .pill.completed { color: var(--success); border-color: var(--success); }
+  .pill.failed, .pill.error { color: var(--danger); border-color: var(--danger); }
+  .pill.raft { color: var(--accent); border-color: var(--accent); }
+  .pill.bft { color: var(--success); border-color: var(--success); }
+  .pill.warnmix { color: var(--warning); border-color: var(--warning); }
+  .result {
+    margin-top: 12px; padding: 12px 14px; background: var(--bg);
+    border: 1px solid var(--border); border-radius: 6px; white-space: pre-wrap; word-break: break-word;
+  }
+  .spinner {
+    display: inline-block; width: 10px; height: 10px; border: 2px solid var(--muted);
+    border-top-color: var(--warning); border-radius: 50%; animation: spin 0.7s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .note { color: var(--muted); font-size: 11px; margin-top: 8px; line-height: 1.5; }
+  .subhead {
+    margin: 18px 0 10px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em;
+    color: var(--muted); border-top: 1px solid var(--border); padding-top: 14px;
+  }
+  .chat-log {
+    height: 300px; overflow-y: auto; border: 1px solid var(--border); border-radius: 6px;
+    padding: 10px 12px; background: var(--bg); display: flex; flex-direction: column; gap: 10px;
+  }
+  .chat-msg { max-width: 80%; align-self: flex-start; }
+  .chat-msg.mine { align-self: flex-end; }
+  .chat-msg .meta { font-size: 10px; color: var(--muted); margin-bottom: 3px; }
+  .chat-msg.mine .meta { text-align: right; }
+  .chat-msg .bubble {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+    padding: 8px 12px; white-space: pre-wrap; word-break: break-word;
+  }
+  .chat-msg.mine .bubble { background: var(--primary); border-color: var(--primary); color: #fff; }
+  .chat-msg.task .bubble { border-style: dashed; color: var(--accent); font-style: italic; background: transparent; }
+  .list-row {
+    display: flex; justify-content: space-between; align-items: center; gap: 10px;
+    border: 1px solid var(--border); border-radius: 6px; padding: 10px 12px; margin-top: 8px;
+  }
+  .list-row .grow { min-width: 0; flex: 1; }
+  .list-row .mono { font-size: 11px; color: var(--muted); word-break: break-all; }
+  .toast {
+    position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+    background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+    padding: 10px 18px; font-size: 13px; z-index: 50; max-width: 80vw;
+  }
+  .toast.err { border-color: var(--danger); color: var(--danger); }
+  .toast.ok { border-color: var(--success); color: var(--success); }
+</style>
+</head>
+<body>
+<header>
+  <div class="brandline">
+    <h1>OpenMolt Network</h1>
+    <span class="did"><span class="dot">●</span> <span id="identity">connecting…</span></span>
+  </div>
+  <div class="healthbar" id="healthbar"></div>
+  <nav>
+    <button data-tab="agents" class="active">Agents</button>
+    <button data-tab="peers">Peers</button>
+    <button data-tab="threads">Threads</button>
+    <button data-tab="messages">Messages</button>
+    <button data-tab="node">Node</button>
+  </nav>
+</header>
+
+<main>
+  <!-- ── AGENTS ─────────────────────────────────────────────────────── -->
+  <section class="tab active" id="tab-agents">
+    <div class="panel">
+      <h2>Find agents by capability</h2>
+      <div class="row">
+        <input id="capability" value="a2a:v1:cap:text-generation" placeholder="capability, e.g. a2a:v1:cap:text-generation" />
+        <button id="findBtn">Find</button>
+      </div>
+      <div id="agents"></div>
+    </div>
+
+    <div class="panel" id="delegatePanel" style="display:none">
+      <h2>Delegate a task</h2>
+      <div class="card" id="selectedAgent"></div>
+      <textarea id="prompt" placeholder="What should this agent do?" style="margin-top:10px">Write a haiku about peer-to-peer networks.</textarea>
+      <div class="row" style="margin-top:10px">
+        <input id="delegateThread" placeholder="scope to thread ID (optional)" />
+      </div>
+      <div class="row" style="margin-top:10px">
+        <button id="sendBtn">Delegate task</button>
+        <button class="secondary" id="cancelBtn">Cancel</button>
+      </div>
+    </div>
+
+    <div class="panel" id="taskPanel" style="display:none">
+      <h2>Task</h2>
+      <div id="taskStatus"></div>
+      <div id="taskResult"></div>
+    </div>
+  </section>
+
+  <!-- ── PEERS ──────────────────────────────────────────────────────── -->
+  <section class="tab" id="tab-peers">
+    <div class="panel">
+      <h2>Dial a peer</h2>
+      <div class="row">
+        <input id="dialDid" placeholder="peer DID (did:key:z…)" />
+        <button id="dialBtn">Connect</button>
+        <button class="secondary" id="pingBtn">Ping</button>
+      </div>
+      <p class="note">Dialing resolves the DID's Agent Card from the DHT for its multiaddrs, then opens a libp2p connection. The peer must have published a card first.</p>
+      <div id="dialResult"></div>
+    </div>
+
+    <div class="panel">
+      <h2>Connected peers <button class="secondary tiny" id="refreshPeers">Refresh</button></h2>
+      <div id="peers"></div>
+    </div>
+  </section>
+
+  <!-- ── THREADS ────────────────────────────────────────────────────── -->
+  <section class="tab" id="tab-threads">
+    <div class="panel">
+      <h2>Threads</h2>
+      <div class="row">
+        <input id="threadIdInput" placeholder="thread ID to connect to" />
+        <button id="connectThreadBtn">Connect</button>
+        <button class="secondary" id="newThreadBtn">New thread</button>
+      </div>
+      <p class="note">Browsing lists threads this UI has created or connected to. The daemon has no ListThreads RPC yet, so a thread created elsewhere shows up only once you connect to it by ID here.</p>
+      <div id="threadList"></div>
+    </div>
+
+    <div class="panel" id="threadArea" style="display:none">
+      <h2>Thread</h2>
+      <div class="note" id="threadMeta" style="margin-top:0"></div>
+      <div class="chat-log" id="chatLog"></div>
+      <div class="row" style="margin-top:10px">
+        <input id="chatInput" placeholder="Message this thread…" />
+        <button id="chatSendBtn">Send</button>
+      </div>
+
+      <div class="subhead">Members</div>
+      <div id="memberList"></div>
+      <div class="row" style="margin-top:10px">
+        <input id="memberDid" placeholder="member DID" />
+        <button class="secondary" id="inviteBtn">Invite</button>
+        <button class="secondary" id="observerBtn">Add observer</button>
+        <button class="secondary" id="promoteBtn">Promote</button>
+      </div>
+      <p class="note">Observers replicate the log without counting toward quorum. Promoting one to voter requires a catch-up proof, which the daemon builds and verifies.</p>
+
+      <div class="subhead">Assign a task on this thread</div>
+      <div class="row">
+        <input id="taskTo" placeholder="assignee DID" />
+        <input id="taskSkill" value="a2a:v1:cap:text-generation" placeholder="skill" />
+      </div>
+      <textarea id="taskPrompt" placeholder="Task prompt (optional)" style="margin-top:8px"></textarea>
+      <div class="row" style="margin-top:8px">
+        <button id="taskSendBtn">Send task</button>
+        <button class="danger" id="leaveThreadBtn">Leave thread</button>
+      </div>
+      <div id="threadTasks"></div>
+    </div>
+  </section>
+
+  <!-- ── MESSAGES ───────────────────────────────────────────────────── -->
+  <section class="tab" id="tab-messages">
+    <div class="panel">
+      <h2>Send a direct message</h2>
+      <div class="row">
+        <input id="msgTo" placeholder="recipient DID" />
+      </div>
+      <textarea id="msgText" placeholder="Message text" style="margin-top:8px"></textarea>
+      <div class="row" style="margin-top:8px">
+        <button id="msgSendBtn">Send message</button>
+      </div>
+      <p class="note">Delivery is durable: if the recipient is offline the message queues in the outbox and retries until acknowledged.</p>
+    </div>
+
+    <div class="panel">
+      <h2>Inbox <button class="secondary tiny" id="refreshInbox">Refresh</button></h2>
+      <div id="inbox"></div>
+    </div>
+  </section>
+
+  <!-- ── NODE ───────────────────────────────────────────────────────── -->
+  <section class="tab" id="tab-node">
+    <div class="panel">
+      <h2>Advertise this daemon</h2>
+      <div class="row">
+        <input id="advName" placeholder="agent name" value="webui-node" />
+      </div>
+      <div class="row" style="margin-top:8px">
+        <input id="advDesc" placeholder="description" value="Coordinating daemon behind the web UI" />
+      </div>
+      <div class="row" style="margin-top:8px">
+        <input id="advSkills" placeholder="comma-separated capabilities (optional)" />
+        <button id="advertiseBtn">Publish card</button>
+      </div>
+      <p class="note">Publishing signs an Agent Card and puts it on the DHT under this DID. Until you do this, other peers cannot resolve you — which also means they cannot route task results back to you.</p>
+      <div id="advResult"></div>
+    </div>
+
+    <div class="panel">
+      <h2>Health <button class="secondary tiny" id="refreshHealth">Refresh</button></h2>
+      <div id="healthDetail"></div>
+    </div>
+  </section>
+</main>
+
+<script>
+// ── shared helpers ────────────────────────────────────────────────────────────
+let myDid = null;
+
+function esc(s) {
+  return String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+function shortDid(d) {
+  const s = String(d ?? "");
+  return s.length > 30 ? s.slice(0, 18) + "…" + s.slice(-6) : s;
+}
+function toast(msg, kind) {
+  const el = document.createElement("div");
+  el.className = "toast " + (kind || "");
+  el.textContent = msg;
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 3800);
+}
+async function api(path, opts) {
+  const res = await fetch(path, opts);
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error || res.statusText);
+  return body;
+}
+async function post(path, body) {
+  return api(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });
+}
+
+// ── tabs ──────────────────────────────────────────────────────────────────────
+document.querySelectorAll("nav button").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll("nav button").forEach((b) => b.classList.remove("active"));
+    document.querySelectorAll(".tab").forEach((t) => t.classList.remove("active"));
+    btn.classList.add("active");
+    document.getElementById("tab-" + btn.dataset.tab).classList.add("active");
+    if (btn.dataset.tab === "peers") loadPeers();
+    if (btn.dataset.tab === "threads") loadThreads();
+    if (btn.dataset.tab === "messages") loadInbox();
+    if (btn.dataset.tab === "node") loadHealth();
+  });
+});
+
+// ── node identity + health ────────────────────────────────────────────────────
+async function loadIdentity() {
+  const me = await api("/api/identity");
+  myDid = me.did ?? null;
+  document.getElementById("identity").textContent = me.did ?? "unknown";
+}
+
+async function loadHealth() {
+  try {
+    const h = await api("/api/health");
+    document.getElementById("healthbar").innerHTML =
+      `v<b>${esc(h.version)}</b> · peers <b>${esc(h.peerCount ?? 0)}</b> · uptime <b>${esc(h.uptimeSecs ?? 0)}s</b>`;
+    document.getElementById("healthDetail").innerHTML = `<div class="result">${esc(JSON.stringify(h, null, 2))}</div>`;
+  } catch (err) {
+    document.getElementById("healthbar").textContent = "health unavailable: " + err.message;
+  }
+}
+
+document.getElementById("refreshHealth").addEventListener("click", loadHealth);
+
+document.getElementById("advertiseBtn").addEventListener("click", async () => {
+  const name = document.getElementById("advName").value.trim();
+  const description = document.getElementById("advDesc").value.trim();
+  const skills = document.getElementById("advSkills").value.split(",").map((s) => s.trim()).filter(Boolean);
+  const out = document.getElementById("advResult");
+  out.innerHTML = `<div class="result">publishing…</div>`;
+  try {
+    await post("/api/advertise", { name, description, skills });
+    out.innerHTML = `<div class="result">Published. Other peers can now resolve ${esc(myDid)}.</div>`;
+    toast("Agent card published", "ok");
+  } catch (err) {
+    out.innerHTML = `<div class="result">${esc(err.message)}</div>`;
+    toast("Publish failed", "err");
+  }
+});
+
+// ── agents ────────────────────────────────────────────────────────────────────
+let selected = null;
+
+function agentCardHtml(card) {
+  const skills = (card.skills || []).map((s) => s.id).join(", ");
+  return `<div class="card">
+    <div class="name">${esc(card.name || "(unnamed agent)")}</div>
+    <div class="did">${esc(card.did)}</div>
+    <div class="skills">${esc(skills)}</div>
+  </div>`;
+}
+
+async function findAgents() {
+  const capability = document.getElementById("capability").value.trim();
+  const btn = document.getElementById("findBtn");
+  const list = document.getElementById("agents");
+  btn.disabled = true;
+  list.innerHTML = `<p class="empty">searching…</p>`;
+  try {
+    const cards = await api(`/api/agents?capability=${encodeURIComponent(capability)}`);
+    if (!cards.length) {
+      list.innerHTML = `<p class="empty">No agents found advertising "${esc(capability)}" yet.</p>`;
+      return;
+    }
+    list.innerHTML = cards.map((c) => agentCardHtml(c) +
+      `<div style="margin:-4px 0 0 14px"><button class="secondary tiny select-btn">Delegate a task →</button></div>`).join("");
+    list.querySelectorAll(".select-btn").forEach((el, i) => {
+      el.addEventListener("click", () => selectAgent(cards[i], capability));
+    });
+  } catch (err) {
+    list.innerHTML = `<p class="empty">Error: ${esc(err.message)}</p>`;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function selectAgent(card, capability) {
+  selected = { did: card.did, capability };
+  document.getElementById("selectedAgent").innerHTML = agentCardHtml(card);
+  document.getElementById("delegatePanel").style.display = "block";
+  document.getElementById("delegatePanel").scrollIntoView({ behavior: "smooth" });
+}
+
+function streamTask(taskId, statusEl, resultEl) {
+  const source = new EventSource(`/api/tasks/${taskId}/stream`);
+  source.addEventListener("status", (e) => {
+    const label = JSON.parse(e.data).status.replace("TASK_STATUS_", "").toLowerCase();
+    const cls = label.includes("work") ? "working" : label;
+    statusEl.innerHTML = `<span class="pill ${cls}"><span class="spinner"></span> ${esc(label)}</span>`;
+  });
+  source.addEventListener("done", (e) => {
+    statusEl.innerHTML = `<span class="pill completed">completed</span>`;
+    resultEl.innerHTML = `<div class="result">${esc(JSON.parse(e.data).text)}</div>`;
+    source.close();
+  });
+  source.addEventListener("error", (e) => {
+    let message = "connection lost";
+    try { message = JSON.parse(e.data).error; } catch {}
+    statusEl.innerHTML = `<span class="pill failed">failed</span>`;
+    resultEl.innerHTML = `<div class="result">${esc(message)}</div>`;
+    source.close();
+  });
+}
+
+document.getElementById("sendBtn").addEventListener("click", async () => {
+  if (!selected) return;
+  const prompt = document.getElementById("prompt").value.trim();
+  const threadId = document.getElementById("delegateThread").value.trim();
+  const panel = document.getElementById("taskPanel");
+  const statusEl = document.getElementById("taskStatus");
+  const resultEl = document.getElementById("taskResult");
+  panel.style.display = "block";
+  resultEl.innerHTML = "";
+  statusEl.innerHTML = `<span class="pill working"><span class="spinner"></span> submitting…</span>`;
+  panel.scrollIntoView({ behavior: "smooth" });
+  try {
+    const body = await post("/api/delegate", { did: selected.did, capability: selected.capability, prompt, threadId });
+    streamTask(body.taskId, statusEl, resultEl);
+  } catch (err) {
+    statusEl.innerHTML = `<span class="pill error">error</span>`;
+    resultEl.innerHTML = `<div class="result">${esc(err.message)}</div>`;
+  }
+});
+
+document.getElementById("findBtn").addEventListener("click", findAgents);
+document.getElementById("cancelBtn").addEventListener("click", () => {
+  selected = null;
+  document.getElementById("delegatePanel").style.display = "none";
+});
+
+// ── peers ─────────────────────────────────────────────────────────────────────
+async function loadPeers() {
+  const el = document.getElementById("peers");
+  el.innerHTML = `<p class="empty">loading…</p>`;
+  try {
+    const peers = await api("/api/peers");
+    if (!peers.length) {
+      el.innerHTML = `<p class="empty">No peers connected.</p>`;
+      return;
+    }
+    el.innerHTML = peers.map((p) => `<div class="list-row">
+      <div class="grow">
+        <div>${esc(p.peerId)}</div>
+        <div class="mono">${esc((p.addrs || p.multiaddrs || []).join("  "))}</div>
+      </div>
+      ${p.did ? `<button class="danger tiny hangup" data-did="${esc(p.did)}">Disconnect</button>` : ""}
+    </div>`).join("");
+    el.querySelectorAll(".hangup").forEach((b) => b.addEventListener("click", async () => {
+      try { await post("/api/peers/disconnect", { did: b.dataset.did }); toast("Disconnected", "ok"); loadPeers(); }
+      catch (err) { toast(err.message, "err"); }
+    }));
+  } catch (err) {
+    el.innerHTML = `<p class="empty">Error: ${esc(err.message)}</p>`;
+  }
+}
+
+document.getElementById("refreshPeers").addEventListener("click", loadPeers);
+
+document.getElementById("dialBtn").addEventListener("click", async () => {
+  const did = document.getElementById("dialDid").value.trim();
+  const out = document.getElementById("dialResult");
+  if (!did) return;
+  out.innerHTML = `<div class="result">dialing…</div>`;
+  try {
+    const r = await post("/api/peers/connect", { did });
+    out.innerHTML = `<div class="result">${esc(JSON.stringify(r, null, 2))}</div>`;
+    toast(r.alreadyConnected ? "Already connected" : "Connected", "ok");
+    loadPeers();
+  } catch (err) {
+    out.innerHTML = `<div class="result">${esc(err.message)}</div>`;
+    toast("Dial failed", "err");
+  }
+});
+
+document.getElementById("pingBtn").addEventListener("click", async () => {
+  const did = document.getElementById("dialDid").value.trim();
+  const out = document.getElementById("dialResult");
+  out.innerHTML = `<div class="result">pinging…</div>`;
+  try {
+    const r = await post("/api/peers/ping", { did });
+    out.innerHTML = `<div class="result">${esc(JSON.stringify(r, null, 2))}</div>`;
+  } catch (err) {
+    out.innerHTML = `<div class="result">${esc(err.message)}</div>`;
+  }
+});
+
+// ── threads ───────────────────────────────────────────────────────────────────
+let currentThreadId = null;
+let threadStream = null;
+
+async function loadThreads() {
+  const el = document.getElementById("threadList");
+  el.innerHTML = `<p class="empty">loading…</p>`;
+  try {
+    const threads = await api("/api/threads");
+    if (!threads.length) {
+      el.innerHTML = `<p class="empty">No threads yet. Create one, or connect to an existing ID.</p>`;
+      return;
+    }
+    el.innerHTML = threads.map((t) => {
+      if (t.unavailable) {
+        return `<div class="list-row"><div class="grow"><div class="mono">${esc(t.id)}</div>
+          <span class="pill failed">unavailable</span></div>
+          <button class="danger tiny forget" data-id="${esc(t.id)}">Forget</button></div>`;
+      }
+      const mismatch = t.backend !== t.effectiveBackend;
+      return `<div class="list-row">
+        <div class="grow">
+          <div class="mono">${esc(t.id)}</div>
+          <div style="margin-top:4px">
+            <span class="pill ${mismatch ? "warnmix" : "raft"}">${esc(t.effectiveBackend)}</span>
+            <span style="color:var(--muted);font-size:11px">
+              ${mismatch ? `requested ${esc(t.backend)}, running ${esc(t.effectiveBackend)}` : `n=${esc(t.n)} f=${esc(t.f)}`}
+            </span>
+          </div>
+        </div>
+        <button class="secondary tiny open" data-id="${esc(t.id)}">Open</button>
+      </div>`;
+    }).join("");
+    el.querySelectorAll(".open").forEach((b) => b.addEventListener("click", () => connectThread(b.dataset.id)));
+    el.querySelectorAll(".forget").forEach((b) => b.addEventListener("click", async () => {
+      await fetch(`/api/threads/${encodeURIComponent(b.dataset.id)}`, { method: "DELETE" });
+      loadThreads();
+    }));
+  } catch (err) {
+    el.innerHTML = `<p class="empty">Error: ${esc(err.message)}</p>`;
+  }
+}
+
+function chatMsgHtml(entry) {
+  const mine = entry.authorDid === myDid;
+  const isTask = entry.kind !== "message";
+  const author = mine ? "you" : shortDid(entry.authorDid) || "?";
+  return `<div class="chat-msg ${mine ? "mine" : ""} ${isTask ? "task" : ""}">
+    <div class="meta">${esc(author)} · height ${esc(entry.height)}${isTask ? " · " + esc(entry.kind) : ""}</div>
+    <div class="bubble">${esc(entry.text)}</div>
+  </div>`;
+}
+
+async function connectThread(threadId) {
+  const log = document.getElementById("chatLog");
+  try {
+    const thread = await api(`/api/threads/${encodeURIComponent(threadId)}`);
+    if (threadStream) threadStream.close();
+    currentThreadId = thread.id;
+    document.getElementById("threadIdInput").value = thread.id;
+
+    const mismatch = thread.backend !== thread.effectiveBackend;
+    document.getElementById("threadMeta").innerHTML =
+      `${esc(thread.id)} · replicas ${esc((thread.replicaDids || []).length)} · n=${esc(thread.n)} f=${esc(thread.f)} · consensus ` +
+      `<span class="pill ${mismatch ? "warnmix" : "raft"}">${esc(thread.effectiveBackend)}</span>` +
+      (mismatch ? ` <span style="color:var(--warning)">(metadata asks for ${esc(thread.backend)}; the actor path runs Raft regardless)</span>` : "");
+
+    log.innerHTML = "";
+    document.getElementById("threadArea").style.display = "block";
+
+    threadStream = new EventSource(`/api/threads/${encodeURIComponent(thread.id)}/stream`);
+    threadStream.addEventListener("entry", (e) => {
+      log.insertAdjacentHTML("beforeend", chatMsgHtml(JSON.parse(e.data)));
+      log.scrollTop = log.scrollHeight;
+    });
+
+    loadMembers();
+    loadThreads();
+    document.getElementById("threadArea").scrollIntoView({ behavior: "smooth" });
+  } catch (err) {
+    toast("Could not open thread: " + err.message, "err");
+  }
+}
+
+async function loadMembers() {
+  if (!currentThreadId) return;
+  const el = document.getElementById("memberList");
+  try {
+    const members = await api(`/api/threads/${encodeURIComponent(currentThreadId)}/members`);
+    if (!members.length) { el.innerHTML = `<p class="empty">No members recorded.</p>`; return; }
+    el.innerHTML = members.map((m) => `<div class="list-row">
+      <div class="grow">
+        <div class="mono">${esc(m.did)}</div>
+        <div style="font-size:11px;color:var(--accent)">${esc(String(m.role || "").replace("THREAD_MEMBER_ROLE_", "").toLowerCase())} · epoch ${esc(m.joinedEpoch ?? "?")}</div>
+      </div>
+      <button class="danger tiny rm" data-did="${esc(m.did)}">Remove</button>
+    </div>`).join("");
+    el.querySelectorAll(".rm").forEach((b) => b.addEventListener("click", async () => {
+      try { await post(`/api/threads/${encodeURIComponent(currentThreadId)}/members/remove`, { did: b.dataset.did }); toast("Removed", "ok"); loadMembers(); }
+      catch (err) { toast(err.message, "err"); }
+    }));
+  } catch (err) {
+    el.innerHTML = `<p class="empty">Error: ${esc(err.message)}</p>`;
+  }
+}
+
+async function memberAction(suffix, label) {
+  const did = document.getElementById("memberDid").value.trim();
+  if (!currentThreadId || !did) return;
+  try {
+    await post(`/api/threads/${encodeURIComponent(currentThreadId)}/members/${suffix}`, { did });
+    toast(label + " ok", "ok");
+    loadMembers();
+  } catch (err) {
+    toast(label + " failed: " + err.message, "err");
+  }
+}
+
+document.getElementById("inviteBtn").addEventListener("click", () => memberAction("invite", "Invite"));
+document.getElementById("observerBtn").addEventListener("click", () => memberAction("observer", "Add observer"));
+document.getElementById("promoteBtn").addEventListener("click", () => memberAction("promote", "Promote"));
+
+document.getElementById("connectThreadBtn").addEventListener("click", () => {
+  const id = document.getElementById("threadIdInput").value.trim();
+  if (id) connectThread(id);
+});
+
+document.getElementById("newThreadBtn").addEventListener("click", async () => {
+  try {
+    const thread = await post("/api/threads", {});
+    await connectThread(thread.id);
+    toast("Thread created", "ok");
+  } catch (err) {
+    toast(err.message, "err");
+  }
+});
+
+async function sendChatMessage() {
+  if (!currentThreadId) return;
+  const input = document.getElementById("chatInput");
+  const text = input.value.trim();
+  if (!text) return;
+  input.value = "";
+  try {
+    await post(`/api/threads/${encodeURIComponent(currentThreadId)}/messages`, { text });
+  } catch (err) {
+    toast("Send failed: " + err.message, "err");
+  }
+}
+
+document.getElementById("chatSendBtn").addEventListener("click", sendChatMessage);
+document.getElementById("chatInput").addEventListener("keydown", (e) => { if (e.key === "Enter") sendChatMessage(); });
+
+document.getElementById("taskSendBtn").addEventListener("click", async () => {
+  if (!currentThreadId) return;
+  const to = document.getElementById("taskTo").value.trim();
+  const skill = document.getElementById("taskSkill").value.trim();
+  const prompt = document.getElementById("taskPrompt").value.trim();
+  if (!to || !skill) { toast("Assignee DID and skill are required", "err"); return; }
+
+  const list = document.getElementById("threadTasks");
+  const rowId = "task-" + Date.now();
+  list.insertAdjacentHTML("afterbegin", `<div class="card" id="${rowId}">
+    <div><strong>${esc(skill)}</strong> → <span class="mono">${esc(shortDid(to))}</span></div>
+    <div class="st" style="margin-top:6px"><span class="pill working"><span class="spinner"></span> submitting…</span></div>
+    <div class="rs"></div></div>`);
+  const row = document.getElementById(rowId);
+  try {
+    const body = await post(`/api/threads/${encodeURIComponent(currentThreadId)}/tasks`, { to, skill, prompt });
+    streamTask(body.taskId, row.querySelector(".st"), row.querySelector(".rs"));
+  } catch (err) {
+    row.querySelector(".st").innerHTML = `<span class="pill error">error</span>`;
+    row.querySelector(".rs").innerHTML = `<div class="result">${esc(err.message)}</div>`;
+  }
+});
+
+document.getElementById("leaveThreadBtn").addEventListener("click", async () => {
+  if (!currentThreadId) return;
+  try {
+    await post(`/api/threads/${encodeURIComponent(currentThreadId)}/leave`, {});
+    if (threadStream) threadStream.close();
+    document.getElementById("threadArea").style.display = "none";
+    currentThreadId = null;
+    toast("Left thread", "ok");
+    loadThreads();
+  } catch (err) {
+    toast(err.message, "err");
+  }
+});
+
+// ── messages ──────────────────────────────────────────────────────────────────
+async function loadInbox() {
+  const el = document.getElementById("inbox");
+  el.innerHTML = `<p class="empty">loading…</p>`;
+  try {
+    const msgs = await api("/api/inbox");
+    if (!msgs.length) { el.innerHTML = `<p class="empty">Inbox is empty.</p>`; return; }
+    el.innerHTML = msgs.map((m) => `<div class="list-row">
+      <div class="grow">
+        <div class="mono">from ${esc(shortDid(m.fromDid))}${m.threadId ? " · thread " + esc(String(m.threadId).slice(0, 8)) : ""}</div>
+        <div style="margin-top:4px">${esc(m.text)}</div>
+      </div>
+      <button class="secondary tiny ack" data-id="${esc(m.id)}">Ack</button>
+    </div>`).join("");
+    el.querySelectorAll(".ack").forEach((b) => b.addEventListener("click", async () => {
+      try { await post(`/api/inbox/${encodeURIComponent(b.dataset.id)}/ack`, {}); toast("Acked", "ok"); loadInbox(); }
+      catch (err) { toast(err.message, "err"); }
+    }));
+  } catch (err) {
+    el.innerHTML = `<p class="empty">Error: ${esc(err.message)}</p>`;
+  }
+}
+
+document.getElementById("refreshInbox").addEventListener("click", loadInbox);
+
+document.getElementById("msgSendBtn").addEventListener("click", async () => {
+  const to = document.getElementById("msgTo").value.trim();
+  const text = document.getElementById("msgText").value.trim();
+  if (!to || !text) { toast("Recipient and text are required", "err"); return; }
+  try {
+    const r = await post("/api/messages", { to, text });
+    document.getElementById("msgText").value = "";
+    toast(r.queued ? "Queued for delivery" : "Sent", "ok");
+  } catch (err) {
+    toast("Send failed: " + err.message, "err");
+  }
+});
+
+// live inbox: keeps the badge count honest without polling
+const inboxStream = new EventSource("/api/inbox/stream");
+inboxStream.addEventListener("message", (e) => {
+  const m = JSON.parse(e.data);
+  toast("New message from " + shortDid(m.fromDid), "ok");
+  if (document.getElementById("tab-messages").classList.contains("active")) loadInbox();
+});
+
+// ── boot ──────────────────────────────────────────────────────────────────────
+loadIdentity();
+loadHealth();
+findAgents();
+setInterval(loadHealth, 15000);
+</script>
+</body>
+</html>

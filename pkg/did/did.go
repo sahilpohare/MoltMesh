@@ -70,9 +70,6 @@ func Short(s string) string {
 	return head + "\u2026" + tail // "…"
 }
 
-// Equal reports whether a and b refer to the same DID (case-sensitive, exact).
-func Equal(a, b string) bool { return a == b }
-
 // isBase58Char reports whether r is in the Bitcoin base58 alphabet.
 func isBase58Char(r rune) bool {
 	const alpha = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"

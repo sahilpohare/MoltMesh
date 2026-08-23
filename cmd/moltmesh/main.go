@@ -21,6 +21,98 @@ import (
 
 const version = "0.1.0"
 
+// cliCommands is the single source of truth for moltmesh's top-level
+// commands: main() dispatches through it, and completion.go's allCommands
+// (and the bash/fish completion scripts) are generated from it, so the
+// dispatch switch and shell completions cannot drift the way the old
+// hand-maintained duplicate lists did (recover-thread was missing from all
+// three shell completions before this). A function, not a package-level
+// var: cmdCompletion (listed below) reads it back through allCommands(),
+// and a var initializer here would create an initialization cycle.
+type cliCommand struct {
+	name string
+	run  func([]string) error
+}
+
+func cliCommands() []cliCommand {
+	return []cliCommand{
+		// ── unified commands ────────────────────────────────────────────────────
+		{"start", cmdStartBackground},
+		{"init", cmdInit},
+		{"tui", cmdTUI},
+		{"version", func([]string) error { cmdVersion(); return nil }},
+		{"help", func([]string) error { printUsage(); return nil }},
+
+		// ── daemon management ───────────────────────────────────────────────────
+		{"status", cmdStatus},
+		{"info", cmdInfo},
+		{"identity", cmdIdentity},
+		{"config", cmdConfig},
+		{"stop", cmdStop},
+
+		// ── identity & registry ─────────────────────────────────────────────────
+		{"get-identity", cmdGetIdentity},
+		{"get-agent-card", cmdGetAgentCard},
+		{"publish-agent-card", cmdPublishAgentCard},
+		{"find-agents", cmdFindAgents},
+
+		// ── messaging ───────────────────────────────────────────────────────────
+		{"send-message", cmdSendMessage},
+		{"subscribe-inbox", cmdSubscribeInbox},
+		{"get-inbox", cmdGetInbox},
+		{"get-outbox", cmdGetOutbox},
+		{"ack-message", cmdAckMessage},
+
+		// ── tasks ───────────────────────────────────────────────────────────────
+		{"create-task", cmdCreateTask},
+		{"send-task-result", cmdSendTaskResult},
+		{"get-task", cmdGetTask},
+		{"update-task", cmdUpdateTask},
+		{"cancel-task", cmdCancelTask},
+		{"publish-task-event", cmdPublishTaskEvent},
+		{"subscribe-task-events", cmdSubscribeTaskEvents},
+
+		// ── files ───────────────────────────────────────────────────────────────
+		{"send-file", cmdSendFile},
+		{"fetch-file", cmdFetchFile},
+
+		// ── threads ─────────────────────────────────────────────────────────────
+		{"create-thread", cmdCreateThread},
+		{"get-thread", cmdGetThread},
+		{"append-entry", cmdAppendEntry},
+		{"get-thread-entries", cmdGetThreadEntries},
+		{"subscribe-thread", cmdSubscribeThread},
+		{"add-thread-replica", cmdAddThreadReplica},
+		{"recover-thread", cmdRecoverThread},
+
+		// ── diagnostics ─────────────────────────────────────────────────────────
+		{"ping", cmdPing},
+		{"health", cmdHealth},
+		{"peers", cmdPeers},
+
+		// ── format utilities ────────────────────────────────────────────────────
+		{"format", cmdFormat},
+
+		// ── shell completion ─────────────────────────────────────────────────────
+		{"completion", cmdCompletion},
+
+		// ── pubsub ──────────────────────────────────────────────────────────────
+		{"publish", cmdPublish},
+		{"subscribe-topic", cmdSubscribeTopic},
+
+		// ── webhook ─────────────────────────────────────────────────────────────
+		{"set-webhook", cmdSetWebhook},
+		{"clear-webhook", cmdClearWebhook},
+		{"get-webhook", cmdGetWebhook},
+
+		// ── networks ────────────────────────────────────────────────────────────
+		{"network", cmdNetwork},
+
+		// ── names ───────────────────────────────────────────────────────────────
+		{"name", cmdName},
+	}
+}
+
 func main() {
 	// ── daemon child mode ────────────────────────────────────────────────────
 	// When we re-exec ourselves with __DAEMON_CHILD=1 we just run the daemon.
@@ -49,131 +141,25 @@ func main() {
 		os.Exit(1)
 	}
 
-	var err error
-	switch args[0] {
-	// ── unified commands ────────────────────────────────────────────────────
-	case "start":
-		err = cmdStartBackground(args[1:])
-	case "tui":
-		err = cmdTUI(args[1:])
-	case "version":
-		cmdVersion()
-	case "help", "-h", "--help":
+	if args[0] == "-h" || args[0] == "--help" {
 		printUsage()
+		return
+	}
 
-	// ── daemon management ───────────────────────────────────────────────────
-	case "status":
-		err = cmdStatus(args[1:])
-	case "info":
-		err = cmdInfo(args[1:])
-	case "identity":
-		err = cmdIdentity(args[1:])
-	case "config":
-		err = cmdConfig(args[1:])
-	case "stop":
-		err = cmdStop(args[1:])
-
-	// ── identity & registry ─────────────────────────────────────────────────
-	case "get-identity":
-		err = cmdGetIdentity(args[1:])
-	case "get-agent-card":
-		err = cmdGetAgentCard(args[1:])
-	case "publish-agent-card":
-		err = cmdPublishAgentCard(args[1:])
-	case "find-agents":
-		err = cmdFindAgents(args[1:])
-
-	// ── messaging ───────────────────────────────────────────────────────────
-	case "send-message":
-		err = cmdSendMessage(args[1:])
-	case "subscribe-inbox":
-		err = cmdSubscribeInbox(args[1:])
-	case "get-inbox":
-		err = cmdGetInbox(args[1:])
-	case "get-outbox":
-		err = cmdGetOutbox(args[1:])
-	case "ack-message":
-		err = cmdAckMessage(args[1:])
-
-	// ── tasks ───────────────────────────────────────────────────────────────
-	case "create-task":
-		err = cmdCreateTask(args[1:])
-	case "get-task":
-		err = cmdGetTask(args[1:])
-	case "update-task":
-		err = cmdUpdateTask(args[1:])
-	case "cancel-task":
-		err = cmdCancelTask(args[1:])
-	case "publish-task-event":
-		err = cmdPublishTaskEvent(args[1:])
-	case "subscribe-task-events":
-		err = cmdSubscribeTaskEvents(args[1:])
-
-	// ── files ───────────────────────────────────────────────────────────────
-	case "send-file":
-		err = cmdSendFile(args[1:])
-	case "fetch-file":
-		err = cmdFetchFile(args[1:])
-
-	// ── threads ─────────────────────────────────────────────────────────────
-	case "create-thread":
-		err = cmdCreateThread(args[1:])
-	case "get-thread":
-		err = cmdGetThread(args[1:])
-	case "append-entry":
-		err = cmdAppendEntry(args[1:])
-	case "get-thread-entries":
-		err = cmdGetThreadEntries(args[1:])
-	case "subscribe-thread":
-		err = cmdSubscribeThread(args[1:])
-	case "recover-thread":
-		err = cmdRecoverThread(args[1:])
-
-	// ── diagnostics ─────────────────────────────────────────────────────────
-	case "ping":
-		err = cmdPing(args[1:])
-	case "health":
-		err = cmdHealth(args[1:])
-	case "peers":
-		err = cmdPeers(args[1:])
-
-	// ── format utilities ────────────────────────────────────────────────────
-	case "format":
-		err = cmdFormat(args[1:])
-
-	// ── shell completion ─────────────────────────────────────────────────────
-	case "completion":
-		err = cmdCompletion(args[1:])
-
-	// ── pubsub ──────────────────────────────────────────────────────────────
-	case "publish":
-		err = cmdPublish(args[1:])
-	case "subscribe-topic":
-		err = cmdSubscribeTopic(args[1:])
-
-	// ── webhook ─────────────────────────────────────────────────────────────
-	case "set-webhook":
-		err = cmdSetWebhook(args[1:])
-	case "clear-webhook":
-		err = cmdClearWebhook(args[1:])
-	case "get-webhook":
-		err = cmdGetWebhook(args[1:])
-
-	// ── networks ────────────────────────────────────────────────────────────
-	case "network":
-		err = cmdNetwork(args[1:])
-
-	// ── names ───────────────────────────────────────────────────────────────
-	case "name":
-		err = cmdName(args[1:])
-
-	default:
+	var run func([]string) error
+	for _, c := range cliCommands() {
+		if c.name == args[0] {
+			run = c.run
+			break
+		}
+	}
+	if run == nil {
 		fmt.Fprintf(os.Stderr, "unknown command: %s\n\n", args[0])
 		printUsage()
 		os.Exit(1)
 	}
 
-	if err != nil {
+	if err := run(args[1:]); err != nil {
 		jsonErr("error", err.Error())
 		os.Exit(1)
 	}
@@ -311,6 +297,7 @@ Usage:
 
 Primary commands:
   start        Start daemon in background (detached)
+  init         Scaffold a new agent (identity + moltbook.toml)
   tui          Open interactive TUI
   stop         Stop running daemon
   status       Check daemon status
@@ -333,6 +320,7 @@ Messaging:
 
 Tasks:
   create-task             Create a task (--to, --skill)
+  send-task-result        Send a terminal result to a task's initiator (--to, --task-id)
   get-task                Get task by ID (--id)
   update-task             Update task status (--id, --status)
   cancel-task             Cancel a task (--id)
@@ -375,6 +363,7 @@ Threads:
   append-entry            Append entry (--thread-id, --payload)
   get-thread-entries      List entries (--id)
   subscribe-thread        Stream entries (--id)
+  add-thread-replica      Add an observer DID as a replica (--thread-id, --did)
   recover-thread          Recover verified history (--id, --secret-base64)
 
 Global options:

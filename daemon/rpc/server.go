@@ -71,7 +71,10 @@ type Server struct {
 	log       *zap.Logger
 }
 
-// New creates a new gRPC server.
+// New creates a new gRPC server. sessions is shared with the Deliverer
+// (daemon/deliver) rather than constructed here, so both agree on which SDK
+// identities currently have a live session on this daemon — see
+// deliver.SessionChecker for why that agreement has to be exact.
 func New(
 	id *identity.Identity,
 	ib *inbox.Inbox,
@@ -86,8 +89,16 @@ func New(
 	nr *names.Registry,
 	n *node.Node,
 	addrs []string,
+	sessions *session.Manager,
 	log *zap.Logger,
 ) *Server {
+	if sessions == nil {
+		// Callers that don't share a Deliverer-visible session.Manager (tests,
+		// or any future caller that never needs cross-daemon delivery to a
+		// session-scoped worker) still get a working one instead of a nil
+		// pointer every session-authenticated RPC would panic on.
+		sessions = session.New(id.DID)
+	}
 	return &Server{
 		id:        id,
 		inbox:     ib,
@@ -103,7 +114,7 @@ func New(
 		node:      n,
 		addrs:     addrs,
 		startedAt: time.Now(),
-		sessions:  session.New(id.DID),
+		sessions:  sessions,
 		log:       log,
 	}
 }
@@ -262,7 +273,12 @@ func (s *Server) CompleteTask(ctx context.Context, req *pb.CompleteTaskRequest) 
 	if err != nil {
 		return nil, err
 	}
-	return s.tasks.FinishLease(req.TaskId, worker, req.LeaseToken, pb.TaskStatus_TASK_STATUS_COMPLETED, "", req.OutputArtifacts)
+	task, err := s.tasks.FinishLease(req.TaskId, worker, req.LeaseToken, pb.TaskStatus_TASK_STATUS_COMPLETED, "", req.OutputArtifacts)
+	if err != nil {
+		return nil, err
+	}
+	s.notifyRemoteInitiator(worker, task, "")
+	return task, nil
 }
 
 func (s *Server) FailTask(ctx context.Context, req *pb.FailTaskRequest) (*pb.Task, error) {
@@ -270,7 +286,48 @@ func (s *Server) FailTask(ctx context.Context, req *pb.FailTaskRequest) (*pb.Tas
 	if err != nil {
 		return nil, err
 	}
-	return s.tasks.FinishLease(req.TaskId, worker, req.LeaseToken, pb.TaskStatus_TASK_STATUS_FAILED, req.Error, nil)
+	task, err := s.tasks.FinishLease(req.TaskId, worker, req.LeaseToken, pb.TaskStatus_TASK_STATUS_FAILED, req.Error, nil)
+	if err != nil {
+		return nil, err
+	}
+	s.notifyRemoteInitiator(worker, task, req.Error)
+	return task, nil
+}
+
+// notifyRemoteInitiator sends a TASK_RESULT message back to a task's
+// initiator when it lives on a different daemon than this one. Without
+// this, CompleteTask/FailTask (the RPCs a DurableWorker's completeTaskLease/
+// failTaskLease call) only ever updated the local task row FinishLease
+// wrote — this daemon's own materialized copy of a task CreateFromRemote
+// created on delivery — and a remote initiator's own row stayed in
+// SUBMITTED/WORKING forever, no matter how long it polled GetTask, because
+// nothing ever told it the task was done. SendTaskResult (above) already
+// does this send manually for callers that want to report a result
+// out-of-band; this is the same message, sent automatically for the
+// worker-lease completion path every DurableWorker actually uses.
+func (s *Server) notifyRemoteInitiator(fromDID string, task *pb.Task, errMsg string) {
+	if task == nil || task.Initiator == "" || task.Initiator == s.id.DID {
+		return
+	}
+	result := &pb.TaskResult{TaskId: task.Id, Status: task.Status, Error: errMsg, OutputArtifacts: task.OutputArtifacts}
+	payload, err := proto.Marshal(result)
+	if err != nil {
+		s.log.Warn("encode task result", zap.String("task_id", task.Id), zap.Error(err))
+		return
+	}
+	msg := &pb.Message{
+		Id:       uuid.NewString(),
+		FromDid:  fromDID,
+		ToDid:    task.Initiator,
+		ThreadId: task.ThreadId,
+		TaskId:   task.Id,
+		Kind:     pb.MessageKind_MESSAGE_KIND_TASK_RESULT,
+		Payload:  payload,
+		SentAt:   time.Now().UnixMilli(),
+	}
+	if err := s.outbox.EnqueueForOwner(fromDID, msg); err != nil {
+		s.log.Warn("enqueue task result", zap.String("task_id", task.Id), zap.Error(err))
+	}
 }
 
 // SubscribeTasks is a durable, resumable worker stream. Delivery sequence is
@@ -603,9 +660,36 @@ func (s *Server) SendTaskResult(ctx context.Context, req *pb.SendTaskResultReque
 // HandleIncoming applies authenticated application messages after Deliverer
 // has persisted them. The libp2p peer/DID binding was already verified.
 func (s *Server) HandleIncoming(msg *pb.Message) error {
-	if msg.Kind != pb.MessageKind_MESSAGE_KIND_TASK_RESULT {
+	switch msg.Kind {
+	case pb.MessageKind_MESSAGE_KIND_TASK_REQUEST:
+		return s.handleTaskRequest(msg)
+	case pb.MessageKind_MESSAGE_KIND_TASK_RESULT:
+		return s.handleTaskResult(msg)
+	default:
 		return nil
 	}
+}
+
+// handleTaskRequest materializes a task on the assignee's own daemon on
+// receipt — without this, a task delegated across daemons is recorded only
+// on the initiator's side, and the assignee's SubscribeTasks/ClaimTask have
+// no local row to ever find.
+func (s *Server) handleTaskRequest(msg *pb.Message) error {
+	// CreateTask (above) marshals req.Task, a *pb.TaskRequest, into this same
+	// Payload — TaskRequest.skill is field 1, while Task.skill is field 5, so
+	// unmarshaling into a pb.Task here silently decoded the skill string into
+	// the wrong field (Task.Id) instead of erroring, leaving t.Skill always
+	// empty and every cross-daemon task delegation rejected downstream with
+	// "skill is required".
+	var t pb.TaskRequest
+	if err := proto.Unmarshal(msg.Payload, &t); err != nil {
+		return fmt.Errorf("decode task request: %w", err)
+	}
+	_, err := s.tasks.CreateFromRemote(msg.TaskId, msg.FromDid, msg.ToDid, msg.ThreadId, t.Skill, t.InputArtifacts, t.Metadata)
+	return err
+}
+
+func (s *Server) handleTaskResult(msg *pb.Message) error {
 	var result pb.TaskResult
 	if err := proto.Unmarshal(msg.Payload, &result); err != nil {
 		return fmt.Errorf("decode task result: %w", err)

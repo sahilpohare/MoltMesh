@@ -99,7 +99,7 @@ func newDaemon(t *testing.T, ctx context.Context, log *zap.Logger) *daemon {
 	gm := gossip.New(ps, log)
 
 	// Delivery layer (nil registry — we use SendDirect in tests)
-	dlv := deliver.New(h, nil, ib, nil, log)
+	dlv := deliver.New(h, nil, ib, nil, nil, log)
 
 	// Minimal node with in-memory blockstore (no DHT/Bitswap for tests).
 	bs := blockstore.NewBlockstore(dssync.MutexWrap(datastore.NewMapDatastore()))
@@ -124,7 +124,7 @@ func newDaemon(t *testing.T, ctx context.Context, log *zap.Logger) *daemon {
 	tm := thread.NewManager(ctx, threadStore, id, ps, log)
 
 	// gRPC server
-	srv := rpc.New(id, ib, ob, ts, nil, gm, dlv, tm, nil, nil, nil, n, addrs, log)
+	srv := rpc.New(id, ib, ob, ts, nil, gm, dlv, tm, nil, nil, nil, n, addrs, nil, log)
 	lis, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("net.Listen: %v", err)
@@ -218,7 +218,7 @@ func TestE2E_DirectMessageDelivery(t *testing.T) {
 	// Bob's inbox should contain the message.
 	deadline := time.Now().Add(3 * time.Second)
 	for time.Now().Before(deadline) {
-		msgs, _ := bob.ib.Get("", "", false, 0, 0)
+		msgs, _ := bob.ib.GetForOwner("", "", "", false, 0, 0)
 		if len(msgs) > 0 {
 			if msgs[0].Id != "e2e-msg-1" {
 				t.Errorf("message ID mismatch: %q", msgs[0].Id)
@@ -446,8 +446,8 @@ func TestE2E_SubscribeInbox(t *testing.T) {
 	alice := newDaemon(t, ctx, log)
 
 	// Pre-populate inbox with two messages.
-	alice.ib.Put(&pb.Message{Id: "sub-1", FromDid: "did:key:zX", Kind: pb.MessageKind_MESSAGE_KIND_TEXT})
-	alice.ib.Put(&pb.Message{Id: "sub-2", FromDid: "did:key:zY", Kind: pb.MessageKind_MESSAGE_KIND_TEXT})
+	alice.ib.PutForOwner("", &pb.Message{Id: "sub-1", FromDid: "did:key:zX", Kind: pb.MessageKind_MESSAGE_KIND_TEXT})
+	alice.ib.PutForOwner("", &pb.Message{Id: "sub-2", FromDid: "did:key:zY", Kind: pb.MessageKind_MESSAGE_KIND_TEXT})
 
 	stream, err := alice.client.SubscribeInbox(ctx, &pb.SubscribeRequest{})
 	if err != nil {

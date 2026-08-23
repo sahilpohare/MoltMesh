@@ -25,6 +25,16 @@ Concretely:
 - **`cmd/moltmesh` is the actively-developed surface.** It is where the CLI's other subcommands (`identity`, `health`, `ping`, `peers`, `publish`, `network *`, `name *`, `format *`) already live, it is the name the project's own README, `moltbook.toml` documentation, and public branding all point to, and it is the binary the `tui` subcommand (ADR-0023) is wired into. Naming `cmd/daemon` canonical instead would mean every new daemon-facing feature has to be built against the *less*-actively-maintained copy first.
 - **This mirrors the same decision this project already made once, implicitly, for the TUI** (ADR-0023): rather than pretend the fork doesn't exist, name which copy is authoritative and schedule the real fix.
 
+## Amendment (2026-08-23): `cmd/daemon` retired outright
+
+This ADR's original decision kept `cmd/daemon` around as a compatibility shim while naming `cmd/moltmesh/daemon.go` canonical. That framing has been superseded: `cmd/daemon` has been deleted entirely, not merely deprioritized.
+
+A feature-parity audit (part of the same bug-sweep-and-refactor pass that also retired `cmd/tui`, see ADR-0023's amendment) found `cmd/daemon`'s CLI surface was not fully covered by `cmd/moltmesh` — three commands (`init`, `send-task-result`, `add-thread-replica`) existed only in `cmd/daemon`. Rather than leave two entrypoints indefinitely "canonical vs. compatibility," those three commands were ported into `cmd/moltmesh` verbatim (same flags, same behavior), `cmd/daemon` was deleted, and the `Makefile`'s `BINARIES` list was reduced to `moltmesh` alone.
+
+This resolves the >500-line bootstrap-duplication problem this ADR documented by elimination rather than by the originally-planned extraction into a shared `daemon/bootstrap` package: there is now only one copy of the bootstrap sequence (`cmd/moltmesh/daemon.go`), so the "which side to trust when they disagree" question this ADR answered no longer arises. The Consequences section's "Follow-up work" (extracting a shared bootstrap package) is no longer necessary for that reason — a single copy has nothing to keep in sync with.
+
+Anyone with scripts or muscle memory built around the `daemon` binary name needs to switch to `moltmesh start` (equivalent flags: `--config`, `--data-dir`, `--port`, `--grpc-addr`, `--verbose`). `moltmesh init` replaces `moltmesh-daemon init` unchanged.
+
 ## Consequences
 
 - Anyone currently scripting against the `daemon` binary continues to work unmodified; this ADR changes maintenance priority, not the build output or CLI surface of either binary today.

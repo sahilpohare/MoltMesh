@@ -36,13 +36,9 @@ type actorGossipBridge struct {
 // newActorGossipBridge joins the thread's consensus topic. Call Run(ctx) to
 // start the receive loop.
 func newActorGossipBridge(ctx context.Context, ps *pubsub.PubSub, system goakt.ActorSystem, h *appactors.Hierarchy, parent *goakt.PID, th *pb.Thread, log *zap.Logger) (*actorGossipBridge, error) {
-	t, err := ps.Join(ConsensusTopic(th.Id))
+	t, err := joinConsensusTopic(ps, th)
 	if err != nil {
 		return nil, err
-	}
-	if err := registerConsensusValidator(ps, th); err != nil {
-		_ = t.Close()
-		return nil, fmt.Errorf("register consensus validator: %w", err)
 	}
 	g := &actorGossipBridge{ps: ps, system: system, topic: t, log: log, threadID: th.Id}
 	if h != nil && parent != nil {
@@ -123,15 +119,15 @@ func (g *actorGossipBridge) Run(ctx context.Context, pid *goakt.PID) {
 			)
 			continue
 		}
-		var cm pb.ConsensusMsg
-		if err := proto.Unmarshal(gmsg.Data, &cm); err != nil {
+		cm, err := decodeConsensusMsg(g.threadID, gmsg.Data)
+		if err != nil {
 			g.log.Warn("actors: unmarshal consensus msg", zap.Error(err))
 			continue
 		}
-		if cm.ThreadId != g.threadID {
+		if cm == nil {
 			continue
 		}
-		if err := g.system.NoSender().Tell(ctx, pid, &cm); err != nil {
+		if err := g.system.NoSender().Tell(ctx, pid, cm); err != nil {
 			g.log.Debug("actors: tell consensus msg", zap.Error(err))
 		}
 	}

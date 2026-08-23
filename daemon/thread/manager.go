@@ -18,9 +18,17 @@ import (
 	"github.com/sahilpohare/p2p-a2a/pkg/threadcrypto"
 )
 
-// Manager owns all per-thread Engines and GossipSub bridges.
+// Manager owns all per-thread Engines and GossipSub bridges. It embeds
+// *Store directly so every store operation Manager doesn't add logic on top
+// of (membership, invites, key envelopes, GetThread, ImportHistory,
+// CommittedHead, ...) is satisfied by Go's method promotion instead of a
+// hand-written forwarding method per operation — the same embedding
+// ActorManager uses in actor_manager.go, so both implement
+// rpc.ThreadManager/deliver.ThreadInviter off one shared set of promoted
+// methods.
 type Manager struct {
-	store *Store
+	*Store
+	store *Store // same pointer as the embedded *Store; kept so internal call sites can keep saying m.store.X
 	id    *identity.Identity
 	ps    *pubsub.PubSub
 	log   *zap.Logger
@@ -42,8 +50,9 @@ func NewManager(
 	log *zap.Logger,
 ) *Manager {
 	return &Manager{
-		ctx:     ctx,
+		Store:   store,
 		store:   store,
+		ctx:     ctx,
 		id:      id,
 		ps:      ps,
 		log:     log,
@@ -139,119 +148,18 @@ func newThreadFromRequest(selfDID string, req *pb.CreateThreadRequest, requested
 
 // CreateThread persists a new thread and starts its consensus engine.
 func (m *Manager) CreateThread(_ context.Context, req *pb.CreateThreadRequest) (*pb.Thread, error) {
-	var (
-		thread *pb.Thread
-		err    error
-	)
-	if req != nil && req.CreatorDid != "" {
-		thread, err = NewThreadFromSignedRequest(req)
-	} else {
-		thread, err = NewThreadFromRequest(m.id.DID, req)
-	}
+	thread, err := buildAndPersistThread(m.store, m.id, req)
 	if err != nil {
 		return nil, err
 	}
-	if req == nil || req.CreatorDid == "" {
-		if err := SignDescriptor(thread, m.id); err != nil {
-			return nil, err
-		}
-	}
-
-	if err := m.store.SaveThread(thread); err != nil {
-		return nil, fmt.Errorf("save thread: %w", err)
-	}
-	if err := m.store.SaveMember(thread.Id, &pb.ThreadMember{Did: thread.CreatorDid, Role: pb.ThreadMemberRole_THREAD_MEMBER_ROLE_ADMIN, JoinedEpoch: 1}); err != nil {
-		return nil, fmt.Errorf("save creator membership: %w", err)
-	}
-
 	if err := m.Start(thread); err != nil {
 		return nil, fmt.Errorf("start thread engine: %w", err)
 	}
-
 	return thread, nil
 }
 
-func (m *Manager) AuthorizeRecoveryCapability(threadID string, secret []byte) (bool, error) {
-	return m.store.AuthorizeRecoveryCapability(threadID, secret)
-}
-func (m *Manager) ListMembers(threadID string) ([]*pb.ThreadMember, error) {
-	return m.store.ListMembers(threadID)
-}
-func (m *Manager) MembershipEpoch(threadID string) (uint64, error) {
-	return m.store.MembershipEpoch(threadID)
-}
-func (m *Manager) RemoveMember(threadID, did string) error {
-	return m.store.RemoveMember(threadID, did)
-}
-func (m *Manager) RemoveMemberWithEpoch(threadID, did string) (uint64, error) {
-	return m.store.RemoveMemberWithEpoch(threadID, did)
-}
-func (m *Manager) PromoteMember(threadID, did string) (*pb.ThreadMember, error) {
-	return m.store.PromoteMember(threadID, did)
-}
-func (m *Manager) PromoteMemberWithEpoch(threadID, did string) (*pb.ThreadMember, uint64, error) {
-	return m.store.PromoteMemberWithEpoch(threadID, did)
-}
-func (m *Manager) SaveInvite(threadID, invitee string, role pb.ThreadMemberRole, nonce []byte, expiresAt int64) error {
-	return m.store.SaveInvite(threadID, invitee, role, nonce, expiresAt)
-}
-func (m *Manager) AcceptInvite(threadID, invitee string, nonce []byte) (*pb.ThreadMember, error) {
-	return m.store.AcceptInvite(threadID, invitee, nonce)
-}
-func (m *Manager) AcceptInviteWithEpoch(threadID, invitee string, nonce []byte) (*pb.ThreadMember, uint64, error) {
-	return m.store.AcceptInviteWithEpoch(threadID, invitee, nonce)
-}
-func (m *Manager) SaveKeyEnvelope(envelope *pb.ThreadKeyEnvelope) error {
-	return m.store.SaveKeyEnvelope(envelope)
-}
-func (m *Manager) KeyEnvelopes(threadID string, epoch uint64, recipient string) ([]*pb.ThreadKeyEnvelope, error) {
-	return m.store.KeyEnvelopes(threadID, epoch, recipient)
-}
-func (m *Manager) SaveRecoveryKeyEnvelope(envelope *pb.ThreadKeyEnvelope) error {
-	return m.store.SaveRecoveryKeyEnvelope(envelope)
-}
-func (m *Manager) RecoveryKeyEnvelopes(threadID string) ([]*pb.ThreadKeyEnvelope, error) {
-	return m.store.RecoveryKeyEnvelopes(threadID)
-}
-
 func (m *Manager) CreateThreadWithRecovery(ctx context.Context, req *pb.CreateThreadRequest) (*pb.Thread, *pb.ThreadRecoveryHandle, error) {
-	if req == nil {
-		req = &pb.CreateThreadRequest{}
-	}
-	request := proto.Clone(req).(*pb.CreateThreadRequest)
-	secret := request.RecoverySecret
-	if len(secret) == 0 {
-		h, err := threadcrypto.NewRecoveryHandle("pending")
-		if err != nil {
-			return nil, nil, err
-		}
-		secret = h.Secret
-		request.RecoverySecret = secret
-	}
-	commitment, err := threadcrypto.RecoveryCommitment(secret)
-	if err != nil {
-		return nil, nil, err
-	}
-	if request.CreatorDid != "" {
-		// A client-signed descriptor must already commit to the supplied secret;
-		// mutating its metadata here would invalidate that signature.
-		if request.Metadata[threadcrypto.RecoveryCommitmentMetadataKey] != commitment {
-			return nil, nil, fmt.Errorf("signed recovery thread must commit to its recovery secret")
-		}
-	} else {
-		if request.Metadata == nil {
-			request.Metadata = map[string]string{}
-		}
-		request.Metadata[threadcrypto.RecoveryCommitmentMetadataKey] = commitment
-	}
-	th, err := m.CreateThread(ctx, request)
-	if err != nil {
-		return nil, nil, err
-	}
-	if err := m.store.SaveRecoveryCapability(th.Id, secret); err != nil {
-		return nil, nil, err
-	}
-	return th, &pb.ThreadRecoveryHandle{ThreadId: th.Id, RecoverySecret: secret, Version: 1}, nil
+	return createThreadWithRecovery(ctx, req, m.store, m.CreateThread)
 }
 
 // StartAll loads all persisted threads and starts their engines.
@@ -370,24 +278,31 @@ func (m *Manager) ProposeVoterChange(ctx context.Context, threadID, did string, 
 	return engine.ProposeVoterChange(ctx, did, add)
 }
 
-// GetThread loads a thread from the store.
-func (m *Manager) GetThread(threadID string) (*pb.Thread, error) {
-	return m.store.GetThread(threadID)
-}
-
-func (m *Manager) ImportHistory(th *pb.Thread, blocks []*pb.ThreadBlock) error {
-	return m.store.ImportHistory(th, blocks)
-}
-func (m *Manager) CommittedHead(threadID string) (int64, string, error) {
-	return m.store.CommittedHead(threadID)
-}
-
 // GetEntries returns committed entries since sinceHeight.
 func (m *Manager) GetEntries(threadID string, sinceHeight int64, limit int) ([]*pb.ThreadEntryWithPos, error) {
 	blocks, err := m.store.GetBlocksSince(threadID, sinceHeight, limit)
 	if err != nil {
 		return nil, err
 	}
+	return entriesFromBlocks(blocks), nil
+}
+
+// ─── shared by Manager and ActorManager (see actor_manager.go) ───────────────
+//
+// AuthorizeRecoveryCapability, ListMembers, MembershipEpoch, RemoveMember,
+// RemoveMemberWithEpoch, PromoteMember, PromoteMemberWithEpoch, SaveInvite,
+// AcceptInvite, AcceptInviteWithEpoch, SaveKeyEnvelope, KeyEnvelopes,
+// SaveRecoveryKeyEnvelope, RecoveryKeyEnvelopes, GetThread, ImportHistory,
+// and CommittedHead all reach rpc.ThreadManager/deliver.ThreadInviter
+// callers via *Store's own methods, promoted through the embedded *Store on
+// both Manager and ActorManager — neither type adds logic on top of them, so
+// there is nothing to hand-write here.
+
+// entriesFromBlocks flattens committed blocks into the per-entry view
+// GetEntries returns — shared by Manager and ActorManager, which otherwise
+// fetch blocks through different active-consensus paths but flatten them
+// identically.
+func entriesFromBlocks(blocks []*pb.ThreadBlock) []*pb.ThreadEntryWithPos {
 	var out []*pb.ThreadEntryWithPos
 	for _, b := range blocks {
 		for i, entry := range b.Entries {
@@ -399,5 +314,84 @@ func (m *Manager) GetEntries(threadID string, sinceHeight int64, limit int) ([]*
 			})
 		}
 	}
-	return out, nil
+	return out
+}
+
+// buildAndPersistThread runs the descriptor-building, signing, and
+// persistence steps shared by Manager.CreateThread (Engine/GossipBridge
+// path) and ActorManager.CreateThread (GoAkt actor path) — the two diverge
+// only in how the thread is activated afterward.
+func buildAndPersistThread(store *Store, id *identity.Identity, req *pb.CreateThreadRequest) (*pb.Thread, error) {
+	var (
+		thread *pb.Thread
+		err    error
+	)
+	if req != nil && req.CreatorDid != "" {
+		thread, err = NewThreadFromSignedRequest(req)
+	} else {
+		thread, err = NewThreadFromRequest(id.DID, req)
+	}
+	if err != nil {
+		return nil, err
+	}
+	if req == nil || req.CreatorDid == "" {
+		if err := SignDescriptor(thread, id); err != nil {
+			return nil, err
+		}
+	}
+	if err := store.SaveThread(thread); err != nil {
+		return nil, fmt.Errorf("save thread: %w", err)
+	}
+	if err := store.SaveMember(thread.Id, &pb.ThreadMember{Did: thread.CreatorDid, Role: pb.ThreadMemberRole_THREAD_MEMBER_ROLE_ADMIN, JoinedEpoch: 1}); err != nil {
+		return nil, fmt.Errorf("save creator membership: %w", err)
+	}
+	return thread, nil
+}
+
+// createThreadWithRecovery wraps createThread (either Manager's or
+// ActorManager's) with the recovery-secret/commitment bookkeeping shared by
+// both CreateThreadWithRecovery implementations.
+func createThreadWithRecovery(
+	ctx context.Context,
+	req *pb.CreateThreadRequest,
+	store *Store,
+	createThread func(context.Context, *pb.CreateThreadRequest) (*pb.Thread, error),
+) (*pb.Thread, *pb.ThreadRecoveryHandle, error) {
+	if req == nil {
+		req = &pb.CreateThreadRequest{}
+	}
+	request := proto.Clone(req).(*pb.CreateThreadRequest)
+	secret := request.RecoverySecret
+	if len(secret) == 0 {
+		h, err := threadcrypto.NewRecoveryHandle("pending")
+		if err != nil {
+			return nil, nil, err
+		}
+		secret = h.Secret
+		request.RecoverySecret = secret
+	}
+	commitment, err := threadcrypto.RecoveryCommitment(secret)
+	if err != nil {
+		return nil, nil, err
+	}
+	if request.CreatorDid != "" {
+		// A client-signed descriptor must already commit to the supplied secret;
+		// mutating its metadata here would invalidate that signature.
+		if request.Metadata[threadcrypto.RecoveryCommitmentMetadataKey] != commitment {
+			return nil, nil, fmt.Errorf("signed recovery thread must commit to its recovery secret")
+		}
+	} else {
+		if request.Metadata == nil {
+			request.Metadata = map[string]string{}
+		}
+		request.Metadata[threadcrypto.RecoveryCommitmentMetadataKey] = commitment
+	}
+	th, err := createThread(ctx, request)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := store.SaveRecoveryCapability(th.Id, secret); err != nil {
+		return nil, nil, err
+	}
+	return th, &pb.ThreadRecoveryHandle{ThreadId: th.Id, RecoverySecret: secret, Version: 1}, nil
 }

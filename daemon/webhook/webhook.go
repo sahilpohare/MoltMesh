@@ -59,12 +59,7 @@ type Dispatcher struct {
 type config struct{ url, secret string }
 
 func (d *Dispatcher) EnableActor(ctx context.Context, h *appactors.Hierarchy) error {
-	exec, err := appactors.NewExecutor(ctx, h, "webhooks")
-	if err != nil {
-		return err
-	}
-	d.exec = exec
-	return nil
+	return appactors.EnableSerialActor(ctx, h, "webhooks", func(e *appactors.Executor) { d.exec = e }, nil)
 }
 
 // New creates a Dispatcher. url and secret may be empty (disabled).
@@ -76,17 +71,11 @@ func New(log *zap.Logger) *Dispatcher {
 	}
 }
 
-// Set configures the webhook URL and optional secret.
-// Returns an error if the URL points to a private/internal network.
-func (d *Dispatcher) Set(rawURL, secret string) error {
-	return d.SetForOwner("", rawURL, secret)
-}
+// SetForOwner configures the webhook URL and optional secret for owner
+// ("" for the daemon-wide default). Returns an error if the URL points to
+// a private/internal network.
 func (d *Dispatcher) SetForOwner(owner, rawURL, secret string) error {
-	if d.exec != nil {
-		_, err := d.exec.Call(context.Background(), func() (any, error) { return nil, d.set(owner, rawURL, secret) })
-		return err
-	}
-	return d.set(owner, rawURL, secret)
+	return appactors.DispatchErr(d.exec, func() error { return d.set(owner, rawURL, secret) })
 }
 func (d *Dispatcher) set(owner, rawURL, secret string) error {
 	if err := validateWebhookURL(rawURL); err != nil {
@@ -143,16 +132,10 @@ func validateWebhookURL(rawURL string) error {
 	return nil
 }
 
-// Clear disables webhook delivery.
-func (d *Dispatcher) Clear() {
-	d.ClearForOwner("")
-}
+// ClearForOwner disables webhook delivery for owner ("" for the daemon-wide
+// default).
 func (d *Dispatcher) ClearForOwner(owner string) {
-	if d.exec != nil {
-		_, _ = d.exec.Call(context.Background(), func() (any, error) { d.clear(owner); return nil, nil })
-		return
-	}
-	d.clear(owner)
+	appactors.DispatchVoid(d.exec, func() { d.clear(owner) })
 }
 func (d *Dispatcher) clear(owner string) {
 	d.mu.Lock()
@@ -163,19 +146,11 @@ func (d *Dispatcher) clear(owner string) {
 	d.mu.Unlock()
 }
 
-// URL returns the currently configured webhook URL (empty if disabled).
-func (d *Dispatcher) URL() string {
-	return d.URLForOwner("")
-}
+// URLForOwner returns owner's currently configured webhook URL ("" for the
+// daemon-wide default), or "" if disabled.
 func (d *Dispatcher) URLForOwner(owner string) string {
-	if d.exec != nil {
-		value, err := d.exec.Call(context.Background(), func() (any, error) { return d.currentURL(owner), nil })
-		if err == nil {
-			return value.(string)
-		}
-		return ""
-	}
-	return d.currentURL(owner)
+	url, _ := appactors.Dispatch(d.exec, func() (string, error) { return d.currentURL(owner), nil })
+	return url
 }
 func (d *Dispatcher) currentURL(owner string) string {
 	d.mu.RLock()
@@ -189,16 +164,10 @@ func (d *Dispatcher) currentURL(owner string) string {
 	return ""
 }
 
-// Send dispatches an event asynchronously.
-func (d *Dispatcher) Send(kind EventKind, data interface{}) {
-	d.SendForOwner("", kind, data)
-}
+// SendForOwner dispatches an event asynchronously for owner ("" for the
+// daemon-wide default).
 func (d *Dispatcher) SendForOwner(owner string, kind EventKind, data interface{}) {
-	if d.exec != nil {
-		_ = d.exec.Cast(context.Background(), func() (any, error) { d.send(owner, kind, data); return nil, nil })
-		return
-	}
-	d.send(owner, kind, data)
+	appactors.DispatchCast(d.exec, func() { d.send(owner, kind, data) })
 }
 func (d *Dispatcher) send(owner string, kind EventKind, data interface{}) {
 	d.mu.RLock()

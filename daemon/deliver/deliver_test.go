@@ -72,10 +72,10 @@ func TestSendDirect_DeliveredToInbox(t *testing.T) {
 	receiverInbox := newInbox(t)
 
 	// Register receive handler on receiver (nil registry — receiver never calls it)
-	deliver.New(receiverHost, nil, receiverInbox, nil, log)
+	deliver.New(receiverHost, nil, receiverInbox, nil, nil, log)
 
 	// Sender Deliverer (nil registry — using SendDirect)
-	senderDlv := deliver.New(senderHost, nil, newInbox(t), nil, log)
+	senderDlv := deliver.New(senderHost, nil, newInbox(t), nil, nil, log)
 	actorSystem, err := appactors.NewSystem(context.Background(), zap.NewNop())
 	if err != nil {
 		t.Fatal(err)
@@ -106,7 +106,7 @@ func TestSendDirect_DeliveredToInbox(t *testing.T) {
 		t.Fatalf("SendDirect: %v", err)
 	}
 
-	msgs, err := receiverInbox.Get("", "", false, 0, 0)
+	msgs, err := receiverInbox.GetForOwner("", "", "", false, 0, 0)
 	if err != nil {
 		t.Fatalf("inbox.Get: %v", err)
 	}
@@ -132,8 +132,8 @@ func TestSendDirect_MultipleMessages(t *testing.T) {
 	connectHosts(t, h1, h2)
 
 	ib := newInbox(t)
-	deliver.New(h2, nil, ib, nil, log)
-	dlv := deliver.New(h1, nil, newInbox(t), nil, log)
+	deliver.New(h2, nil, ib, nil, nil, log)
+	dlv := deliver.New(h1, nil, newInbox(t), nil, nil, log)
 
 	senderDID := didFromHost(t, h1)
 	receiverDID := didFromHost(t, h2)
@@ -153,7 +153,7 @@ func TestSendDirect_MultipleMessages(t *testing.T) {
 		}
 	}
 
-	msgs, _ := ib.Get("", "", false, 0, 0)
+	msgs, _ := ib.GetForOwner("", "", "", false, 0, 0)
 	if len(msgs) != 3 {
 		t.Errorf("expected 3 messages in inbox, got %d", len(msgs))
 	}
@@ -162,7 +162,7 @@ func TestSendDirect_MultipleMessages(t *testing.T) {
 func TestSendDirect_UnknownPeer(t *testing.T) {
 	log, _ := zap.NewDevelopment()
 	h := newHost(t)
-	dlv := deliver.New(h, nil, newInbox(t), nil, log)
+	dlv := deliver.New(h, nil, newInbox(t), nil, nil, log)
 
 	// Random peer ID that we've never connected to
 	unknownID, _ := peer.Decode("12D3KooWGHpBMeZbestVEWkfdnC9VX5XUZ8jKEAqoTVAsy3WP3DL")
@@ -183,7 +183,7 @@ func TestReceive_MalformedData(t *testing.T) {
 	connectHosts(t, senderHost, receiverHost)
 
 	receiverInbox := newInbox(t)
-	deliver.New(receiverHost, nil, receiverInbox, nil, log)
+	deliver.New(receiverHost, nil, receiverInbox, nil, nil, log)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
@@ -204,7 +204,7 @@ func TestReceive_MalformedData(t *testing.T) {
 	s.Read(ack)                                    //nolint:errcheck
 
 	// Inbox should be empty
-	msgs, _ := receiverInbox.Get("", "", false, 0, 0)
+	msgs, _ := receiverInbox.GetForOwner("", "", "", false, 0, 0)
 	if len(msgs) != 0 {
 		t.Errorf("expected empty inbox after malformed message, got %d", len(msgs))
 	}
