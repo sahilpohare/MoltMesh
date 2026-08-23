@@ -264,18 +264,35 @@ func TestE2E_SendMessageViaGRPC(t *testing.T) {
 		t.Error("expected Queued=true")
 	}
 
-	// Verify message is tracked in alice's outbox (pending, processing, or failed — all valid
-	// since the outbox flushes immediately on enqueue and the registry is nil in tests).
+	// Verify the message is tracked in alice's outbox. The outbox flushes on
+	// enqueue and the registry is nil in tests, so the worker is concurrently
+	// moving the row: 'processing' while it attempts delivery, then back to
+	// 'pending' to retry, or 'dead_letter' once a non-durable message runs out
+	// of attempts. Note it is never 'failed'; outbox.go writes only those three.
+	//
+	// Querying each status in turn races that worker. A row that is
+	// 'processing' when the pending query runs and 'pending' when the
+	// processing query runs is missed by both, which made this assertion fail
+	// intermittently on loaded CI runners. Poll instead of sampling once.
+	statuses := []string{"pending", "processing", "dead_letter"}
 	var tracked []*pb.Message
-	for _, status := range []string{"pending", "processing", "failed"} {
-		msgs, err := alice.ob.List(status, 0)
-		if err != nil {
-			t.Fatalf("List outbox %s: %v", status, err)
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		tracked = nil
+		for _, status := range statuses {
+			msgs, err := alice.ob.List(status, 0)
+			if err != nil {
+				t.Fatalf("List outbox %s: %v", status, err)
+			}
+			tracked = append(tracked, msgs...)
 		}
-		tracked = append(tracked, msgs...)
+		if len(tracked) > 0 {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
 	}
 	if len(tracked) == 0 {
-		t.Fatal("message not in outbox")
+		t.Fatalf("message not in outbox after polling %v", statuses)
 	}
 	if tracked[0].ToDid != bob.id.DID {
 		t.Errorf("ToDid mismatch: %q", tracked[0].ToDid)
