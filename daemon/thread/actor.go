@@ -3,6 +3,7 @@ package thread
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/tochemey/goakt/v4/actor"
@@ -82,7 +83,11 @@ type ThreadActor struct {
 	// A nil *Publisher (the zero value of this field) is valid: PublishBlock
 	// no-ops on a nil receiver.
 	durability *Publisher
-	schedRef   string
+	// schedRef is written by ThreadSupervisor.Spawn on the spawning goroutine
+	// and read by PostStop on GoAkt's shutdown goroutine. Those are different
+	// goroutines, so the access has to be atomic; a plain string field here
+	// is a data race the -race detector flags on passivation.
+	schedRef atomic.Pointer[string]
 
 	mu          sync.Mutex
 	subscribers []chan *pb.ThreadEntryWithPos
@@ -232,7 +237,7 @@ func (a *ThreadActor) PreStart(ctx *actor.Context) error {
 
 // setScheduleRef records the recurring-tick schedule reference so PostStop
 // can cancel it. Called by ThreadSupervisor.Spawn once the PID exists.
-func (a *ThreadActor) setScheduleRef(ref string) { a.schedRef = ref }
+func (a *ThreadActor) setScheduleRef(ref string) { a.schedRef.Store(&ref) }
 
 // Receive replaces raft.go's blocking select with message-typed dispatch.
 // Per GoAkt's hard framework rule, Receive must never block.
@@ -282,8 +287,8 @@ func (a *ThreadActor) Receive(ctx *actor.ReceiveContext) {
 // PostStop stops the raft node, closes subscriber channels, and flushes any
 // pending persistence.
 func (a *ThreadActor) PostStop(ctx *actor.Context) error {
-	if a.schedRef != "" {
-		_ = ctx.ActorSystem().CancelSchedule(a.schedRef)
+	if ref := a.schedRef.Load(); ref != nil && *ref != "" {
+		_ = ctx.ActorSystem().CancelSchedule(*ref)
 	}
 	if a.backend != nil {
 		started := time.Now()
