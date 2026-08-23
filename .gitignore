@@ -37,7 +37,7 @@ sdk/python/build/
 .python-version
 
 # ── Node / TypeScript ─────────────────────────────────────────────────────────
-sdk/typescript/openclaw-plugin/node_modules/
+**/node_modules/
 sdk/typescript/openclaw-plugin/dist/
 !sdk/typescript/openclaw-plugin/bin/
 !sdk/typescript/openclaw-plugin/bin/moltmesh-mcp.mjs
@@ -57,3 +57,6 @@ sdk/typescript/openclaw-plugin/*.js.map
 # inscope: workspace-local Claude config dir (holds a login)
 .inscope/
 e2e/manual-thread/runtime/
+
+# ── local agent tooling (worktrees, machine-local settings) ───────────────────
+.claude/
