@@ -63,3 +63,7 @@ e2e/manual-thread/runtime/
 
 # installed agent skills (pinned by skills-lock.json)
 .agents/
+
+# chart rendering venv (see scripts/plot-benchmarks.sh)
+.venv-charts/
+bench/results/.parts/
