@@ -9,7 +9,31 @@ permissions:
   contents: write
 
 jobs:
+  # Tagging a release used to publish binaries without running a single test.
+  # This gate makes a red suite block the release rather than ship with it.
+  # It duplicates the CI workflow's Go job deliberately: CI runs on branches
+  # and pull requests, and a tag can point at any commit, including one that
+  # never passed through either.
+  test:
+    name: Test before release
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: go test
+        run: go test -race -timeout 15m ./...
+
   release:
+    needs: test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

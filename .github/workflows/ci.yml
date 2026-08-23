@@ -1,0 +1,144 @@
+name: CI
+
+# Runs the automated test suites on every push and pull request. Until this
+# existed the repository had three workflows and all of them deployed or
+# released; nothing ran `go test`, so a regression could reach main
+# unchallenged.
+
+on:
+  push:
+    branches: [main, actor-model]
+  pull_request:
+  workflow_dispatch:
+
+# A newer push to the same ref makes the in-flight run redundant.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  go:
+    name: Go
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: gofmt
+        run: |
+          unformatted="$(git ls-files '*.go' | xargs gofmt -l)"
+          if [ -n "$unformatted" ]; then
+            echo "::error::gofmt found unformatted files. Run: git ls-files '*.go' | xargs gofmt -w"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: go build
+        run: go build ./...
+
+      # The race detector matters more than usual here: the daemon is built on
+      # an actor runtime, a GossipSub mesh and a consensus loop, all of which
+      # are concurrent by construction. e2e/ has no build tag, so this also
+      # exercises two full daemons over real libp2p. The bench/ suite is
+      # excluded by its own `bench` tag and runs in the benchmarks job below.
+      - name: go test
+        run: go test -race -timeout 15m ./...
+
+  typescript:
+    name: TypeScript SDK
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install and build (openclaw-plugin)
+        working-directory: sdk/typescript/openclaw-plugin
+        run: |
+          bun install --frozen-lockfile || bun install
+          bun run build
+
+      # The integration suites in this package need a running daemon and are
+      # skipped without one, so this covers the unit tests only.
+      - name: Test (openclaw-plugin)
+        working-directory: sdk/typescript/openclaw-plugin
+        run: bun test
+
+      # ai-sdk declares no test script; type-checking it is still worth doing.
+      - name: Build (ai-sdk)
+        working-directory: sdk/typescript/ai-sdk
+        run: |
+          bun install --frozen-lockfile || bun install
+          bun run build
+
+  python:
+    name: Python SDK
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      # The Go toolchain is a real dependency of this job, not an accident:
+      # sdk/python/tests/conftest.py builds the daemon binary and starts it as
+      # a subprocess for the integration tests, and skips them when the
+      # toolchain is missing. Installing Go here means those tests actually
+      # run instead of silently skipping.
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install
+        working-directory: sdk/python
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: pytest
+        working-directory: sdk/python
+        run: pytest -q
+
+  benchmarks:
+    name: Benchmarks
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    # Not run on every push. Each scenario spawns several libp2p hosts and the
+    # full sweep takes tens of minutes; a non-zero exit means a scenario did
+    # not converge, which is a reportable result rather than a broken build.
+    if: github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run benchmark suite
+        run: ./scripts/run-benchmarks.sh
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results
+          path: bench/results/
+          retention-days: 30
