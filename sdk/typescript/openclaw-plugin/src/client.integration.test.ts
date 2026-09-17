@@ -9,7 +9,7 @@
 
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import { spawn, type ChildProcess, execFileSync } from "child_process";
-import { mkdtempSync, rmSync } from "fs";
+import { mkdtempSync, rmSync, readFileSync } from "fs";
 import { createServer } from "net";
 import { join } from "path";
 import { tmpdir } from "os";
@@ -116,11 +116,21 @@ beforeAll(async () => {
     { stdio: "ignore", env: { ...process.env, __DAEMON_CHILD: "1" } },
   );
 
+  // freePort() closes the socket before the daemon binds it, so on a loaded
+  // runner another process can take it in between. The daemon records the
+  // address it actually bound in <data-dir>/grpc-addr, so prefer that over
+  // what we asked for.
   const ready = await waitForPort(port, 30_000);
   if (!ready) {
     daemonProc.kill("SIGTERM");
     skipReason = "daemon did not start within 30 s";
     return;
+  }
+  try {
+    const bound = readFileSync(join(dataDir, "grpc-addr"), "utf8").trim();
+    if (bound) grpcAddr = bound;
+  } catch {
+    // fall back to the requested address
   }
 
   client = new A2AClient(grpcAddr);
@@ -149,6 +159,12 @@ afterAll(async () => {
  * not lazily. Since dtest() is called at module load (before beforeAll),
  * we use a regular test() and return early when the client is not ready.
  */
+// Every daemon-touching test gets more than bun's 5s default. A single slow
+// call on a loaded CI runner otherwise trips the timeout, and bun's cleanup
+// then kills the spawned daemon ("killed 1 dangling process"), so every
+// remaining test in the file fails with UNAVAILABLE rather than the one.
+const DAEMON_TEST_TIMEOUT_MS = 30_000;
+
 function dtest(name: string, fn: (c: A2AClient) => Promise<void> | void): void {
   test(name, async () => {
     if (skipReason !== null || client === null) {
@@ -157,7 +173,7 @@ function dtest(name: string, fn: (c: A2AClient) => Promise<void> | void): void {
       return;
     }
     await fn(client);
-  });
+  }, DAEMON_TEST_TIMEOUT_MS);
 }
 
 // ── identity ──────────────────────────────────────────────────────────────────

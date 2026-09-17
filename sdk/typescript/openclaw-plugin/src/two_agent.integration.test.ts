@@ -14,7 +14,7 @@
 
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import { spawn, type ChildProcess, execFileSync } from "child_process";
-import { mkdtempSync, rmSync } from "fs";
+import { mkdtempSync, rmSync, readFileSync } from "fs";
 import { createServer } from "net";
 import { join } from "path";
 import { tmpdir } from "os";
@@ -91,7 +91,17 @@ async function startDaemon(binary: string, label: string): Promise<Daemon> {
     throw new Error(`${label} daemon did not start within 30s`);
   }
 
-  return { proc, dataDir, grpcAddr, netPort, client: new A2AClient(grpcAddr) };
+  // freePort() closes the socket before the daemon binds it, so prefer the
+  // address the daemon records once it is actually listening.
+  let bound = grpcAddr;
+  try {
+    const recorded = readFileSync(join(dataDir, "grpc-addr"), "utf8").trim();
+    if (recorded) bound = recorded;
+  } catch {
+    // fall back to the requested address
+  }
+
+  return { proc, dataDir, grpcAddr: bound, netPort, client: new A2AClient(bound) };
 }
 
 function stopDaemon(d: Daemon | null): Promise<void> {
