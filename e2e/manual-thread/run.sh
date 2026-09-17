@@ -82,9 +82,13 @@ log "verified terminal result replication on all three members"
 home=$(agent_home node-c recovery); data=$(agent_data node-c recovery)
 HOME="$home" "$BIN" start --config "$data/moltbook.toml" >"$data/manual.log" 2>&1 & echo $! >"$data/manual.pid"
 wait_health node-c recovery
-deadline=$((SECONDS + 60))
+# A brand-new node has to find providers for the thread's blocks through the
+# DHT and fetch them over Bitswap. Provider records take time to become
+# discoverable from a routing table this node only just built, so 60s failed
+# roughly two runs in five on an otherwise healthy network.
+deadline=$((SECONDS + 180))
 until mm node-c recovery recover-thread --id "$thread_id" --secret-base64 "$recovery_secret" >/dev/null 2>&1; do
-  (( SECONDS < deadline )) || { echo "cold recovery timeout" >&2; exit 1; }
+  (( SECONDS < deadline )) || { echo "cold recovery timeout after 180s" >&2; exit 1; }
   sleep 0.5
 done
 recovered=$(mm node-c recovery get-thread-entries --id "$thread_id")

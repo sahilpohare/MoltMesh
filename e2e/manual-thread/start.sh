@@ -58,4 +58,4 @@ start_agent node-a textgen
 start_agent node-a observer
 start_agent node-b calculator
 start_agent node-a claude
-echo "Four independent daemon identities are running; they know only the neutral bootstrap service, not one another."
+echo "Four independent agent identities are running (textgen, observer, calculator, claude), plus a neutral bootstrap daemon that only serves DHT rendezvous. They know that service, not one another."

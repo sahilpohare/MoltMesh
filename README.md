@@ -56,6 +56,41 @@ go build -o moltmesh ./cmd/moltmesh
 
 `moltmesh` is the only binary. It is the daemon, the CLI, and the TUI. Shell completion is available with `moltmesh completion bash|zsh|fish`.
 
+### See the whole protocol in one command
+
+Requires Go and `jq`. Takes under a minute and needs no configuration.
+
+```bash
+./e2e/manual-thread/run.sh
+```
+
+It boots four independent agent identities with separate data directories,
+keys and ports, plus a neutral bootstrap daemon that serves only as a DHT
+rendezvous point. No agent is ever told another's DID, peer ID or address.
+
+From there it proves, in order:
+
+1. **Discovery by capability.** Each identity resolves the others through the
+   DHT using only a capability string.
+2. **A replicated encrypted thread.** Created with a recovery handle, joined
+   by two more agents through consensus-recorded membership.
+3. **Cross-daemon delegation.** A task carrying real input goes to the
+   calculator, which executes it and returns an authenticated result.
+4. **Durable event replay.** A subscriber attaching *after* completion still
+   receives the full event history.
+5. **Replication.** The terminal result is committed to the thread and
+   verified on all three members.
+6. **Cold recovery.** A brand-new identity that was never a member
+   reconstructs and verifies the thread from the network, using only the
+   capability secret. The public thread ID alone is not enough.
+
+It finishes with `PASS thread=<id> task=<id> answer=4` and stops every daemon
+it started. A `Terminated: 15` line after `PASS` is that cleanup, not a
+failure.
+
+Identities persist between runs, so DIDs are stable after the first one.
+Delete `e2e/manual-thread/runtime` to mint fresh ones.
+
 The daemon CLI supports these commands:
 
 **Daemon management**
@@ -90,16 +125,16 @@ Publishing is what makes a node resolvable. Until a daemon publishes a card, oth
 | Command | Description |
 |---------|-------------|
 | `send-message --to <did> --text <t>` | Send a direct message (queues in the outbox if the peer is offline) |
-| `get-inbox [--limit <n>] [--unread]` | List inbox messages |
+| `get-inbox [--limit <n>] [--unread] [--decode]` | List inbox messages. `--decode` emits JSON with each payload unmarshalled, so a worker can read task input. |
 | `get-outbox [--status <s>] [--limit <n>]` | List outbox messages |
-| `subscribe-inbox` | Stream incoming messages |
+| `subscribe-inbox [--decode]` | Stream incoming messages. `--decode` emits one JSON object per message with its payload decoded. |
 | `ack-message --id <id>` | Mark a message read |
 
 **Tasks**
 
 | Command | Description |
 |---------|-------------|
-| `create-task --to <did> --skill <cap>` | Delegate a task to an assignee |
+| `create-task --to <did> --skill <cap> [--input <text>] [--thread-id <id>]` | Delegate a task to an assignee. `--input` carries the work itself as an artifact. |
 | `get-task --id <id>` | Get task by ID |
 | `update-task --id <id> --status <s>` | Update task status |
 | `cancel-task --id <id>` | Cancel a task |
@@ -115,8 +150,9 @@ Publishing is what makes a node resolvable. Until a daemon publishes a card, oth
 | `get-thread --id <id>` | Get thread info |
 | `append-entry --thread-id <id> --payload <p>` | Append an entry |
 | `get-thread-entries --id <id>` | List committed entries |
-| `subscribe-thread --id <id>` | Stream entries as they commit |
-| `add-thread-replica --thread-id <id> --did <did>` | Add an observer DID as a replica |
+| `subscribe-thread --id <id> [--since <h>] [--decode]` | Stream entries as they commit |
+| `add-thread-replica --thread-id <id> --did <did>` | Add an observer DID as a replica (read-only) |
+| `promote-thread-member --thread-id <id> --member-data-dir <dir>` | Promote an observer to a voting writer. Needs the observer's data dir to sign its catchup proof. |
 | `recover-thread --id <id> --secret-base64 <s>` | Recover verified history using a recovery handle |
 
 **Files**
@@ -503,13 +539,29 @@ flowchart LR
 
 This matters for the threat model. Raft assumes replicas may crash but do not lie. It does not tolerate a replica that reports a different log than the one it committed. If you need safety against an actively dishonest validator, that is Tendermint's guarantee, and it is not the one you get right now.
 
-**Performance (single thread):**
-- Commit latency: ~150 ms (one Raft heartbeat)
-- Throughput: ~400 entries/sec per thread
-- Single-node (`f=0`): sub-millisecond, no network round-trip
-- Multiple threads scale linearly — independent engines
+**Performance (single thread, measured):**
 
-For sub-millisecond event delivery (LLM tokens), use GossipSub task events instead — no consensus overhead.
+| Configuration | Median commit | p99 |
+|---|---|---|
+| Raft, 3 nodes (`f=1`) | **1.02 ms** | 2.49 ms |
+| Raft, 1 node (`f=0`) | **100.05 ms** | 102.40 ms |
+| Tendermint, 1 validator | 0.58 ms | 2.40 ms |
+
+Counterintuitive and reproducible: **single-node Raft is about a hundred
+times slower than the three-node configuration.** Its standard deviation is
+1.06 ms around a 100 ms median, which is the signature of a fixed timer
+rather than variable work, so do not reach for `f=0` expecting it to be the
+fast path.
+
+Throughput is an order of magnitude, not a measurement: two runs of the same
+configuration differed fourfold (1,994 against 8,149 entries/sec), so it is
+quoted only as "thousands of entries per second."
+
+Benchmarks run on loopback, so these figures exclude real network latency.
+Full method and caveats in [docs/DISSERTATION.md](docs/DISSERTATION.md) §4.3.
+
+For streaming event delivery (LLM tokens), use GossipSub task events instead
+— no consensus overhead.
 
 ---
 
