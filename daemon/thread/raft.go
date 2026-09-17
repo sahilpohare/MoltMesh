@@ -710,38 +710,31 @@ func (r *RaftBackend) sendRaftMsg(m raftpb.Message, broadcast func(*pb.Consensus
 // commitBlock saves a committed block to SQLite, calls onCommit, and broadcasts
 // the block to all replicas via GossipSub so non-voter nodes can apply it.
 func (r *RaftBackend) commitBlock(entry raftpb.Entry, entries []*pb.ThreadEntry, pendingIDs []int64, proposerDID string, broadcast func(*pb.ConsensusMsg)) {
-	// Use our own sequential height (committed block count + 1),
-	// not the raft log index (which includes config/no-op entries).
-	height, err := r.store.GetCommittedHeight(r.thread.Id)
+	// Height is allocated inside the same transaction as the insert. Reading
+	// it first and writing after let two commits pick the same height, and the
+	// later block silently replaced the earlier one. Our own sequential height
+	// is used rather than the raft log index, which counts config/no-op
+	// entries too.
+	block, err := r.store.AppendBlockAndAckPending(r.thread.Id, pendingIDs,
+		func(height int64, parentHash string) *pb.ThreadBlock {
+			b := &pb.ThreadBlock{
+				ThreadId:    r.thread.Id,
+				Height:      height,
+				Round:       int32(entry.Term),
+				ParentHash:  parentHash,
+				Entries:     entries,
+				ProposerDid: proposerDID,
+				ProposerSig: "",
+				CommittedAt: time.Now().UnixMilli(),
+			}
+			b.BlockHash = raftBlockHash(b)
+			return b
+		})
 	if err != nil {
-		r.log.Error("raft: get committed height", zap.Error(err))
-		return
-	}
-	height++
-
-	parentHash := ""
-	if height > 1 {
-		if prev, err := r.store.GetBlock(r.thread.Id, height-1); err == nil {
-			parentHash = prev.BlockHash
-		}
-	}
-
-	block := &pb.ThreadBlock{
-		ThreadId:    r.thread.Id,
-		Height:      height,
-		Round:       int32(entry.Term),
-		ParentHash:  parentHash,
-		Entries:     entries,
-		ProposerDid: proposerDID,
-		ProposerSig: "",
-		CommittedAt: time.Now().UnixMilli(),
-	}
-	block.BlockHash = raftBlockHash(block)
-
-	if err := r.store.SaveBlockAndAckPending(block, pendingIDs); err != nil {
 		r.log.Error("raft: save block", zap.Error(err))
 		return
 	}
+	height := block.Height
 	r.applyMembershipEntries(entries)
 
 	r.log.Info("raft: block committed",

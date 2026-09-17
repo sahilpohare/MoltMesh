@@ -806,6 +806,71 @@ func (s *Store) PendingEntryCount(threadID string) (int, error) {
 	return count, err
 }
 
+// AppendBlockAndAckPending allocates the next height, links the block to its
+// parent, and deletes the write-ahead inputs, all in one transaction.
+//
+// Height allocation must be inside that transaction. Reading MAX(height)
+// beforehand and inserting afterwards let two commits on the same thread read
+// the same height and build two different blocks for it; the table is keyed by
+// (thread_id, height), so the second INSERT OR REPLACE silently overwrote the
+// first and a committed block was lost from the chain.
+//
+// fill receives the allocated height and parent hash and returns the finished
+// block, so the block hash is computed over the values actually written.
+func (s *Store) AppendBlockAndAckPending(threadID string, pendingIDs []int64, fill func(height int64, parentHash string) *pb.ThreadBlock) (*pb.ThreadBlock, error) {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback() //nolint:errcheck
+
+	var maxHeight sql.NullInt64
+	if err := tx.QueryRow(`
+		SELECT MAX(height) FROM thread_blocks
+		WHERE thread_id = ? AND committed_at > 0`, threadID).Scan(&maxHeight); err != nil {
+		return nil, err
+	}
+	height := int64(1)
+	parentHash := ""
+	if maxHeight.Valid {
+		height = maxHeight.Int64 + 1
+		if err := tx.QueryRow(`
+			SELECT block_hash FROM thread_blocks
+			WHERE thread_id = ? AND height = ?`, threadID, maxHeight.Int64).Scan(&parentHash); err != nil && err != sql.ErrNoRows {
+			return nil, err
+		}
+	}
+
+	b := fill(height, parentHash)
+	if b == nil {
+		return nil, fmt.Errorf("thread %s: no block produced for height %d", threadID, height)
+	}
+	entriesJSON, err := json.Marshal(marshalEntries(b.Entries))
+	if err != nil {
+		return nil, err
+	}
+	// Plain INSERT: (thread_id, height) is the primary key, so a height that
+	// already holds a block is a bug rather than something to overwrite.
+	if _, err := tx.Exec(`
+		INSERT INTO thread_blocks
+		  (thread_id, height, round, parent_hash, entries, proposer_did,
+		   proposer_sig, block_hash, committed_at)
+		VALUES (?,?,?,?,?,?,?,?,?)`,
+		b.ThreadId, b.Height, b.Round, b.ParentHash, string(entriesJSON),
+		b.ProposerDid, b.ProposerSig, b.BlockHash, b.CommittedAt); err != nil {
+		return nil, err
+	}
+	for _, id := range pendingIDs {
+		if _, err := tx.Exec(`DELETE FROM pending_entries WHERE id = ?`, id); err != nil {
+			return nil, err
+		}
+		if _, err := tx.Exec(`DELETE FROM pending_entry_claims WHERE pending_id = ?`, id); err != nil {
+			return nil, err
+		}
+	}
+	return b, tx.Commit()
+}
+
 // SaveBlockAndAckPending is the durability boundary: a committed block and
 // deletion of its write-ahead inputs happen in one SQLite transaction.
 func (s *Store) SaveBlockAndAckPending(b *pb.ThreadBlock, pendingIDs []int64) error {

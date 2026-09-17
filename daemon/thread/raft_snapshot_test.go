@@ -2,7 +2,9 @@ package thread
 
 import (
 	"context"
+	"sync"
 	"testing"
+	"time"
 
 	"go.etcd.io/raft/v3"
 	"go.etcd.io/raft/v3/raftpb"
@@ -233,5 +235,76 @@ func TestApplyMembershipEntries_UpdatesRoutingOnNonCreator(t *testing.T) {
 	}
 	if got := r.didByID[3]; got != newcomer {
 		t.Fatalf("didByID[3] = %q, want the newcomer: sendRaftMsg would drop every message to it", got)
+	}
+}
+
+// Height allocation must happen inside the insert's transaction. Reading
+// MAX(height) first and inserting after let two commits on one thread pick the
+// same height and build different blocks for it; thread_blocks is keyed by
+// (thread_id, height), so INSERT OR REPLACE silently dropped the earlier block
+// out of the hash chain.
+func TestAppendBlockAndAckPending_ConcurrentCommitsGetDistinctHeights(t *testing.T) {
+	store, err := NewStore(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	const threadID = "t-heights"
+	const n = 12
+
+	var wg sync.WaitGroup
+	errs := make(chan error, n)
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			_, err := store.AppendBlockAndAckPending(threadID, nil,
+				func(height int64, parentHash string) *pb.ThreadBlock {
+					b := &pb.ThreadBlock{
+						ThreadId:    threadID,
+						Height:      height,
+						ParentHash:  parentHash,
+						ProposerDid: "did:key:zProposer",
+						CommittedAt: time.Now().UnixMilli(),
+						Entries: []*pb.ThreadEntry{{
+							AuthorDid: "did:key:zProposer",
+							Payload:   []byte{byte(i)},
+							Kind:      "message",
+						}},
+					}
+					b.BlockHash = raftBlockHash(b)
+					return b
+				})
+			errs <- err
+		}(i)
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Fatalf("append: %v", err)
+		}
+	}
+
+	// Every block must survive with its own height, and the chain must link.
+	blocks, err := store.GetBlocksSince(threadID, 0, n+10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(blocks) != n {
+		t.Fatalf("kept %d blocks, want %d: a commit was overwritten", len(blocks), n)
+	}
+	seen := map[int64]bool{}
+	prevHash := ""
+	for _, b := range blocks {
+		if seen[b.Height] {
+			t.Fatalf("duplicate height %d", b.Height)
+		}
+		seen[b.Height] = true
+		if b.ParentHash != prevHash {
+			t.Fatalf("height %d parent = %q, want %q: chain is broken", b.Height, b.ParentHash, prevHash)
+		}
+		prevHash = b.BlockHash
 	}
 }
