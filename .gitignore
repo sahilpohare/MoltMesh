@@ -57,3 +57,9 @@ sdk/typescript/openclaw-plugin/*.js.map
 # inscope: workspace-local Claude config dir (holds a login)
 .inscope/
 e2e/manual-thread/runtime/
+
+# Dissertation working files and demo deck — not for the public site (docs/ is published)
+docs/*.docx
+docs/DEMO-PRESENTATION.md
+docs/OpenMolt-Demo.pptx
+docs/dissertation-edits.txt
