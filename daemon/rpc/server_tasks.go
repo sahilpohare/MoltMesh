@@ -142,10 +142,20 @@ func (s *Server) SubscribeTasks(req *pb.WorkerSubscription, stream pb.A2ANode_Su
 }
 
 func (s *Server) CreateTask(ctx context.Context, req *pb.CreateTaskRequest) (*pb.Task, error) {
+	__t0 := time.Now()
+	__step := "enter"
+	defer func() {
+		s.log.Warn("INSTR CreateTask done", zap.String("last_step", __step), zap.Duration("total", time.Since(__t0)))
+	}()
+	__mark := func(name string) {
+		s.log.Warn("INSTR CreateTask step", zap.String("finished", __step), zap.Duration("elapsed", time.Since(__t0)))
+		__step = name
+	}
 	t := req.Task
 	if t == nil {
 		return nil, fmt.Errorf("create task: task is required")
 	}
+	__mark("scopedOwner")
 	owner, err := s.scopedOwner(ctx)
 	if err != nil {
 		return nil, err
@@ -154,15 +164,18 @@ func (s *Server) CreateTask(ctx context.Context, req *pb.CreateTaskRequest) (*pb
 	if owner != "" {
 		initiator = owner
 	}
+	__mark("CreateIdempotent")
 	task, err := s.tasks.CreateIdempotent(
 		initiator, req.ToDid, t.ThreadId, t.Skill, t.InputArtifacts, t.Metadata, req.IdempotencyKey,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("create task: %w", err)
 	}
+	__mark("SetMaxAttempts")
 	if err := s.tasks.SetMaxAttempts(task.Id, int(req.MaxAttempts)); err != nil {
 		return nil, fmt.Errorf("create task: set max attempts: %w", err)
 	}
+	__mark("SetTimeout")
 	if err := s.tasks.SetTimeout(task.Id, time.Duration(req.TimeoutMs)*time.Millisecond); err != nil {
 		return nil, fmt.Errorf("create task: set timeout: %w", err)
 	}
@@ -171,6 +184,7 @@ func (s *Server) CreateTask(ctx context.Context, req *pb.CreateTaskRequest) (*pb
 	// in SUBMITTED forever with no notification ever sent and no way for the
 	// initiator to learn that — so fail the task instead of swallowing the
 	// error, and surface it to the caller.
+	__mark("marshal")
 	payload, err := proto.Marshal(t)
 	if err != nil {
 		return nil, fmt.Errorf("create task: encode request: %w", err)
@@ -185,6 +199,7 @@ func (s *Server) CreateTask(ctx context.Context, req *pb.CreateTaskRequest) (*pb
 		Payload:  payload,
 		SentAt:   time.Now().UnixMilli(),
 	}
+	__mark("EnqueueForOwner")
 	if err := s.outbox.EnqueueForOwner(initiator, msg); err != nil {
 		s.log.Warn("enqueue task request", zap.String("task_id", task.Id), zap.Error(err))
 		if failed, failErr := s.tasks.Fail(task.Id, fmt.Sprintf("failed to notify assignee: %v", err)); failErr != nil {
