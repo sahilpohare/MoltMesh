@@ -190,6 +190,14 @@ var _ actor.Actor = (*ThreadActor)(nil)
 // once a *PID is available — scheduling against a PID looked up by name from
 // inside PreStart would race the actor's own registration.
 func (a *ThreadActor) PreStart(ctx *actor.Context) error {
+	// Re-read the descriptor: a.thread is whatever was captured when the actor
+	// was first created, and a promotion raises N in the store. The raft voter
+	// set is bootstrapped from the first N ReplicaDids at construction, so
+	// starting from the stale copy brings the node back up with the old voter
+	// set and its writes never reach a quorum.
+	if current, err := a.store.GetThread(a.thread.Id); err == nil && current != nil {
+		a.thread = current
+	}
 	backend, err := newRaftBackend(a.thread, a.id, a.store, a.log, a.handleCommit)
 	if err != nil {
 		return err

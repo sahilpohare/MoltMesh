@@ -117,6 +117,13 @@ func recordSelfMembership(store *Store, th *pb.Thread, selfDID string) error {
 }
 
 func (m *ActorManager) InviteReceived(th *pb.Thread) error {
+	// A raft backend bootstraps its voter set from the first N ReplicaDids and
+	// only reads N at construction. A re-sent descriptor whose N grew means
+	// this node was promoted, so the running actor holds a stale voter set and
+	// must be rebuilt; Spawn alone returns the existing one untouched.
+	if prev, err := m.store.GetThread(th.Id); err == nil && prev != nil && prev.N != th.N {
+		m.sup.Stop(context.Background(), th.Id)
+	}
 	if err := m.store.SaveThread(th); err != nil {
 		return fmt.Errorf("save thread: %w", err)
 	}

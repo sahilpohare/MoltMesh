@@ -1176,6 +1176,41 @@ func cmdPromoteThreadMember(args []string) error {
 		return fmt.Errorf("get observer catchup state: %w", err)
 	}
 
+	// Step 3 verifies this proof against the creator's committed head, so it is
+	// invalid until the observer has caught up. Wait for that here rather than
+	// making the caller retry a race.
+	dir, err := resolveDataDir(*dataDir)
+	if err != nil {
+		return err
+	}
+	conn, err := dialGRPC(resolveGRPCAddr(*grpcAddr, dir))
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	creator := pb.NewA2ANodeClient(conn)
+
+	deadline := time.Now().Add(60 * time.Second)
+	for {
+		head, hErr := creator.GetThreadCatchupState(context.Background(), &pb.ThreadID{Id: *threadID})
+		if hErr != nil {
+			break // let the promotion call surface the real error
+		}
+		if state.CommittedHeight >= head.CommittedHeight && state.HeadBlockHash == head.HeadBlockHash {
+			break
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("observer did not catch up to committed height %d within 60s (at %d)",
+				head.CommittedHeight, state.CommittedHeight)
+		}
+		time.Sleep(500 * time.Millisecond)
+		state, err = pb.NewA2ANodeClient(memberConn).GetThreadCatchupState(
+			context.Background(), &pb.ThreadID{Id: *threadID})
+		if err != nil {
+			return fmt.Errorf("get observer catchup state: %w", err)
+		}
+	}
+
 	// Step 2: the observer signs that state. The server re-marshals with the
 	// signature cleared, so sign exactly the same deterministic bytes.
 	proof := &pb.ThreadCatchupProof{
@@ -1196,17 +1231,7 @@ func cmdPromoteThreadMember(args []string) error {
 	}
 
 	// Step 3: the creator verifies and commits the voter change.
-	dir, err := resolveDataDir(*dataDir)
-	if err != nil {
-		return err
-	}
-	conn, err := dialGRPC(resolveGRPCAddr(*grpcAddr, dir))
-	if err != nil {
-		return err
-	}
-	defer conn.Close()
-
-	change, err := pb.NewA2ANodeClient(conn).PromoteThreadMember(context.Background(),
+	change, err := creator.PromoteThreadMember(context.Background(),
 		&pb.PromoteThreadMemberRequest{
 			ThreadId:     *threadID,
 			MemberDid:    state.ObserverDid,

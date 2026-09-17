@@ -151,3 +151,87 @@ func TestProposePending_FollowerProposesToLeader(t *testing.T) {
 		})
 	}
 }
+
+// A promoted voter must survive a restart as a voter. The raft voter set is
+// bootstrapped from the first N ReplicaDids, so a ConfChange that only altered
+// raft's in-memory config left the descriptor at its pre-promotion N: the
+// promoted node came back up with the old voter set, its MsgProp never counted
+// toward a quorum, and its appends committed nowhere.
+func TestPersistVoterCount_RecordsCommittedVoterSet(t *testing.T) {
+	store, err := NewStore(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	id, err := identity.Generate()
+	if err != nil {
+		t.Fatal(err)
+	}
+	th := &pb.Thread{
+		Id:          "t-voters",
+		CreatorDid:  id.DID,
+		ReplicaDids: []string{id.DID, "did:key:zObserver"},
+		N:           1,
+	}
+	if err := store.SaveThread(th); err != nil {
+		t.Fatal(err)
+	}
+	r := &RaftBackend{thread: th, id: id, store: store, log: zap.NewNop()}
+
+	r.persistVoterCount(2)
+
+	if th.N != 2 {
+		t.Fatalf("in-memory N = %d, want 2", th.N)
+	}
+	reloaded, err := store.GetThread(th.Id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reloaded.N != 2 {
+		t.Fatalf("persisted N = %d, want 2: a restart rebuilds the old voter set", reloaded.N)
+	}
+}
+
+// applyMembershipEntries maintains the raft routing maps, which every replica
+// needs: sendRaftMsg drops any message whose destination is missing from
+// didByID. Restricting the whole function to the creator left a late-added
+// replica unaddressable by its own peers.
+func TestApplyMembershipEntries_UpdatesRoutingOnNonCreator(t *testing.T) {
+	store, err := NewStore(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	id, err := identity.Generate() // this node is NOT the creator
+	if err != nil {
+		t.Fatal(err)
+	}
+	const creator, newcomer = "did:key:zCreator", "did:key:zNewcomer"
+	th := &pb.Thread{
+		Id:          "t-routing",
+		CreatorDid:  creator,
+		ReplicaDids: []string{creator, id.DID},
+		N:           1,
+	}
+	r := &RaftBackend{
+		thread:  th,
+		id:      id,
+		store:   store,
+		log:     zap.NewNop(),
+		peerIDs: map[string]uint64{creator: 1, id.DID: 2},
+		didByID: map[uint64]string{1: creator, 2: id.DID},
+	}
+
+	r.applyMembershipEntries([]*pb.ThreadEntry{{
+		Kind: "membership:add-observer", Payload: []byte(newcomer),
+	}})
+
+	if got := r.peerIDs[newcomer]; got != 3 {
+		t.Fatalf("peerIDs[newcomer] = %d, want 3", got)
+	}
+	if got := r.didByID[3]; got != newcomer {
+		t.Fatalf("didByID[3] = %q, want the newcomer: sendRaftMsg would drop every message to it", got)
+	}
+}

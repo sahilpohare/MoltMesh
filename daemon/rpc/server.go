@@ -1189,6 +1189,16 @@ func (s *Server) PromoteThreadMember(ctx context.Context, req *pb.PromoteThreadM
 	if err := changer.ProposeVoterChange(ctx, req.ThreadId, req.MemberDid, true); err != nil {
 		return nil, fmt.Errorf("commit voter promotion: %w", err)
 	}
+	// The committed voter count is recorded in the descriptor's N, and a
+	// replica bootstraps its raft voter set from the first N ReplicaDids. The
+	// promoted node already holds the pre-promotion descriptor, so re-send it;
+	// otherwise it comes up with the old N, reports voters=(1) while the
+	// leader is at voters=(1 2), and its writes never commit.
+	if updated, gErr := s.threads.GetThread(req.ThreadId); gErr == nil {
+		if wErr := s.enqueueThreadWake(updated); wErr != nil {
+			return nil, fmt.Errorf("re-send descriptor after promotion: %w", wErr)
+		}
+	}
 	p, ok := s.threads.(threadMemberPromoter)
 	if !ok {
 		return nil, fmt.Errorf("thread manager cannot promote members")

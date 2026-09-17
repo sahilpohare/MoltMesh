@@ -552,6 +552,7 @@ func (r *RaftBackend) handleReady(rd raft.Ready, broadcast func(*pb.ConsensusMsg
 			}
 			if cs := r.node.ApplyConfChange(cc); cs != nil {
 				r.confState = *cs
+				r.persistVoterCount(len(cs.Voters))
 			}
 		case raftpb.EntryConfChangeV2:
 			var cc raftpb.ConfChangeV2
@@ -561,6 +562,7 @@ func (r *RaftBackend) handleReady(rd raft.Ready, broadcast func(*pb.ConsensusMsg
 			}
 			if cs := r.node.ApplyConfChange(cc); cs != nil {
 				r.confState = *cs
+				r.persistVoterCount(len(cs.Voters))
 			}
 			r.completeVoterChange(cc.Context, nil)
 
@@ -765,10 +767,15 @@ func (r *RaftBackend) commitBlock(entry raftpb.Entry, entries []*pb.ThreadEntry,
 // applyMembershipEntries updates the durable observer set only after the
 // membership command is committed. Existing Raft voters are deliberately not
 // changed: voter promotion/removal requires etcd/raft joint consensus.
+//
+// The peer maps are routing state and must be updated on every replica, not
+// just the creator. sendRaftMsg drops any message whose destination is absent
+// from didByID, so a replica added after an actor started was unaddressable:
+// the leader could not send it append-entries and it never learned its own
+// raft ID, leaving the leader at voters=(1 2) while the new node still
+// reported voters=(1). Only re-signing the descriptor is creator-only, since
+// SignDescriptor rejects any other key.
 func (r *RaftBackend) applyMembershipEntries(entries []*pb.ThreadEntry) {
-	if r.id.DID != r.thread.CreatorDid {
-		return
-	}
 	changed := false
 	for _, entry := range entries {
 		if entry.Kind != "membership:add-observer" {
@@ -786,14 +793,41 @@ func (r *RaftBackend) applyMembershipEntries(entries []*pb.ThreadEntry) {
 		r.peerIDs[did], r.didByID[rid] = rid, did
 		changed = true
 	}
-	if changed {
-		if err := SignDescriptor(r.thread, r.id); err != nil {
-			r.log.Error("raft: sign committed membership", zap.Error(err))
-			return
-		}
-		if err := r.store.SaveThread(r.thread); err != nil {
-			r.log.Error("raft: save committed membership", zap.Error(err))
-		}
+	if !changed {
+		return
+	}
+	if r.id.DID != r.thread.CreatorDid {
+		return // routing maps updated; only the creator may re-sign and persist
+	}
+	if err := SignDescriptor(r.thread, r.id); err != nil {
+		r.log.Error("raft: sign committed membership", zap.Error(err))
+		return
+	}
+	if err := r.store.SaveThread(r.thread); err != nil {
+		r.log.Error("raft: save committed membership", zap.Error(err))
+	}
+}
+
+// persistVoterCount records a committed voter-set size in thread.N. The raft
+// voter set is bootstrapped from the first N entries of ReplicaDids, so a
+// promotion that only changed raft's in-memory config was lost on restart and
+// never reached a replica that built its backend from the descriptor: the
+// promoted node came up with peers: [] and reported voters=(1) while the
+// leader was already at voters=(1 2).
+func (r *RaftBackend) persistVoterCount(n int) {
+	if n <= 0 || int32(n) == r.thread.N {
+		return
+	}
+	r.thread.N = int32(n)
+	if r.id.DID != r.thread.CreatorDid {
+		return // only the creator may re-sign the descriptor
+	}
+	if err := SignDescriptor(r.thread, r.id); err != nil {
+		r.log.Error("raft: sign voter count", zap.Error(err))
+		return
+	}
+	if err := r.store.SaveThread(r.thread); err != nil {
+		r.log.Error("raft: save voter count", zap.Error(err))
 	}
 }
 
