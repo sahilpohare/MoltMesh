@@ -60,14 +60,21 @@ func (o *Outbox) Enqueue(msg *pb.Message) error {
 // that accepted it. Delivery itself remains daemon-to-daemon and is therefore
 // intentionally independent of the local owner.
 func (o *Outbox) EnqueueForOwner(ownerDID string, msg *pb.Message) error {
-	if o.exec != nil {
-		_, err := o.exec.Call(context.Background(), func() (any, error) { return nil, o.enqueue(ownerDID, msg) })
-		if err == nil {
-			_ = o.exec.Cast(context.Background(), func() (any, error) { o.flush(context.Background()); return nil, nil })
-		}
+	// The insert runs directly rather than through o.exec. The actor
+	// serializes flush, which makes a blocking network call per pending
+	// message, so a Call here waits behind every in-flight delivery attempt:
+	// an RPC that only needed a local INSERT took as long as the DHT took to
+	// give up on unreachable recipients. Serialization is not lost, since the
+	// SQLite pool is capped at one connection, and the statement is a single
+	// INSERT OR IGNORE that touches nothing the actor owns.
+	if err := o.enqueue(ownerDID, msg); err != nil {
 		return err
 	}
-	return o.enqueue(ownerDID, msg)
+	// Ask for a flush without waiting for it.
+	if o.exec != nil {
+		_ = o.exec.Cast(context.Background(), func() (any, error) { o.flush(context.Background()); return nil, nil })
+	}
+	return nil
 }
 
 func (o *Outbox) enqueue(ownerDID string, msg *pb.Message) error {

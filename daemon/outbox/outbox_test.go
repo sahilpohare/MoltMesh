@@ -8,6 +8,8 @@ import (
 
 	"go.uber.org/zap"
 
+	appactors "github.com/sahilpohare/p2p-a2a/daemon/actors"
+
 	pb "github.com/sahilpohare/p2p-a2a/gen/a2a/v1"
 )
 
@@ -230,5 +232,61 @@ func TestOwnerNamespacesDoNotLeakOutgoingOperations(t *testing.T) {
 	b, err := ob.ListForOwner("did:key:zAgentB", "pending", 0)
 	if err != nil || len(b) != 1 || b[0].Id != "b" {
 		t.Fatalf("agent B outbox = %#v, %v", b, err)
+	}
+}
+
+// Enqueue must not wait on delivery. flush runs on the outbox actor and makes
+// a blocking network call per pending message, so routing the insert through
+// that same actor made EnqueueForOwner wait behind every in-flight attempt:
+// CreateTask, which only needs a local INSERT, took as long as the DHT took to
+// give up on unreachable recipients, and exceeded a 30s RPC deadline on CI.
+func TestEnqueueDoesNotBlockOnSlowDelivery(t *testing.T) {
+	releaseDelivery := make(chan struct{})
+	deliveryStarted := make(chan struct{}, 1)
+	ob := newTestOutbox(t, func(ctx context.Context, msg *pb.Message) error {
+		select {
+		case deliveryStarted <- struct{}{}:
+		default:
+		}
+		<-releaseDelivery // a peer that never answers
+		return nil
+	})
+	defer close(releaseDelivery)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	sys, err := appactors.NewSystem(ctx, zap.NewNop())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sys.Stop(context.Background())
+	h, err := sys.NewHierarchy(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ob.EnableActor(ctx, h); err != nil {
+		t.Fatal(err)
+	}
+
+	// First message wedges the actor inside deliver.
+	if err := ob.Enqueue(&pb.Message{Id: "stuck", FromDid: "did:key:zA", ToDid: "did:key:zUnreachable"}); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-deliveryStarted:
+	case <-time.After(5 * time.Second):
+		t.Fatal("delivery never started; test cannot exercise the contention")
+	}
+
+	// A second enqueue must still return promptly.
+	done := make(chan error, 1)
+	go func() { done <- ob.Enqueue(&pb.Message{Id: "second", FromDid: "did:key:zA", ToDid: "did:key:zB"}) }()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("second enqueue: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("enqueue blocked behind an in-flight delivery")
 	}
 }
