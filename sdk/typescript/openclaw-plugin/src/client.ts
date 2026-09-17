@@ -60,16 +60,25 @@ export function defaultAddr(): string {
   return `unix://${home}/.moltmesh/a2a.sock`;
 }
 
+/** How long a unary call may run before grpc-js fails it with DEADLINE_EXCEEDED.
+ * Without a deadline a call that never gets a reply hangs its caller forever:
+ * the promise has nothing to settle it, so the await never returns and the
+ * failure surfaces as whatever outer timeout fires first, or as nothing at
+ * all. Every daemon RPC here is local and answers in single-digit
+ * milliseconds, so a generous ceiling still turns a hang into an error. */
+const UNARY_DEADLINE_MS = 30_000;
+
 /** Wrap a gRPC unary call in a Promise. */
 export function unary<Req, Res>(stub: GrpcClient, method: string, req: Req): Promise<Res> {
   return sessionReady(stub).then(() => new Promise((resolve, reject) => {
     const callback = (err: Error | null, res: Res) => { if (err) reject(err); else resolve(res); };
     const metadata = (stub as SessionStub)[SESSION]?.metadata;
+    const options: grpc.CallOptions = { deadline: Date.now() + UNARY_DEADLINE_MS };
     // Must be called as stub[method](...), not hoisted into a local first —
     // grpc-js's generated methods read internal state off `this`, and a bare
     // function reference (`const invoke = stub[method]`) loses that binding.
-    if (metadata) (stub[method] as (req: Req, m: grpc.Metadata, cb: (err: Error | null, res: Res) => void) => void)(req, metadata, callback);
-    else (stub[method] as (req: Req, cb: (err: Error | null, res: Res) => void) => void)(req, callback);
+    if (metadata) (stub[method] as (req: Req, m: grpc.Metadata, o: grpc.CallOptions, cb: (err: Error | null, res: Res) => void) => void)(req, metadata, options, callback);
+    else (stub[method] as (req: Req, m: grpc.Metadata, o: grpc.CallOptions, cb: (err: Error | null, res: Res) => void) => void)(req, new grpc.Metadata(), options, callback);
   }));
 }
 
