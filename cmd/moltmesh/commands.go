@@ -10,11 +10,13 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/sahilpohare/p2p-a2a/daemon/identity"
 	pb "github.com/sahilpohare/p2p-a2a/gen/a2a/v1"
 	"github.com/sahilpohare/p2p-a2a/pkg/capability"
 	"github.com/sahilpohare/p2p-a2a/pkg/format"
+	"google.golang.org/protobuf/proto"
 )
 
 // jsonMode is set by the global --json flag.
@@ -256,6 +258,7 @@ func cmdGetInbox(args []string) error {
 	unread := fs.Bool("unread", false, "Unread only")
 	threadID := fs.String("thread-id", "", "Filter by thread ID")
 	taskID := fs.String("task-id", "", "Filter by task ID")
+	decode := fs.Bool("decode", false, "Emit JSON and decode each message payload")
 	fs.Parse(args)
 
 	dir, err := resolveDataDir(*dataDir)
@@ -279,6 +282,27 @@ func cmdGetInbox(args []string) error {
 		return err
 	}
 
+	// --decode emits structured output: each message alongside its unmarshalled
+	// payload, so callers can read task input without a second round trip.
+	if *decode {
+		items := []map[string]interface{}{}
+		for {
+			msg, err := stream.Recv()
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				return err
+			}
+			items = append(items, map[string]interface{}{
+				"message": msg,
+				"decoded": decodePayload(msg),
+			})
+		}
+		jsonOut(items)
+		return nil
+	}
+
 	count := 0
 	for {
 		msg, err := stream.Recv()
@@ -295,6 +319,42 @@ func cmdGetInbox(args []string) error {
 		fmt.Println("Inbox empty.")
 	}
 	return nil
+}
+
+// decodePayload unmarshals a message payload according to its kind. Returns nil
+// when the kind carries no structured body or the bytes do not parse.
+func decodePayload(m *pb.Message) interface{} {
+	if len(m.Payload) == 0 {
+		return nil
+	}
+	// Payload encoding differs by kind: send-message marshals TextMessage as
+	// JSON, while task payloads are protobuf. Decode each the way it was sent.
+	if m.Kind == pb.MessageKind_MESSAGE_KIND_TEXT {
+		var tm pb.TextMessage
+		if err := json.Unmarshal(m.Payload, &tm); err == nil {
+			return &tm
+		}
+		if err := proto.Unmarshal(m.Payload, &tm); err == nil {
+			return &tm
+		}
+		return nil
+	}
+
+	var out proto.Message
+	switch m.Kind {
+	case pb.MessageKind_MESSAGE_KIND_TASK_REQUEST:
+		out = &pb.TaskRequest{}
+	case pb.MessageKind_MESSAGE_KIND_TASK_RESULT:
+		out = &pb.TaskResult{}
+	case pb.MessageKind_MESSAGE_KIND_TASK_EVENT:
+		out = &pb.TaskEvent{}
+	default:
+		return nil
+	}
+	if err := proto.Unmarshal(m.Payload, out); err != nil {
+		return nil
+	}
+	return out
 }
 
 func cmdGetOutbox(args []string) error {
@@ -348,6 +408,7 @@ func cmdSubscribeInbox(args []string) error {
 	grpcAddr := fs.String("grpc-addr", "", "gRPC server address")
 	threadID := fs.String("thread-id", "", "Subscribe to specific thread")
 	taskID := fs.String("task-id", "", "Subscribe to specific task")
+	decode := fs.Bool("decode", false, "Emit one JSON object per message, payload decoded")
 	fs.Parse(args)
 
 	dir, err := resolveDataDir(*dataDir)
@@ -370,6 +431,9 @@ func cmdSubscribeInbox(args []string) error {
 		return err
 	}
 
+	// --decode emits newline-delimited JSON so a listener can read each message
+	// and its payload as it arrives, rather than a truncated display line.
+	enc := json.NewEncoder(os.Stdout)
 	for {
 		msg, err := stream.Recv()
 		if err == io.EOF {
@@ -377,6 +441,15 @@ func cmdSubscribeInbox(args []string) error {
 		}
 		if err != nil {
 			return err
+		}
+		if *decode {
+			if err := enc.Encode(map[string]interface{}{
+				"message": msg,
+				"decoded": decodePayload(msg),
+			}); err != nil {
+				return err
+			}
+			continue
 		}
 		printMessage(msg)
 	}
@@ -422,6 +495,7 @@ func cmdCreateTask(args []string) error {
 	to := fs.String("to", "", "Assignee DID (required)")
 	skill := fs.String("skill", "", "Skill/capability ID (required)")
 	threadID := fs.String("thread-id", "", "Attach to existing thread (optional)")
+	input := fs.String("input", "", "Task input text (optional)")
 	fs.Parse(args)
 
 	if *to == "" {
@@ -442,12 +516,23 @@ func cmdCreateTask(args []string) error {
 	defer conn.Close()
 	client := pb.NewA2ANodeClient(conn)
 
+	req := &pb.TaskRequest{
+		Skill:    *skill,
+		ThreadId: *threadID,
+	}
+	// Carry the work itself, matching how send-task-result returns one.
+	if *input != "" {
+		req.InputArtifacts = []*pb.Artifact{{
+			Name:     "input.txt",
+			MimeType: "text/plain",
+			Size:     int64(len(*input)),
+			Inline:   []byte(*input),
+		}}
+	}
+
 	task, err := client.CreateTask(context.Background(), &pb.CreateTaskRequest{
 		ToDid: *to,
-		Task: &pb.TaskRequest{
-			Skill:    *skill,
-			ThreadId: *threadID,
-		},
+		Task:  req,
 	})
 	if err != nil {
 		return err
@@ -992,6 +1077,7 @@ func cmdSubscribeThread(args []string) error {
 	grpcAddr := fs.String("grpc-addr", "", "gRPC server address")
 	id := fs.String("id", "", "Thread ID (required)")
 	since := fs.Int64("since", 0, "Since height")
+	decode := fs.Bool("decode", false, "Emit one JSON object per entry, payload decoded as text")
 	fs.Parse(args)
 
 	if *id == "" {
@@ -1018,6 +1104,9 @@ func cmdSubscribeThread(args []string) error {
 		return err
 	}
 
+	// --decode emits newline-delimited JSON with the payload as text, so a
+	// watcher can read each committed entry as one line.
+	enc := json.NewEncoder(os.Stdout)
 	for {
 		entry, err := stream.Recv()
 		if err == io.EOF {
@@ -1025,6 +1114,16 @@ func cmdSubscribeThread(args []string) error {
 		}
 		if err != nil {
 			return err
+		}
+		if *decode {
+			out := map[string]interface{}{"height": entry.Height, "entry": entry.Entry}
+			if entry.Entry != nil {
+				out["text"] = string(entry.Entry.Payload)
+			}
+			if err := enc.Encode(out); err != nil {
+				return err
+			}
+			continue
 		}
 		data, _ := json.MarshalIndent(entry, "", "  ")
 		fmt.Println(string(data))
@@ -1035,6 +1134,91 @@ func cmdSubscribeThread(args []string) error {
 // cmdAddThreadReplica adds an observer DID as a replica of a thread. Ported
 // from cmd/daemon's add-thread-replica command (retired) so cmd/moltmesh
 // remains a strict superset of it.
+// cmdPromoteThreadMember promotes an existing observer to a voting member so
+// it can write to the thread. Promotion needs a catchup proof signed by the
+// observer itself, so this runs in two steps against two daemons: the
+// observer's daemon reports and signs its committed head, then the creator's
+// daemon verifies that signature against its own head and commits the voter
+// change through Raft.
+func cmdPromoteThreadMember(args []string) error {
+	fs := flag.NewFlagSet("promote-thread-member", flag.ExitOnError)
+	dataDir := fs.String("data-dir", "", "Creator data directory")
+	grpcAddr := fs.String("grpc-addr", "", "gRPC server address")
+	threadID := fs.String("thread-id", "", "Thread ID (required)")
+	memberDataDir := fs.String("member-data-dir", "", "Observer's data directory (required; used to sign its catchup proof)")
+	fs.Parse(args)
+
+	if *threadID == "" {
+		return fmt.Errorf("--thread-id is required")
+	}
+	if *memberDataDir == "" {
+		return fmt.Errorf("--member-data-dir is required")
+	}
+
+	memberDir, err := filepath.Abs(*memberDataDir)
+	if err != nil {
+		return err
+	}
+	memberID, err := identity.Load(filepath.Join(memberDir, "identity.json"))
+	if err != nil {
+		return fmt.Errorf("load observer identity: %w", err)
+	}
+
+	// Step 1: ask the observer's own daemon where it has committed to.
+	memberConn, err := dialGRPC(resolveGRPCAddr("", memberDir))
+	if err != nil {
+		return fmt.Errorf("dial observer daemon: %w", err)
+	}
+	defer memberConn.Close()
+	state, err := pb.NewA2ANodeClient(memberConn).GetThreadCatchupState(
+		context.Background(), &pb.ThreadID{Id: *threadID})
+	if err != nil {
+		return fmt.Errorf("get observer catchup state: %w", err)
+	}
+
+	// Step 2: the observer signs that state. The server re-marshals with the
+	// signature cleared, so sign exactly the same deterministic bytes.
+	proof := &pb.ThreadCatchupProof{
+		ThreadId:        state.ThreadId,
+		ObserverDid:     state.ObserverDid,
+		CommittedHeight: state.CommittedHeight,
+		HeadBlockHash:   state.HeadBlockHash,
+		IssuedAtUnixMs:  time.Now().UnixMilli(),
+	}
+	signable, err := proto.MarshalOptions{Deterministic: true}.Marshal(proof)
+	if err != nil {
+		return err
+	}
+	proof.Signature = memberID.Sign(signable)
+	raw, err := proto.Marshal(proof)
+	if err != nil {
+		return err
+	}
+
+	// Step 3: the creator verifies and commits the voter change.
+	dir, err := resolveDataDir(*dataDir)
+	if err != nil {
+		return err
+	}
+	conn, err := dialGRPC(resolveGRPCAddr(*grpcAddr, dir))
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+
+	change, err := pb.NewA2ANodeClient(conn).PromoteThreadMember(context.Background(),
+		&pb.PromoteThreadMemberRequest{
+			ThreadId:     *threadID,
+			MemberDid:    state.ObserverDid,
+			CatchupProof: raw,
+		})
+	if err != nil {
+		return err
+	}
+	jsonOut(change)
+	return nil
+}
+
 func cmdAddThreadReplica(args []string) error {
 	fs := flag.NewFlagSet("add-thread-replica", flag.ExitOnError)
 	dataDir := fs.String("data-dir", "", "Data directory")

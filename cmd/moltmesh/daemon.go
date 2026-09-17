@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -60,10 +61,18 @@ func resolveDataDir(dataDir string) (string, error) {
 	return filepath.Abs(dataDir)
 }
 
-// resolveGRPCAddr fills in grpcAddr based on dataDir if empty.
+// resolveGRPCAddr fills in grpcAddr based on dataDir if empty.  A running
+// daemon records the address it actually bound to in <data-dir>/grpc-addr;
+// without consulting it, clients given only --data-dir would dial the unix
+// socket default and hang against a daemon listening on TCP.
 func resolveGRPCAddr(grpcAddr, dataDir string) string {
 	if grpcAddr != "" {
 		return grpcAddr
+	}
+	if b, err := os.ReadFile(filepath.Join(dataDir, "grpc-addr")); err == nil {
+		if addr := strings.TrimSpace(string(b)); addr != "" {
+			return addr
+		}
 	}
 	return filepath.Join(dataDir, "a2a.sock")
 }
@@ -411,6 +420,14 @@ func run(cfg *config.Config, log *zap.Logger) error {
 			log.Error("gRPC serve", zap.Error(err))
 		}
 	}()
+
+	// ── bound gRPC address ────────────────────────────────────────────────────
+	// Clients invoked with only --data-dir resolve the daemon through this file.
+	addrFile := filepath.Join(dataDir, "grpc-addr")
+	if err := os.WriteFile(addrFile, []byte(grpcAddr+"\n"), 0600); err != nil {
+		log.Warn("could not write gRPC address file", zap.Error(err))
+	}
+	defer os.Remove(addrFile)
 
 	// ── PID file ──────────────────────────────────────────────────────────────
 	pidFile := filepath.Join(dataDir, "daemon.pid")

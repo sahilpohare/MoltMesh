@@ -83,6 +83,7 @@ func cliCommands() []cliCommand {
 		{"get-thread-entries", cmdGetThreadEntries},
 		{"subscribe-thread", cmdSubscribeThread},
 		{"add-thread-replica", cmdAddThreadReplica},
+		{"promote-thread-member", cmdPromoteThreadMember},
 		{"recover-thread", cmdRecoverThread},
 
 		// ── diagnostics ─────────────────────────────────────────────────────────
@@ -364,6 +365,7 @@ Threads:
   get-thread-entries      List entries (--id)
   subscribe-thread        Stream entries (--id)
   add-thread-replica      Add an observer DID as a replica (--thread-id, --did)
+  promote-thread-member   Promote an observer to a voting writer (--thread-id, --member-data-dir)
   recover-thread          Recover verified history (--id, --secret-base64)
 
 Global options:
