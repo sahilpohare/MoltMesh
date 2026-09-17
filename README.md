@@ -575,7 +575,7 @@ flowchart TB
     subgraph D["moltmesh daemon (one Go binary)"]
         direction TB
         CORE["identity · registry · names · session<br/>tasks · threads · inbox · outbox<br/>blobs · gossip · networks · webhooks"]
-        STREAMS["deliver /a2a/msg/1.0.0<br/>blob /a2a/blob/1.0.0"]
+        STREAMS["deliver /a2a/msg/1.0.0<br/>blocks via Bitswap"]
         CORE --- STREAMS
     end
 
@@ -603,18 +603,18 @@ daemon/
   names/             — human-readable name claiming (DHT + Ed25519, 24 h TTL)
   inbox/             — persistent incoming queue (SQLite) + live fan-out
   outbox/            — persistent outgoing queue with retry
-  deliver/           — libp2p stream protocols for messages and blobs
+  deliver/           — libp2p stream protocol /a2a/msg; blobs travel over Bitswap
   actors/            — GoAkt actor system: serialized, supervised in-process operations
   session/           — short-lived SDK agent sessions (separate from the daemon's own identity)
   tasks/             — task state machine (SQLite) + worker lease and bounded retry
-  thread/            — replicated ordered log
-    backend.go       — Backend interface (Raft / Tendermint)
-    engine.go        — Engine wrapper (subscriber fan-out)
+  thread/            — replicated hash-chained log
+    backend.go       — ActorBackend + optional VoterChanger/Snapshotter
     raft.go          — etcd raft backend (go.etcd.io/raft/v3)
     tendermint.go    — Tendermint BFT backend
-    gossip.go        — GossipSub bridge
-    manager.go       — per-thread engine lifecycle
-    store.go         — SQLite persistence
+    actor*.go        — ThreadActor, its manager, supervisor, gossip bridge
+    store*.go        — SQLite persistence, one file per domain
+    archive*.go, publisher.go — durability: blocks to Bitswap, heads to the DHT
+    manager.go, engine.go, gossip.go — legacy goroutine path (tests only)
   gossip/            — GossipSub topic management + raw Publish/Subscribe
   network/           — named agent groups, SQLite membership, broadcast
   webhook/           — HTTP event delivery with retries and HMAC secret
@@ -699,7 +699,7 @@ A single-writer record would be wrong for capabilities. Every agent offering `te
 | Protocol ID | Purpose |
 |---|---|
 | `/a2a/msg/1.0.0` | Direct message delivery (msgio-framed protobuf) |
-| `/a2a/blob/1.0.0` | Blob fetch by CID |
+| Bitswap (boxo) | Block fetch by CIDv1; providers located via the DHT |
 
 GossipSub topics:
 

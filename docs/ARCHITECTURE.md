@@ -58,9 +58,9 @@ If every persisted copy is destroyed, recovery is impossible.
 │  └─────────────┘  └──────────────┘  └────────────────────┘  │
 │                                                              │
 │  ┌─────────────┐  ┌──────────────┐  ┌────────────────────┐  │
-│  │  Blob Store │  │  Deliver     │  │  Networks          │  │
-│  │  SHA-256    │  │  /a2a/msg    │  │  Named groups      │  │
-│  │  CID-addr   │  │  /a2a/blob   │  │  SQLite + gossip   │  │
+│  │  Blockstore │  │  Deliver     │  │  Networks          │  │
+│  │  CIDv1 blks │  │  /a2a/msg    │  │  Named groups      │  │
+│  │  via Bitswap│  │  + Bitswap   │  │  SQLite + gossip   │  │
 │  └─────────────┘  └──────────────┘  └────────────────────┘  │
 │                                                              │
 │  ┌──────────────────────────────┐                           │
@@ -147,7 +147,7 @@ Fundamental unit of work. Based on Google A2A semantics.
 Content-addressed file store. Every file is identified by its SHA-256 hash (CID).
 
 - Small files (≤ configured threshold): stored inline in the artifact protobuf.
-- Large files: stored in `~/.p2p-a2a/blobs/`. Fetched on demand over `/a2a/blob/1.0.0` libp2p streams.
+- Large files: stored as CIDv1 blocks in the IPFS flatfs blockstore under `<data-dir>/blocks/`. Fetched on demand over Bitswap; any peer holding the block can serve it.
 - CID-addressing makes blobs immutable and deduplicated.
 
 ### Delivery Protocols
@@ -155,7 +155,7 @@ Content-addressed file store. Every file is identified by its SHA-256 hash (CID)
 | Protocol ID | Transport | Purpose |
 |---|---|---|
 | `/a2a/msg/1.0.0` | libp2p stream | Direct message delivery (msgio-framed protobuf) |
-| `/a2a/blob/1.0.0` | libp2p stream | Blob fetch by CID |
+| Bitswap | libp2p (boxo) | Block fetch by CIDv1; the DHT locates providers |
 
 ### Threads
 
@@ -335,44 +335,62 @@ The daemon exposes a single `service A2ANode` defined in `proto/a2a.proto`. All 
 ```
 p2p_a2a/
 ├── cmd/
-│   └── daemon/             # binary entrypoint + full CLI (main.go, commands.go)
+│   └── moltmesh/           # the one binary: daemon, CLI, and TUI
+│       ├── main.go, daemon.go          # entrypoint, daemon lifecycle, config
+│       ├── client.go                   # shared flags + connect() every command uses
+│       ├── registry.go, messaging.go, tasks.go, files.go, threads.go,
+│       │   diag.go, pubsub.go, network.go, names.go, init.go   # CLI, one file per domain
+│       ├── commands.go                 # --json envelope helpers shared by all of them
+│       └── tui.go, completion.go       # interactive TUI, shell completion
 ├── daemon/
-│   ├── identity/           # DID generation, Ed25519 keypair, signing, VerifyWithPub
-│   ├── node/               # libp2p host, DHT, GossipSub setup
-│   ├── registry/           # Agent Card publish/resolve/verify via DHT + Ed25519
-│   ├── inbox/              # persistent inbox queue (SQLite) + live subscriber fan-out
-│   ├── outbox/             # persistent outbox queue + retry worker
-│   ├── deliver/            # libp2p stream protocols: /a2a/msg, /a2a/blob
-│   ├── blob/               # content-addressed file store (SHA-256 CID)
+│   ├── actors/             # GoAkt root supervisor and per-domain actor helpers
+│   ├── identity/           # did:key generation, Ed25519 signing and verification
+│   ├── node/               # libp2p host, Kademlia DHT, GossipSub, Bitswap blockstore
+│   ├── registry/           # Agent Card publish/resolve/verify over the DHT
+│   ├── names/              # human-readable name claims and resolution
+│   ├── session/            # short-lived authenticated SDK sessions
+│   ├── inbox/              # persistent inbox (SQLite) + live subscriber fan-out
+│   ├── outbox/             # persistent outbox + retry worker (the outbox pattern)
+│   ├── deliver/            # libp2p stream protocol /a2a/msg, sender DID verification
 │   ├── tasks/              # task state machine (SQLite)
-│   ├── thread/             # replicated ordered log
-│   │   ├── backend.go      # Backend interface + BackendKind constants
-│   │   ├── engine.go       # Engine wrapper: subscriber fan-out, commit callback
+│   ├── thread/             # replicated hash-chained log
+│   │   ├── backend.go      # ActorBackend + optional VoterChanger/Snapshotter
 │   │   ├── raft.go         # Raft CFT backend
 │   │   ├── tendermint.go   # Tendermint BFT backend
-│   │   ├── gossip.go       # GossipSub bridge
-│   │   ├── manager.go      # per-thread engine lifecycle
-│   │   └── store.go        # SQLite persistence (threads, blocks, votes, entries)
-│   ├── gossip/             # GossipSub topic management, Publish, SubscribeTopic
-│   ├── network/            # named agent groups, SQLite membership, broadcast
-│   ├── webhook/            # HTTP event delivery (async, retry, HMAC secret)
-│   └── rpc/                # gRPC server: server.go, ext.go, version.go
+│   │   ├── actor.go, actor_manager.go, actor_supervisor.go,
+│   │   │   actor_gossip_bridge.go       # ThreadActor and its supervision
+│   │   ├── store.go        # Store, schema migration, shared codec
+│   │   ├── store_{threads,membership,blocks,pending,keys,consensus,archive}.go
+│   │   ├── archive.go, archive_worker.go, publisher.go   # durability: Bitswap + DHT
+│   │   ├── verify.go, descriptor.go, gossip_validation.go
+│   │   └── manager.go, engine.go, gossip.go   # legacy goroutine path (tests only)
+│   ├── gossip/             # GossipSub topic management
+│   ├── network/            # named agent groups, membership, broadcast
+│   ├── webhook/            # HTTP event delivery with SSRF protection
+│   └── rpc/                # gRPC server, one file per domain
+│       ├── server.go       # Server struct, New, auth helpers
+│       ├── server_{session,registry,tasks,messaging,files,threads}.go
+│       └── ext.go, diag.go, version.go
 ├── gen/
-│   └── a2a/v1/             # generated Go stubs (protoc --go_out --go-grpc_out)
+│   └── a2a/v1/             # generated Go stubs
 ├── pkg/
-│   ├── did/                # DID validation, parsing, Short() formatting
+│   ├── a2avalidator/       # DHT /a2a/ namespace record validator
 │   ├── capability/         # capability ID namespace (a2a:v1:cap:<name>)
-│   └── format/             # human-readable output: DID, table, message, uptime, etc.
+│   ├── config/             # moltbook.toml
+│   ├── did/                # DID parsing and formatting
+│   ├── format/             # human-readable output
+│   ├── p2putil/, sqlite/, threadcrypto/, assert/
 ├── proto/
-│   └── a2a.proto           # canonical API contract
+│   └── a2a.proto           # canonical API contract (single service, ADR-0012)
 ├── e2e/
-│   └── e2e_test.go         # full in-process e2e tests (no external processes)
+│   ├── e2e_test.go         # in-process end-to-end tests
+│   └── manual-thread/      # multi-daemon demo: discovery, delegation, recovery
 ├── docs/
 │   ├── ARCHITECTURE.md     # this file
 │   └── adr/                # Architecture Decision Records
 └── sdk/
     ├── python/             # Python client + CrewAI tools
-    └── typescript/         # OpenClaw TypeScript plugin
+    └── typescript/         # OpenClaw plugin (also the Claude Code MCP bridge), AI SDK tools
 ```
 
 ## Data Flow Examples
