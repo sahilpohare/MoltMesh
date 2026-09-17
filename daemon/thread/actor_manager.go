@@ -81,9 +81,47 @@ func (m *ActorManager) StartAll(ctx context.Context) error {
 // InviteReceived is called when a THREAD_INVITE message arrives from a
 // peer. It saves the thread and spawns its ThreadActor if not already
 // running. Satisfies deliver.ThreadInviter.
+// selfDID returns this daemon's own DID, or empty when no identity is set.
+func (m *ActorManager) selfDID() string {
+	if m.id == nil {
+		return ""
+	}
+	return m.id.DID
+}
+
+// recordSelfMembership persists this node's own observer row from an accepted
+// invite. The caller has already verified that the descriptor is signed and
+// that this node appears in ReplicaDids, so the membership is proven; without
+// writing it, a replica ends up holding committed history while ListMembers
+// still reports it as a non-member, which blocks catchup proofs and therefore
+// promotion to a writing voter.
+func recordSelfMembership(store *Store, th *pb.Thread, selfDID string) error {
+	if selfDID == "" {
+		return nil
+	}
+	for _, did := range th.ReplicaDids {
+		if did != selfDID {
+			continue
+		}
+		epoch, err := store.MembershipEpoch(th.Id)
+		if err != nil {
+			epoch = 1
+		}
+		return store.SaveMember(th.Id, &pb.ThreadMember{
+			Did:         selfDID,
+			Role:        pb.ThreadMemberRole_THREAD_MEMBER_ROLE_OBSERVER,
+			JoinedEpoch: epoch,
+		})
+	}
+	return nil
+}
+
 func (m *ActorManager) InviteReceived(th *pb.Thread) error {
 	if err := m.store.SaveThread(th); err != nil {
 		return fmt.Errorf("save thread: %w", err)
+	}
+	if err := recordSelfMembership(m.store, th, m.selfDID()); err != nil {
+		return fmt.Errorf("record membership: %w", err)
 	}
 	_, err := m.sup.Spawn(context.Background(), th)
 	return err

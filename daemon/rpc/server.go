@@ -904,6 +904,24 @@ func (s *Server) AddThreadReplica(ctx context.Context, req *pb.ThreadReplicaRequ
 	if err := s.threads.AppendEntry(th.Id, entry); err != nil {
 		return nil, err
 	}
+	// The log entry alone does not populate thread_members, which ListMembers
+	// reads, so record the observer locally too. Otherwise the creator cannot
+	// later promote the very replica it just added.
+	if saver, ok := s.threads.(threadMemberSaver); ok {
+		epoch := uint64(1)
+		if r, ok := s.threads.(threadMembershipEpochReader); ok {
+			if e, err := r.MembershipEpoch(th.Id); err == nil && e > 0 {
+				epoch = e
+			}
+		}
+		if err := saver.SaveMember(th.Id, &pb.ThreadMember{
+			Did:         req.ReplicaDid,
+			Role:        pb.ThreadMemberRole_THREAD_MEMBER_ROLE_OBSERVER,
+			JoinedEpoch: epoch,
+		}); err != nil {
+			return nil, fmt.Errorf("record observer membership: %w", err)
+		}
+	}
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 	deadline := time.NewTicker(50 * time.Millisecond)
@@ -941,6 +959,9 @@ type threadRecoveryCreator interface {
 }
 type threadMemberLister interface {
 	ListMembers(string) ([]*pb.ThreadMember, error)
+}
+type threadMemberSaver interface {
+	SaveMember(string, *pb.ThreadMember) error
 }
 type threadMembershipEpochReader interface {
 	MembershipEpoch(string) (uint64, error)
@@ -1192,9 +1213,16 @@ func (s *Server) GetThreadCatchupState(ctx context.Context, req *pb.ThreadID) (*
 	if req == nil || req.Id == "" {
 		return nil, fmt.Errorf("thread id required")
 	}
-	observer, err := s.agentDID(ctx)
+	// scopedOwner, not agentDID: with no session token and a single agent on
+	// this daemon, the caller is the daemon's own identity. This is the same
+	// legacy single-agent mode the rest of the thread RPCs accept, and it lets
+	// the CLI request its own catchup state without an SDK session.
+	observer, err := s.scopedOwner(ctx)
 	if err != nil {
 		return nil, err
+	}
+	if observer == "" {
+		observer = s.id.DID
 	}
 	lister, ok := s.threads.(threadMemberLister)
 	if !ok {

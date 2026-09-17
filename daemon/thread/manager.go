@@ -233,9 +233,20 @@ func (m *Manager) StartAll() error {
 
 // InviteReceived is called when a THREAD_INVITE message arrives from a peer.
 // It saves the thread and starts its engine if not already running.
+// selfDID returns this daemon's own DID, or empty when no identity is set.
+func (m *Manager) selfDID() string {
+	if m.id == nil {
+		return ""
+	}
+	return m.id.DID
+}
+
 func (m *Manager) InviteReceived(thread *pb.Thread) error {
 	if err := m.store.SaveThread(thread); err != nil {
 		return fmt.Errorf("save thread: %w", err)
+	}
+	if err := recordSelfMembership(m.store, thread, m.selfDID()); err != nil {
+		return fmt.Errorf("record membership: %w", err)
 	}
 	return m.Start(thread)
 }
