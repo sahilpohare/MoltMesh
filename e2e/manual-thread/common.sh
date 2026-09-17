@@ -6,6 +6,7 @@ RUNTIME="$ROOT/e2e/manual-thread/runtime"
 BIN="$RUNTIME/bin/moltmesh-daemon"
 CALC_CAP="a2a:v1:cap:calculator"
 TEXT_CAP="a2a:v1:cap:text-generation"
+CLAUDE_CAP="a2a:v1:cap:assistant"
 
 agent_home() { printf '%s/%s/%s/home' "$RUNTIME" "$1" "$2"; }
 agent_data() { printf '%s/.moltmesh' "$(agent_home "$1" "$2")"; }
@@ -15,7 +16,7 @@ mm() {
   HOME=$(agent_home "$node" "$agent") "$BIN" --json "$@" --data-dir "$(agent_data "$node" "$agent")"
 }
 
-identity_did() { mm "$1" "$2" get-identity | jq -r '.data.did'; }
+identity_did() { mm "$1" "$2" get-identity | jq -r '(.data // .).did'; }
 
 wait_health() {
   local node=$1 agent=$2 deadline=$((SECONDS + 30))
@@ -31,8 +32,8 @@ discover() {
   while (( SECONDS < deadline )); do
     local result
     result=$(mm "$node" "$agent" find-agents --capability "$capability" --limit 20 2>/dev/null || true)
-    if jq -e --arg own "$own_did" '.data | map(select(.did != $own)) | length > 0' >/dev/null 2>&1 <<<"$result"; then
-      jq --arg own "$own_did" '.data | map(select(.did != $own))[0]' <<<"$result" >"$output"
+    if jq -e --arg own "$own_did" '(.data // .) | (if type == "array" then . else [.] end) | map(select(.did != $own)) | length > 0' >/dev/null 2>&1 <<<"$result"; then
+      jq --arg own "$own_did" '(.data // .) | (if type == "array" then . else [.] end) | map(select(.did != $own))[0]' <<<"$result" >"$output"
       return 0
     fi
     sleep 0.5

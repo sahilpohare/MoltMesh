@@ -8,7 +8,7 @@ discover node-b calculator "$TEXT_CAP" "$self" "$(agent_home node-b calculator)/
 deadline=$((SECONDS + 90))
 while (( SECONDS < deadline )); do
   inbox=$(mm node-b calculator get-inbox --unread --decode --limit 50)
-  item=$(jq -c '.data[] | select(.message.kind == 2)' <<<"$inbox" | head -n 1 || true)
+  item=$(jq -c '(.data // .)[] | select(.message.kind == 2)' <<<"$inbox" | head -n 1 || true)
   if [[ -n "$item" ]]; then
     message_id=$(jq -r '.message.id' <<<"$item")
     from_did=$(jq -r '.message.from_did' <<<"$item")

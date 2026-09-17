@@ -21,6 +21,9 @@ init_agent node-a textgen deterministic-textgen "$TEXT_CAP" 43101 127.0.0.1:5310
 init_agent node-a observer deterministic-observer "a2a:v1:cap:observer" 43102 127.0.0.1:53102
 init_agent node-b calculator deterministic-calculator "$CALC_CAP" 43201 127.0.0.1:53201
 init_agent node-c recovery deterministic-recovery "a2a:v1:cap:thread-reader" 43301 127.0.0.1:53301
+# Claude Code sits on the mesh as its own agent: own identity, own card,
+# discoverable by capability like any other participant.
+init_agent node-a claude claude-agent "$CLAUDE_CAP" 43103 127.0.0.1:53103
 init_agent infrastructure bootstrap deterministic-bootstrap "a2a:v1:cap:bootstrap" 43000 127.0.0.1:53000
 
 echo "Persistent identities and isolated HOME directories are ready under $RUNTIME"

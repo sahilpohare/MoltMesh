@@ -11,7 +11,7 @@ stop_pid() {
   kill -KILL "$pid" 2>/dev/null || true
 }
 
-for spec in "node-a textgen" "node-a observer" "node-b calculator" "node-c recovery" "infrastructure bootstrap"; do
+for spec in "node-a textgen" "node-a observer" "node-b calculator" "node-c recovery" "node-a claude" "infrastructure bootstrap"; do
   read -r node agent <<<"$spec"
   data=$(agent_data "$node" "$agent")
   pidfile="$data/manual.pid"

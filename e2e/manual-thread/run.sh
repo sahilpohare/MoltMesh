@@ -18,8 +18,8 @@ discover node-a observer "$TEXT_CAP" "$observer_did" "$(agent_home node-a observ
 discover node-a observer "$CALC_CAP" "$observer_did" "$(agent_home node-a observer)/discovered/calculator.json"
 
 thread_json=$(mm node-a textgen create-thread --f 0 --with-recovery)
-thread_id=$(jq -r '.data.thread.id' <<<"$thread_json")
-recovery_secret=$(jq -r '.data.recovery_handle.recovery_secret' <<<"$thread_json")
+thread_id=$(jq -r '(.data // .) | (.thread // .) | .id' <<<"$thread_json")
+recovery_secret=$(jq -r '(.data // .) | .recovery_handle.recovery_secret' <<<"$thread_json")
 [[ "$thread_id" != "null" && "$recovery_secret" != "null" ]] || { echo "missing recovery handle" >&2; exit 1; }
 printf '%s\n' "$thread_id" >"$RUNTIME/thread-id"
 mm node-a textgen append-entry --thread-id "$thread_id" --kind message --payload "thread-online" >/dev/null
@@ -41,17 +41,17 @@ sleep 3
 calculator_pid=$!
 log "submitting calculator task"
 task_json=$(mm node-a textgen create-task --to "$calc_did" --skill "$CALC_CAP" --thread-id "$thread_id" --input "add 2 + 2.")
-task_id=$(jq -r '.data.id' <<<"$task_json")
+task_id=$(jq -r '(.data // .).id' <<<"$task_json")
 wait "$calculator_pid"
 
 deadline=$((SECONDS + 60))
 while (( SECONDS < deadline )); do
   task=$(mm node-a textgen get-task --id "$task_id")
-  [[ $(jq -r '.data.status' <<<"$task") == "3" ]] && break
+  [[ $(jq -r '(.data // .).status' <<<"$task") == "3" ]] && break
   sleep 0.25
 done
-[[ $(jq -r '.data.status' <<<"$task") == "3" ]] || { echo "task did not complete" >&2; exit 1; }
-answer=$(jq -r '.data.output_artifacts[0].inline | @base64d' <<<"$task")
+[[ $(jq -r '(.data // .).status' <<<"$task") == "3" ]] || { echo "task did not complete" >&2; exit 1; }
+answer=$(jq -r '(.data // .).output_artifacts[0].inline | @base64d' <<<"$task")
 [[ "$answer" == "4" ]] || { echo "wrong result: $answer" >&2; exit 1; }
 log "task $task_id completed with answer $answer"
 
@@ -63,14 +63,14 @@ events="$RUNTIME/task-events.jsonl"
 HOME="$(agent_home node-a textgen)" "$BIN" --json subscribe-task-events --id "$task_id" \
   --data-dir "$(agent_data node-a textgen)" >"$events" 2>"$RUNTIME/task-events.err" & subscriber=$!
 sleep 1; kill "$subscriber" 2>/dev/null || true; wait "$subscriber" 2>/dev/null || true
-jq -e 'select(.data.data == "NA==")' "$events" >/dev/null
+jq -se -e 'map(select(.data == "NA==" or .data?.data == "NA==")) | length > 0' "$events" >/dev/null
 log "verified durable task-event replay"
 
 # The terminal task result is also committed to the thread and replicated.
 deadline=$((SECONDS + 60))
 for spec in "node-a textgen" "node-a observer" "node-b calculator"; do
   read -r node agent <<<"$spec"
-  until entries=$(mm "$node" "$agent" get-thread-entries --id "$thread_id") && jq -e '.data | map(select(.entry.kind == "task_result")) | length > 0' >/dev/null <<<"$entries"; do
+  until entries=$(mm "$node" "$agent" get-thread-entries --id "$thread_id") && jq -se -e 'map(.data // .) | flatten | map(select(.entry.kind == "task_result")) | length > 0' >/dev/null <<<"$entries"; do
     (( SECONDS < deadline )) || { echo "thread replication timeout for $node/$agent" >&2; exit 1; }
     sleep 0.5
   done
@@ -88,7 +88,7 @@ until mm node-c recovery recover-thread --id "$thread_id" --secret-base64 "$reco
   sleep 0.5
 done
 recovered=$(mm node-c recovery get-thread-entries --id "$thread_id")
-jq -e '.data | map(select(.entry.kind == "task_result")) | length > 0' >/dev/null <<<"$recovered"
+jq -se -e 'map(.data // .) | flatten | map(select(.entry.kind == "task_result")) | length > 0' >/dev/null <<<"$recovered"
 log "verified cold recovery with the capability secret"
 
 echo "PASS thread=$thread_id task=$task_id answer=$answer"

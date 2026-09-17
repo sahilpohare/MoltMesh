@@ -67,3 +67,9 @@ e2e/manual-thread/runtime/
 # chart rendering venv (see scripts/plot-benchmarks.sh)
 .venv-charts/
 bench/results/.parts/
+
+# Dissertation working files and demo deck — not for the public site (docs/ is published)
+docs/*.docx
+docs/DEMO-PRESENTATION.md
+docs/OpenMolt-Demo.pptx
+docs/dissertation-edits.txt

@@ -21,7 +21,7 @@ reset_agent_state() {
     "$data"/manual.log "$data"/grpc-addr "$data"/daemon.pid "$data"/manual.pid
   rm -rf "$data/blocks"
 }
-for spec in "node-a textgen" "node-a observer" "node-b calculator" "node-c recovery" "infrastructure bootstrap"; do
+for spec in "node-a textgen" "node-a observer" "node-b calculator" "node-c recovery" "node-a claude" "infrastructure bootstrap"; do
   read -r node agent <<<"$spec"
   reset_agent_state "$node" "$agent"
 done
@@ -36,7 +36,7 @@ start_agent() {
 }
 
 start_agent infrastructure bootstrap
-bootstrap_addr=$(mm infrastructure bootstrap get-identity | jq -r '.data.multiaddrs[] | select(startswith("/ip4/127.0.0.1/tcp/"))' | head -n 1)
+bootstrap_addr=$(mm infrastructure bootstrap get-identity | jq -r '(.data // .).multiaddrs[] | select(startswith("/ip4/127.0.0.1/tcp/"))' | head -n 1)
 
 set_bootstrap() {
   local node=$1 agent=$2 cfg tmp
@@ -52,8 +52,10 @@ set_bootstrap node-a textgen
 set_bootstrap node-a observer
 set_bootstrap node-b calculator
 set_bootstrap node-c recovery
+set_bootstrap node-a claude
 
 start_agent node-a textgen
 start_agent node-a observer
 start_agent node-b calculator
-echo "Three independent daemon identities are running; they know only the neutral bootstrap service, not one another."
+start_agent node-a claude
+echo "Four independent daemon identities are running; they know only the neutral bootstrap service, not one another."
