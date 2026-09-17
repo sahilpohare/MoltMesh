@@ -24,6 +24,7 @@ func cmdCreateThread(args []string) error {
 	f := fs.Int("f", 0, "Max byzantine faults to tolerate")
 	epochMs := fs.Int64("epoch-ms", 0, "Timeout propose in ms")
 	withRecovery := fs.Bool("with-recovery", false, "Create and return a portable recovery capability")
+	backend := fs.String("backend", "", "Consensus backend: raft (default) or tendermint")
 	fs.Parse(args)
 
 	var replicaDIDs []string
@@ -46,6 +47,9 @@ func cmdCreateThread(args []string) error {
 		ReplicaDids: replicaDIDs,
 		F:           int32(*f),
 		EpochMs:     *epochMs,
+	}
+	if *backend != "" {
+		req.Metadata = map[string]string{"backend": *backend}
 	}
 	if *withRecovery {
 		response, err := client.CreateThreadWithRecovery(context.Background(), req)

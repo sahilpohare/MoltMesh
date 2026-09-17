@@ -52,6 +52,16 @@ type TendermintBackend struct {
 	proposal  *pb.Proposal
 	inboundCh chan *pb.ConsensusMsg
 
+	// Timeouts are deadlines rather than *time.Timer values so the backend can
+	// be stepped synchronously from an actor: Tick fires whichever have
+	// elapsed. A zero time means disarmed.
+	proposeAt, prevoteAt, precommitAt time.Time
+	epochMs                           int64
+	// broadcast is captured on the first Pump; the actor supplies it there
+	// rather than to Tick, and no deadline can be armed before Pump runs.
+	broadcast func(*pb.ConsensusMsg)
+	started   bool
+
 	// futureVotes buffers votes for (cs.Height, round > cs.Round) so that
 	// common exit condition "upon 2f+1 prevotes at (h, r+x)" can be honoured.
 	// {INV} futureVotes[r][voter] has at most one entry per (round, voter, type).
@@ -71,6 +81,10 @@ func newTendermintBackend(
 		return nil, err
 	}
 	// {Q} cs.Height ≥ 1 ∧ cs.LockedRound = -1 (fresh) or restored from durable state
+	epochMs := thread.EpochMs
+	if epochMs == 0 {
+		epochMs = defaultEpochMs
+	}
 	return &TendermintBackend{
 		thread:      thread,
 		id:          id,
@@ -80,6 +94,7 @@ func newTendermintBackend(
 		cs:          cs,
 		inboundCh:   make(chan *pb.ConsensusMsg, 512),
 		futureVotes: make(map[int32][]*pb.Vote),
+		epochMs:     epochMs,
 	}, nil
 }
 
@@ -96,86 +111,134 @@ func (e *TendermintBackend) Deliver(msg *pb.ConsensusMsg) {
 func (e *TendermintBackend) Subscribe() <-chan *pb.ThreadEntryWithPos    { return nil }
 func (e *TendermintBackend) Unsubscribe(_ <-chan *pb.ThreadEntryWithPos) {}
 
-func (e *TendermintBackend) Run(ctx context.Context, broadcast func(*pb.ConsensusMsg)) {
-	e.log.Info("tendermint: starting",
-		zap.String("thread", e.thread.Id),
-		zap.Int64("height", e.cs.Height),
-	)
-	e.enterPropose(ctx, broadcast)
+// ─── ActorBackend: single-step API ───────────────────────────────────────────
+// ThreadActor drives these synchronously from its mailbox and must never
+// block. Run below is the legacy Engine's goroutine driver, written on top of
+// the same steps so each arm of the state machine exists exactly once.
 
-	epochMs := e.thread.EpochMs
-	if epochMs == 0 {
-		epochMs = defaultEpochMs
+// Pump captures the broadcast function, performs the one-time startup
+// propose, and drains any queued inbound messages without blocking.
+func (e *TendermintBackend) Pump(ctx context.Context, broadcast func(*pb.ConsensusMsg)) {
+	e.mu.Lock()
+	e.broadcast = broadcast
+	if !e.started {
+		e.started = true
+		e.log.Info("tendermint: starting",
+			zap.String("thread", e.thread.Id),
+			zap.Int64("height", e.cs.Height),
+		)
+		e.mu.Unlock()
+		e.enterPropose(ctx, broadcast)
+		e.mu.Lock()
+		e.proposeAt = time.Now().Add(time.Duration(e.epochMs) * time.Millisecond)
 	}
-	proposeTimer := time.NewTimer(time.Duration(epochMs) * time.Millisecond)
-	prevoteTimer := time.NewTimer(0)
-	prevoteTimer.Stop()
-	precommitTimer := time.NewTimer(0)
-	precommitTimer.Stop()
+	e.mu.Unlock()
+	for i := 0; i < pumpMaxIterations; i++ {
+		select {
+		case msg := <-e.inboundCh:
+			e.StepInbound(ctx, msg)
+		default:
+			return
+		}
+	}
+}
 
+// StepInbound feeds one inbound proposal or vote into the state machine.
+func (e *TendermintBackend) StepInbound(ctx context.Context, msg *pb.ConsensusMsg) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.broadcast == nil {
+		return // not yet started; Pump has not run
+	}
+	switch p := msg.Payload.(type) {
+	case *pb.ConsensusMsg_Proposal:
+		e.handleProposal(ctx, p.Proposal, e.broadcast)
+	case *pb.ConsensusMsg_Vote:
+		e.handleVote(ctx, p.Vote, e.broadcast)
+	}
+}
+
+// Tick fires whichever phase timeouts have elapsed. Bodies are the former
+// Run-loop timer arms, unchanged, including their lock discipline.
+func (e *TendermintBackend) Tick(ctx context.Context) {
+	e.mu.Lock()
+	broadcast := e.broadcast
+	if broadcast == nil {
+		e.mu.Unlock()
+		return // nothing armed before Pump has run
+	}
+	now := time.Now()
+
+	if !e.proposeAt.IsZero() && !now.Before(e.proposeAt) {
+		e.proposeAt = time.Time{}
+		if e.cs.Step == stepPropose {
+			e.log.Debug("tendermint: timeout propose — prevoting nil",
+				zap.String("thread", e.thread.Id),
+				zap.Int64("height", e.cs.Height),
+				zap.Int32("round", e.cs.Round),
+			)
+			e.sendVote(broadcast, pb.VoteType_VOTE_TYPE_PREVOTE, "")
+			e.cs.Step = stepPrevote
+			e.store.SaveConsensusState(e.thread.Id, e.cs) //nolint:errcheck
+			e.prevoteAt = time.Now().Add(time.Duration(defaultTimeoutMs) * time.Millisecond)
+		}
+	}
+
+	if !e.prevoteAt.IsZero() && !now.Before(e.prevoteAt) {
+		e.prevoteAt = time.Time{}
+		if e.cs.Step == stepPrevote {
+			e.log.Debug("tendermint: timeout prevote — precommitting nil",
+				zap.String("thread", e.thread.Id),
+				zap.Int64("height", e.cs.Height),
+			)
+			e.sendVote(broadcast, pb.VoteType_VOTE_TYPE_PRECOMMIT, "")
+			e.cs.Step = stepPrecommit
+			e.store.SaveConsensusState(e.thread.Id, e.cs) //nolint:errcheck
+			e.precommitAt = time.Now().Add(time.Duration(defaultTimeoutMs) * time.Millisecond)
+		}
+	}
+
+	if !e.precommitAt.IsZero() && !now.Before(e.precommitAt) {
+		e.precommitAt = time.Time{}
+		if e.cs.Step == stepPrecommit {
+			e.log.Debug("tendermint: timeout precommit — next round",
+				zap.String("thread", e.thread.Id),
+				zap.Int64("height", e.cs.Height),
+			)
+			e.cs.Round++
+			e.cs.Step = stepPropose
+			e.store.SaveConsensusState(e.thread.Id, e.cs) //nolint:errcheck
+			e.mu.Unlock()
+			e.enterPropose(ctx, broadcast)
+			e.mu.Lock()
+			e.proposeAt = time.Now().Add(time.Duration(e.epochMs) * time.Millisecond)
+		}
+	}
+	e.mu.Unlock()
+}
+
+// Stop disarms every timeout. Nothing else to release: there is no goroutine.
+func (e *TendermintBackend) Stop() {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.proposeAt, e.prevoteAt, e.precommitAt = time.Time{}, time.Time{}, time.Time{}
+}
+
+// Run is the blocking goroutine driver used by the legacy Engine path and by
+// the tests that exercise it. It is a thin loop over the step methods.
+func (e *TendermintBackend) Run(ctx context.Context, broadcast func(*pb.ConsensusMsg)) {
+	e.Pump(ctx, broadcast)
+	ticker := time.NewTicker(10 * time.Millisecond)
+	defer ticker.Stop()
 	for {
 		select {
 		case <-ctx.Done():
-			proposeTimer.Stop()
-			prevoteTimer.Stop()
-			precommitTimer.Stop()
+			e.Stop()
 			return
-
 		case msg := <-e.inboundCh:
-			e.mu.Lock()
-			switch p := msg.Payload.(type) {
-			case *pb.ConsensusMsg_Proposal:
-				e.handleProposal(ctx, p.Proposal, broadcast, prevoteTimer)
-			case *pb.ConsensusMsg_Vote:
-				e.handleVote(ctx, p.Vote, broadcast, proposeTimer, prevoteTimer, precommitTimer, epochMs)
-			}
-			e.mu.Unlock()
-
-		case <-proposeTimer.C:
-			e.mu.Lock()
-			if e.cs.Step == stepPropose {
-				e.log.Debug("tendermint: timeout propose — prevoting nil",
-					zap.String("thread", e.thread.Id),
-					zap.Int64("height", e.cs.Height),
-					zap.Int32("round", e.cs.Round),
-				)
-				e.sendVote(broadcast, pb.VoteType_VOTE_TYPE_PREVOTE, "")
-				e.cs.Step = stepPrevote
-				e.store.SaveConsensusState(e.thread.Id, e.cs) //nolint:errcheck
-				prevoteTimer.Reset(time.Duration(defaultTimeoutMs) * time.Millisecond)
-			}
-			e.mu.Unlock()
-
-		case <-prevoteTimer.C:
-			e.mu.Lock()
-			if e.cs.Step == stepPrevote {
-				e.log.Debug("tendermint: timeout prevote — precommitting nil",
-					zap.String("thread", e.thread.Id),
-					zap.Int64("height", e.cs.Height),
-				)
-				e.sendVote(broadcast, pb.VoteType_VOTE_TYPE_PRECOMMIT, "")
-				e.cs.Step = stepPrecommit
-				e.store.SaveConsensusState(e.thread.Id, e.cs) //nolint:errcheck
-				precommitTimer.Reset(time.Duration(defaultTimeoutMs) * time.Millisecond)
-			}
-			e.mu.Unlock()
-
-		case <-precommitTimer.C:
-			e.mu.Lock()
-			if e.cs.Step == stepPrecommit {
-				e.log.Debug("tendermint: timeout precommit — next round",
-					zap.String("thread", e.thread.Id),
-					zap.Int64("height", e.cs.Height),
-				)
-				e.cs.Round++
-				e.cs.Step = stepPropose
-				e.store.SaveConsensusState(e.thread.Id, e.cs) //nolint:errcheck
-				e.mu.Unlock()
-				e.enterPropose(ctx, broadcast)
-				proposeTimer.Reset(time.Duration(epochMs) * time.Millisecond)
-				e.mu.Lock()
-			}
-			e.mu.Unlock()
+			e.StepInbound(ctx, msg)
+		case <-ticker.C:
+			e.Tick(ctx)
 		}
 	}
 }
@@ -212,7 +275,6 @@ func (e *TendermintBackend) handleProposal(
 	ctx context.Context,
 	prop *pb.Proposal,
 	broadcast func(*pb.ConsensusMsg),
-	prevoteTimer *time.Timer,
 ) {
 	// {P} mu held
 	// Ignore proposals not for current (height, round) or wrong step.
@@ -268,7 +330,7 @@ func (e *TendermintBackend) handleProposal(
 
 	e.cs.Step = stepPrevote
 	e.store.SaveConsensusState(e.thread.Id, e.cs) //nolint:errcheck
-	prevoteTimer.Reset(time.Duration(defaultTimeoutMs) * time.Millisecond)
+	e.prevoteAt = time.Now().Add(time.Duration(defaultTimeoutMs) * time.Millisecond)
 	// {Q} cs.step = prevote ∧ prevote sent ∧ lock invariant maintained
 }
 
@@ -276,8 +338,6 @@ func (e *TendermintBackend) handleVote(
 	ctx context.Context,
 	vote *pb.Vote,
 	broadcast func(*pb.ConsensusMsg),
-	proposeTimer, prevoteTimer, precommitTimer *time.Timer,
-	epochMs int64,
 ) {
 	// {P} mu held ∧ vote.Height = cs.Height (enforced below)
 	if vote.Height != e.cs.Height {
@@ -297,7 +357,7 @@ func (e *TendermintBackend) handleVote(
 	if vote.Round > e.cs.Round {
 		e.bufferFutureVote(vote)
 		// Check if this future round already has a quorum that should skip us forward.
-		e.checkFutureRoundSkip(ctx, vote.Round, broadcast, proposeTimer, prevoteTimer, precommitTimer, epochMs)
+		e.checkFutureRoundSkip(ctx, vote.Round, broadcast)
 		return
 	}
 
@@ -331,7 +391,7 @@ func (e *TendermintBackend) handleVote(
 		}
 		// {P} count ≥ 2f+1 ∧ all votes from distinct validators (store invariant)
 		// {Q} polka exists for blockHash at (height, round)
-		prevoteTimer.Stop()
+		e.prevoteAt = time.Time{}
 		if blockHash == "" {
 			// Polka for nil → precommit nil, do not update lock.
 			// {Q} lock unchanged ∧ precommit(nil)
@@ -358,7 +418,7 @@ func (e *TendermintBackend) handleVote(
 		}
 		e.cs.Step = stepPrecommit
 		e.store.SaveConsensusState(e.thread.Id, e.cs) //nolint:errcheck
-		precommitTimer.Reset(time.Duration(defaultTimeoutMs) * time.Millisecond)
+		e.precommitAt = time.Now().Add(time.Duration(defaultTimeoutMs) * time.Millisecond)
 		// {Q} cs.step = precommit ∧ precommit sent ∧ (lock set ↔ proposal seen ∧ polka for B)
 
 	case pb.VoteType_VOTE_TYPE_PRECOMMIT:
@@ -372,7 +432,7 @@ func (e *TendermintBackend) handleVote(
 			return
 		}
 		// {P} count ≥ 2f+1 ∧ blockHash ≠ "" → commit decision
-		precommitTimer.Stop()
+		e.precommitAt = time.Time{}
 
 		// FIX B3: if we don't have the proposal for this block, we cannot commit it
 		// locally but must not silently no-op — log loudly. In a full implementation
@@ -395,7 +455,7 @@ func (e *TendermintBackend) handleVote(
 		}
 		// {P} proposal.Block.BlockHash = blockHash ∧ 2f+1 precommits for blockHash
 		// {Q} block committed, height advances
-		e.commitBlock(ctx, e.proposal.Block, broadcast, proposeTimer, epochMs)
+		e.commitBlock(ctx, e.proposal.Block, broadcast)
 	}
 }
 
@@ -407,8 +467,6 @@ func (e *TendermintBackend) checkFutureRoundSkip(
 	ctx context.Context,
 	futureRound int32,
 	broadcast func(*pb.ConsensusMsg),
-	proposeTimer, prevoteTimer, precommitTimer *time.Timer,
-	epochMs int64,
 ) {
 	// Count buffered prevotes for futureRound by distinct voter.
 	seen := map[string]struct{}{}
@@ -426,9 +484,7 @@ func (e *TendermintBackend) checkFutureRoundSkip(
 		zap.Int32("to_round", futureRound),
 		zap.Int64("height", e.cs.Height),
 	)
-	proposeTimer.Stop()
-	prevoteTimer.Stop()
-	precommitTimer.Stop()
+	e.proposeAt, e.prevoteAt, e.precommitAt = time.Time{}, time.Time{}, time.Time{}
 
 	// Flush buffered future votes for this round into the store.
 	for _, v := range e.futureVotes[futureRound] {
@@ -442,7 +498,7 @@ func (e *TendermintBackend) checkFutureRoundSkip(
 
 	e.mu.Unlock()
 	e.enterPropose(ctx, broadcast)
-	proposeTimer.Reset(time.Duration(epochMs) * time.Millisecond)
+	e.proposeAt = time.Now().Add(time.Duration(e.epochMs) * time.Millisecond)
 	e.mu.Lock()
 	// {Q} cs.Round = futureRound ∧ cs.Step = propose ∧ propose timer running
 }
@@ -466,8 +522,6 @@ func (e *TendermintBackend) commitBlock(
 	ctx context.Context,
 	block *pb.ThreadBlock,
 	broadcast func(*pb.ConsensusMsg),
-	proposeTimer *time.Timer,
-	epochMs int64,
 ) {
 	// {P} mu held ∧ 2f+1 precommits for block.BlockHash ∧ proposal.Block = block
 	block.CommittedAt = time.Now().UnixMilli()
@@ -508,7 +562,7 @@ func (e *TendermintBackend) commitBlock(
 	// the next propose naturally once proposeTimer fires. We reset it here.
 	// {P} cs.Height = block.Height+1 ∧ cs.Step = propose
 	// {Q} propose timer reset; enterPropose called directly (no channel required)
-	proposeTimer.Reset(time.Duration(epochMs) * time.Millisecond)
+	e.proposeAt = time.Now().Add(time.Duration(e.epochMs) * time.Millisecond)
 	e.enterPropose(ctx, broadcast)
 	// {Q} if proposer: proposal broadcast via external channel (not inboundCh)
 	//     if not proposer: waiting for proposal from designated proposer

@@ -528,16 +528,16 @@ flowchart LR
     B3 -->|"SubscribeThread"| A2
 ```
 
-**Backend selection.** The `Backend` interface (`daemon/thread/backend.go`) has two implementations, chosen per thread through `thread.Metadata["backend"]`:
+**Backend selection.** The `ActorBackend` interface (`daemon/thread/backend.go`) has two implementations, chosen per thread through `thread.Metadata["backend"]` at creation (`create-thread --backend tendermint`, or the SDK equivalent):
 
 | Value | Algorithm | Use when |
 |---|---|---|
 | `"raft"` (default) | Raft CFT (etcd raft) | Cooperative agents; only crash faults expected |
 | `"tendermint"` | Tendermint BFT | Adversarial validators; Byzantine fault tolerance needed |
 
-**What actually runs today:** the daemon wires threads through the GoAkt actor path (`thread.NewActorManager`), and `ThreadActor` constructs `newRaftBackend` directly without reading `Metadata["backend"]`. Every thread therefore runs Raft regardless of what its metadata requests. The Tendermint backend is implemented and tested, but is only reachable through the older `Manager`/`Engine` path, which the daemon no longer instantiates.
+The thread actor drives whichever backend was chosen through one synchronous stepping interface (`Tick`, `StepInbound`, `Pump`), so neither backend owns a goroutine and both are isolated identically. Raft-specific capabilities such as voter promotion and log snapshots are optional interfaces the actor checks for; Tendermint has no voter set and reports that when asked. A backend that orders through a shared database rather than through peers fits the same seam without votes or a replicated log.
 
-This matters for the threat model. Raft assumes replicas may crash but do not lie. It does not tolerate a replica that reports a different log than the one it committed. If you need safety against an actively dishonest validator, that is Tendermint's guarantee, and it is not the one you get right now.
+Raft assumes replicas may crash but do not lie. It does not tolerate a replica that reports a different log than the one it committed. If you need safety against an actively dishonest validator, that is Tendermint's guarantee: create the thread with `--backend tendermint`, `f ≥ 1`, and `3f+1` replicas.
 
 **Performance (single thread, measured):**
 

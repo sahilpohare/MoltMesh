@@ -72,7 +72,7 @@ type ThreadActor struct {
 	id      *identity.Identity
 	store   *Store
 	log     *zap.Logger
-	backend *RaftBackend
+	backend ActorBackend
 	bcast   func(*pb.ConsensusMsg)
 	// publish sends a ConsensusMsg to remote replicas over GossipSub. Set by
 	// the caller (ThreadSupervisor.Spawn) at construction; nil is a valid,
@@ -198,7 +198,18 @@ func (a *ThreadActor) PreStart(ctx *actor.Context) error {
 	if current, err := a.store.GetThread(a.thread.Id); err == nil && current != nil {
 		a.thread = current
 	}
-	backend, err := newRaftBackend(a.thread, a.id, a.store, a.log, a.handleCommit)
+	// Select the consensus backend from the thread descriptor, as the legacy
+	// Engine did. Raft is the default and the only backend the actor path
+	// supported until now; Tendermint plugs in here once it implements
+	// ActorBackend.
+	var backend ActorBackend
+	var err error
+	switch BackendKind(a.thread.Metadata["backend"]) {
+	case BackendTendermint:
+		backend, err = newTendermintBackend(a.thread, a.id, a.store, a.log, a.handleCommit)
+	default:
+		backend, err = newRaftBackend(a.thread, a.id, a.store, a.log, a.handleCommit)
+	}
 	if err != nil {
 		return err
 	}
@@ -275,7 +286,12 @@ func (a *ThreadActor) Receive(ctx *actor.ReceiveContext) {
 		a.backend.Pump(ctx.Context(), a.bcast)
 
 	case ProposeVoterChangeMsg:
-		done, err := a.backend.BeginVoterChange(ctx.Context(), msg.DID, msg.Add)
+		vc, ok := a.backend.(VoterChanger)
+		if !ok {
+			ctx.Response(&VoterChangeReply{Err: ErrNoVoterSet})
+			return
+		}
+		done, err := vc.BeginVoterChange(ctx.Context(), msg.DID, msg.Add)
 		ctx.Response(&VoterChangeReply{Done: done, Err: err})
 
 	case injectFaultMsg:
@@ -298,9 +314,9 @@ func (a *ThreadActor) PostStop(ctx *actor.Context) error {
 	if ref := a.schedRef.Load(); ref != nil && *ref != "" {
 		_ = ctx.ActorSystem().CancelSchedule(*ref)
 	}
-	if a.backend != nil {
+	if snap, ok := a.backend.(Snapshotter); ok && a.backend != nil {
 		started := time.Now()
-		if err := a.backend.Snapshot(); err != nil {
+		if err := snap.Snapshot(); err != nil {
 			a.log.Error("thread actor: save raft snapshot", zap.Error(err))
 		} else {
 			appactors.Metrics.RaftSnapshot(time.Since(started))

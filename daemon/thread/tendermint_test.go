@@ -352,9 +352,7 @@ func TestHandleProposal_UnlockOnPolC(t *testing.T) {
 		}
 	}
 
-	timer := time.NewTimer(0)
-	timer.Stop()
-	e.handleProposal(context.Background(), prop, broadcast, timer)
+	e.handleProposal(context.Background(), prop, broadcast)
 
 	mu.Lock()
 	defer mu.Unlock()
@@ -406,9 +404,7 @@ func TestHandleProposal_NoUnlockWithoutPolC(t *testing.T) {
 		}
 	}
 
-	timer := time.NewTimer(0)
-	timer.Stop()
-	e.handleProposal(context.Background(), prop, broadcast, timer)
+	e.handleProposal(context.Background(), prop, broadcast)
 
 	mu.Lock()
 	defer mu.Unlock()
@@ -448,9 +444,7 @@ func TestHandleProposal_WrongHeight_Ignored(t *testing.T) {
 		}
 	}
 
-	timer := time.NewTimer(0)
-	timer.Stop()
-	e.handleProposal(context.Background(), prop, broadcast, timer)
+	e.handleProposal(context.Background(), prop, broadcast)
 
 	if voted {
 		t.Error("should not vote on proposal for wrong height")
@@ -591,4 +585,67 @@ func TestTendermintBackend_SingleNode_MultipleBlocks(t *testing.T) {
 		}
 	}
 	mu.Unlock()
+}
+
+// Compile-time pins for the polymorphic seam: both consensus backends satisfy
+// ActorBackend; only Raft has a voter set or a log worth snapshotting.
+var (
+	_ ActorBackend = (*RaftBackend)(nil)
+	_ ActorBackend = (*TendermintBackend)(nil)
+	_ VoterChanger = (*RaftBackend)(nil)
+	_ Snapshotter  = (*RaftBackend)(nil)
+)
+
+// The actor never calls Run: it steps the backend from its mailbox. This
+// drives Tendermint to a commit through Pump/Tick/StepInbound alone, on one
+// goroutine, with no timer goroutines, proving the ActorBackend surface is
+// sufficient and not a facade over the old loop.
+func TestTendermintBackend_ActorSurface_CommitsWithoutRun(t *testing.T) {
+	id := mustIdentity(t)
+	thread := &pb.Thread{
+		Id:          "actorsurface",
+		CreatorDid:  id.DID,
+		ReplicaDids: []string{id.DID},
+		N:           1,
+		F:           0,
+		EpochMs:     50,
+		Metadata:    map[string]string{"backend": string(BackendTendermint)},
+	}
+	store := newTendermintTestStore(t)
+	store.SaveThread(thread) //nolint:errcheck
+
+	var committed []*pb.ThreadBlock
+	onCommit := func(b *pb.ThreadBlock) { committed = append(committed, b) }
+	store.EnqueueEntry(thread.Id, &pb.ThreadEntry{Kind: "message", Payload: []byte("hello")}) //nolint:errcheck
+
+	tb, err := newTendermintBackend(thread, id, store, zapDev(), onCommit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, isVoter := interface{}(tb).(VoterChanger); isVoter {
+		t.Fatal("Tendermint must not advertise a voter set")
+	}
+	var backend ActorBackend = tb // the type the actor holds
+	ctx := context.Background()
+	loopback := func(msg *pb.ConsensusMsg) { backend.Deliver(msg) }
+
+	deadline := time.Now().Add(4 * time.Second)
+	for len(committed) == 0 && time.Now().Before(deadline) {
+		backend.Pump(ctx, loopback)
+		backend.Tick(ctx)
+		time.Sleep(5 * time.Millisecond) // let the 50ms propose deadline elapse
+	}
+	backend.Stop()
+
+	// A single validator chains proposals synchronously (commitBlock calls
+	// enterPropose, which loops straight back through Deliver), so more than
+	// one block can land inside a single Pump. The claim under test is that
+	// the actor surface reaches a commit at all; the first block is the one
+	// carrying the entry.
+	if len(committed) == 0 {
+		t.Fatal("no block committed via the actor surface")
+	}
+	if committed[0].Height != 1 || string(committed[0].Entries[0].Payload) != "hello" {
+		t.Fatalf("unexpected block: height=%d payload=%q", committed[0].Height, committed[0].Entries[0].Payload)
+	}
 }
