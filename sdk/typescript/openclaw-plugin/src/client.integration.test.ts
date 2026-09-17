@@ -96,7 +96,7 @@ beforeAll(async () => {
 
   // Build the daemon binary.
   try {
-    execFileSync("go", ["build", "-o", binary, "./cmd/daemon"], {
+    execFileSync("go", ["build", "-o", binary, "./cmd/moltmesh"], {
       cwd: repoRoot(),
       timeout: 120_000,
       stdio: "ignore",
@@ -110,18 +110,21 @@ beforeAll(async () => {
   daemonProc = spawn(
     binary,
     ["start", "--data-dir", dataDir, "--grpc-addr", grpcAddr],
-    { stdio: "ignore" },
+    // __DAEMON_CHILD=1 runs the daemon inline. Without it `start` re-execs
+    // itself and returns, so daemonProc would be a dead parent and the
+    // SIGTERM in afterAll would never reach the real daemon.
+    { stdio: "ignore", env: { ...process.env, __DAEMON_CHILD: "1" } },
   );
 
   const ready = await waitForPort(port, 30_000);
   if (!ready) {
     daemonProc.kill("SIGTERM");
-    skipReason = "daemon did not start within 10 s";
+    skipReason = "daemon did not start within 30 s";
     return;
   }
 
   client = new A2AClient(grpcAddr);
-});
+}, 150_000); // go build (up to 120s) + daemon startup (up to 30s); bun's 5s default killed this hook
 
 afterAll(async () => {
   client?.close();
@@ -281,11 +284,19 @@ describe("tasks", () => {
   });
 
   dtest("sendTaskResult queues a durable terminal result", async c => {
-    const id = await c.getIdentity();
-    const task = await c.createTask(id.did, "test-skill");
-    const result = await c.sendTaskResult(id.did, task.id, { data: Buffer.from("done") });
-    expect(result.messageId).toBeTruthy();
-    expect(result.queued).toBe(true);
+    // The daemon rejects a task whose assignee is its own initiator, so the
+    // task must be addressed to a different identity. That peer is offline,
+    // which is exactly what makes the result durable rather than delivered.
+    const home = mkdtempSync(join(tmpdir(), "moltmesh_task_peer_"));
+    try {
+      const peer = AgentIdentity.loadOrCreate(home);
+      const task = await c.createTask(peer.did, "test-skill");
+      const result = await c.sendTaskResult(peer.did, task.id, { data: Buffer.from("done") });
+      expect(result.messageId).toBeTruthy();
+      expect(result.queued).toBe(true);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
   });
 });
 

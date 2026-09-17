@@ -82,7 +82,7 @@ async function startDaemon(binary: string, label: string): Promise<Daemon> {
   const proc = spawn(
     binary,
     ["start", "--data-dir", dataDir, "--grpc-addr", grpcAddr, "--port", String(netPort)],
-    { stdio: "ignore" },
+    { stdio: "ignore", env: { ...process.env, __DAEMON_CHILD: "1" } }, // run inline so SIGTERM reaches the daemon, not a re-exec parent
   );
 
   const ready = await waitForPort(grpcPort, 30_000);
@@ -124,7 +124,7 @@ beforeAll(async () => {
   const binary = join(buildDir, "moltmesh-daemon");
 
   try {
-    execFileSync("go", ["build", "-o", binary, "./cmd/daemon"], {
+    execFileSync("go", ["build", "-o", binary, "./cmd/moltmesh"], {
       cwd: repoRoot(),
       timeout: 120_000,
       stdio: "ignore",

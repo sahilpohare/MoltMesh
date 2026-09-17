@@ -23,6 +23,7 @@ import (
 	"sync"
 	"time"
 
+	libp2pcrypto "github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -182,8 +183,41 @@ func (d *Deliverer) SendDirect(ctx context.Context, peerID peer.ID, msg *pb.Mess
 	return d.sendToPeer(ctx, peerID, msg)
 }
 
+// peerIDFromDID derives the libp2p peer ID a did:key identity must have.
+// Both are encodings of the same Ed25519 public key, so this is exact and
+// needs no lookup. It only names the peer; it does not say where to find it.
+func peerIDFromDID(did string) (peer.ID, error) {
+	pub, err := identity.PubKeyFromDID(did)
+	if err != nil {
+		return "", err
+	}
+	lp, err := libp2pcrypto.UnmarshalEd25519PublicKey(pub)
+	if err != nil {
+		return "", err
+	}
+	return peer.IDFromPublicKey(lp)
+}
+
 // Send delivers a message to the remote peer identified by msg.ToDid.
+//
+// An Agent Card is how an unknown recipient is located, but it is not the
+// only way to reach one. A daemon that never published a card (it advertises
+// no capabilities, or the DHT had no peers when it started) was unreachable
+// even while connected on an open libp2p stream, because resolution failed
+// before any send was attempted. That breaks the ordinary case of replying
+// to whoever just contacted us: a worker returning a task result to a
+// coordinator that only makes outbound requests.
+//
+// So try the connected peer first. The recipient's peer ID is derived from
+// its own DID, and libp2p already authenticated that peer against the
+// matching private key, so this proves identity exactly as the card path
+// does. It adds no reachability: an unconnected peer still needs the DHT.
 func (d *Deliverer) Send(ctx context.Context, msg *pb.Message) error {
+	if pid, err := peerIDFromDID(msg.ToDid); err == nil {
+		if d.host.Network().Connectedness(pid) == network.Connected {
+			return d.sendToPeer(ctx, pid, msg)
+		}
+	}
 	if d.registry == nil {
 		return fmt.Errorf("no registry configured: cannot resolve %q", msg.ToDid)
 	}

@@ -209,3 +209,67 @@ func TestReceive_MalformedData(t *testing.T) {
 		t.Errorf("expected empty inbox after malformed message, got %d", len(msgs))
 	}
 }
+
+// A recipient that never published an Agent Card is still reachable while it
+// is connected: its peer ID is derivable from its own DID, and libp2p already
+// authenticated that peer against the matching key. Before this, Send failed
+// at DHT resolution ("routing: not found") without attempting delivery, so a
+// worker could not return a task result to a coordinator that only ever makes
+// outbound requests, and the result retried on the outbox schedule forever.
+func TestSend_ConnectedPeerWithoutAgentCard(t *testing.T) {
+	log, _ := zap.NewDevelopment()
+
+	senderHost := newHost(t)
+	receiverHost := newHost(t)
+	connectHosts(t, senderHost, receiverHost)
+
+	receiverInbox := newInbox(t)
+	deliver.New(receiverHost, nil, receiverInbox, nil, nil, log)
+
+	// nil registry: resolution is impossible, exactly as an unpublished
+	// recipient makes it. Send must reach the peer without it.
+	senderDlv := deliver.New(senderHost, nil, newInbox(t), nil, nil, log)
+
+	msg := &pb.Message{
+		Id:      "no-card-001",
+		FromDid: didFromHost(t, senderHost),
+		ToDid:   didFromHost(t, receiverHost),
+		Kind:    pb.MessageKind_MESSAGE_KIND_TEXT,
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := senderDlv.Send(ctx, msg); err != nil {
+		t.Fatalf("Send to a connected peer with no published card: %v", err)
+	}
+
+	msgs, err := receiverInbox.GetForOwner("", "", "", false, 0, 0)
+	if err != nil {
+		t.Fatalf("inbox.Get: %v", err)
+	}
+	if len(msgs) != 1 || msgs[0].Id != "no-card-001" {
+		t.Fatalf("expected the message in the receiver inbox, got %d", len(msgs))
+	}
+}
+
+// The fallback must not invent reachability: an unconnected peer with no card
+// still fails, rather than silently appearing deliverable.
+func TestSend_UnconnectedPeerWithoutRegistryStillFails(t *testing.T) {
+	log, _ := zap.NewDevelopment()
+	senderHost := newHost(t)
+	otherHost := newHost(t) // never connected
+
+	senderDlv := deliver.New(senderHost, nil, newInbox(t), nil, nil, log)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	err := senderDlv.Send(ctx, &pb.Message{
+		Id:      "unreachable-001",
+		FromDid: didFromHost(t, senderHost),
+		ToDid:   didFromHost(t, otherHost),
+		Kind:    pb.MessageKind_MESSAGE_KIND_TEXT,
+	})
+	if err == nil {
+		t.Fatal("expected an error sending to an unconnected peer with no registry")
+	}
+}
