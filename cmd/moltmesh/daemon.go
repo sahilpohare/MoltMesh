@@ -400,7 +400,14 @@ func run(cfg *config.Config, log *zap.Logger) error {
 	rpc.SetVersion(version)
 	srv := rpc.New(id, ib, ob, ts, reg, gm, dlv, tm, nm, wh, nameReg, n, n.P2PAddrs(), sessions, log)
 	dlv.SetMessageHandler(srv.HandleIncoming)
-	grpcServer := grpc.NewServer()
+	grpcServer := grpc.NewServer(grpc.UnaryInterceptor(
+		func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
+			started := time.Now()
+			log.Warn("INSTR rpc begin", zap.String("method", info.FullMethod))
+			resp, err := handler(ctx, req)
+			log.Warn("INSTR rpc end", zap.String("method", info.FullMethod), zap.Duration("took", time.Since(started)), zap.Error(err))
+			return resp, err
+		}))
 	pb.RegisterA2ANodeServer(grpcServer, srv)
 
 	var lis net.Listener
