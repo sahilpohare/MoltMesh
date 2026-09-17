@@ -113,7 +113,7 @@ beforeAll(async () => {
     // __DAEMON_CHILD=1 runs the daemon inline. Without it `start` re-execs
     // itself and returns, so daemonProc would be a dead parent and the
     // SIGTERM in afterAll would never reach the real daemon.
-    { stdio: "ignore", env: { ...process.env, __DAEMON_CHILD: "1" } },
+    { stdio: ["ignore", "inherit", "inherit"], env: { ...process.env, __DAEMON_CHILD: "1" } },
   );
 
   // freePort() closes the socket before the daemon binds it, so on a loaded
