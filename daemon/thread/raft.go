@@ -497,6 +497,27 @@ func (r *RaftBackend) handleReady(rd raft.Ready, broadcast func(*pb.ConsensusMsg
 		r.log.Error("raft: persist Ready", zap.Error(err))
 		return false
 	}
+	// 0. Apply and persist a snapshot sent by the leader. A follower that
+	// catches up this way has no log entries covering the snapshot's index,
+	// so the snapshot is the only thing that can justify the commit index in
+	// the HardState persisted below. Applying it to memory without saving it
+	// meant that on restart LoadRaftState returned a HardState with
+	// commit=N and an empty log, and raft panicked with
+	// "state.commit N is out of range [1, 1]" before the actor could start.
+	if !raft.IsEmptySnap(rd.Snapshot) {
+		if err := r.store.SaveRaftSnapshot(r.thread.Id, rd.Snapshot); err != nil {
+			r.log.Error("raft: persist received snapshot", zap.Error(err))
+			return false
+		}
+		if err := r.storage.ApplySnapshot(rd.Snapshot); err != nil && !errors.Is(err, raft.ErrSnapOutOfDate) {
+			r.log.Error("raft: apply received snapshot", zap.Error(err))
+			return false
+		}
+		r.appliedIndex = rd.Snapshot.Metadata.Index
+		r.appliedTerm = rd.Snapshot.Metadata.Term
+		r.confState = rd.Snapshot.Metadata.ConfState
+	}
+
 	// 1. Persist HardState if changed.
 	if !raft.IsEmptyHardState(rd.HardState) {
 		r.persistHardState(rd.HardState)
@@ -635,8 +656,13 @@ func (r *RaftBackend) applyCommittedBlock(block *pb.ThreadBlock) {
 
 // proposePending drains the store queue and proposes to raft if we are leader.
 func (r *RaftBackend) proposePending(ctx context.Context) {
+	// A voter that is not the leader must still propose: etcd/raft turns
+	// Propose into a MsgProp addressed to the leader and the transport
+	// forwards it. Returning early here instead left a follower's entry
+	// claimed-but-never-proposed, so append-entry reported success and the
+	// entry never committed on any node. Only wait for a leader to exist.
 	status := r.node.Status()
-	if status.Lead != r.selfID {
+	if status.Lead == raft.None {
 		return
 	}
 	batch, err := r.store.ClaimPendingEntries(r.thread.Id, raftMaxEntriesPerMsg)
